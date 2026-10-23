@@ -1,0 +1,44 @@
+{
+  "name": "zxz-mods",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "prisma generate && next build",
+    "start": "next start",
+    "lint": "next lint",
+    "prisma:seed": "node prisma/seed.js",
+    "prisma:pg:generate": "prisma generate --schema=prisma/schema.postgresql.prisma",
+    "prisma:pg:push": "prisma db push --schema=prisma/schema.postgresql.prisma",
+    "db:export": "ts-node scripts/export-data.ts",
+    "db:import:pg": "ts-node scripts/import-data.ts",
+    "db:seed:master": "ts-node scripts/seed-master.ts"
+  },
+  "dependencies": {
+    "@google-cloud/storage": "^8.4.0",
+    "@prisma/client": "^5.21.1",
+    "@types/leaflet": "^1.9.22",
+    "clsx": "^2.1.1",
+    "firebase": "^12.19.0",
+    "firebase-admin": "^14.5.0",
+    "framer-motion": "^11.11.9",
+    "leaflet": "^1.9.4",
+    "lucide-react": "^0.453.0",
+    "next": "^14.2.15",
+    "nodemailer": "^10.0.15",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tailwind-merge": "^2.5.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.0",
+    "@types/nodemailer": "^8.0.2",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.47",
+    "prisma": "^5.21.1",
+    "tailwindcss": "^3.4.14",
+    "typescript": "^5.6.3"
+  }
+}

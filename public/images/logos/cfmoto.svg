@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 120" width="100%" height="100%">
+  <!-- Background transparent -->
+  <rect width="100%" height="100%" fill="none"/>
+  
+  <!-- Stylized CFMOTO Brand Logo Badge -->
+  <g fill="#111827">
+    <!-- Emblem Icon -->
+    <path d="M45,28 C25,28 10,42 10,60 C10,78 25,92 45,92 C58,92 69,85 75,75 L58,75 C54,80 49,82 45,82 C32,82 22,72 22,60 C22,48 32,38 45,38 C50,38 55,41 58,45 L75,45 C69,35 58,28 45,28 Z" fill="#0284C7"/>
+    <path d="M52,48 C42,48 34,54 34,60 C34,66 42,72 52,72 C58,72 63,68 65,64 L50,64 L50,56 L73,56 C73,58 73,60 73,61 C73,73 63,80 50,80 C36,80 25,71 25,60 C25,49 36,40 50,40 C57,40 64,43 68,48 L58,54 C56,50 53,48 52,48 Z" fill="#0EA5E9"/>
+    
+    <!-- Wordmark Typography: CFMOTO -->
+    <text x="90" y="72" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="44" font-weight="900" font-style="italic" letter-spacing="2" fill="#111827">CFMOTO</text>
+  </g>
+</svg>

@@ -1,0 +1,6 @@
+# robots.txt for ZxZ Mods
+User-agent: *
+Allow: /
+Disallow: /sys-control
+Disallow: /api/sys/
+Disallow: /api/user/

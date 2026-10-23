@@ -1,0 +1,325 @@
+[
+  {
+    "id": "RPM-Z10-01",
+    "slug": "rpm-z10-01",
+    "comp": [
+      "zforce-z10",
+      "zforce-z10-4"
+    ],
+    "category": [
+      "performance"
+    ],
+    "brand": [
+      "RPM Powersports"
+    ],
+    "price": {
+      "P_price_D": 59.95,
+      "P_price": 27314,
+      "S_price": 2500,
+      "I_price": {
+        "includes": false,
+        "I_price": 12000
+      },
+      "profit": 12000,
+      "T_price": 47250,
+      "T_price_D": "calculate in checkout with the selling value of dolar to colones",
+      "iva": {
+        "rate": 13,
+        "amount": 5436
+      }
+    },
+    "imgs": [
+      "/uploads/products/products_1792014857641_Briskcr10ysx3_24574a81-01ab-49.webp"
+    ],
+    "vids": [],
+    "audios": [],
+    "p_title": "Bujía Brisk CF Moto Z10 Set - (3)",
+    "description": {
+      "es": [
+        {
+          "title": "Descripción",
+          "content": "Las bujías Brisk Silver Racing cuentan con un núcleo de plata de menor diámetro y un electrodo de masa convencional tipo gancho abierto; esto proporciona un rendimiento excepcional al encender mezclas de combustible de alto octanaje asociadas a combustibles alternativos como GNC, GLP, propano, mezclas E85, alcohol, GNL, combustibles de competición y nitro.\n\nLa plata es el mejor material posible para el electrodo central de una bujía, ya que disipa el calor rápidamente, lo que resulta en una temperatura general más baja de la bujía y una chispa más potente.\n\nCuanto más potente es la chispa, más rápido y mejor se propaga el frente de llama y mayor es su velocidad, lo que permite un funcionamiento más suave del motor en el rango de altas revoluciones (RPM).\n\nNuestra gama Silver Racing funciona bien con la mayoría de los sistemas de encendido, tanto de equipo original (OEM) como de posventa, desde los sistemas simples de bobina y distribuidor hasta los sistemas de encendido electrónico y los potentes sistemas de encendido directo presentes en los motores modernos de alto rendimiento con inyección en puerto o directa.\nLa separación de los electrodos (gap) varía según el nivel de sobrealimentación (boost) utilizado. Para motores modificados, el rango ideal es de 0,016\" a 0,018\". Para motores de serie, la separación debe ajustarse a 0,031\" (0,8 mm). Estas bujías vienen preajustadas para motores sobrealimentados, por lo que se recomienda verificar la separación específica para su vehículo.\n\nMejora OEM ~ Reemplaza a 0NYV-170200-1000\n\nCaracterísticas\n- Funcionan correctamente incluso si se produce acumulación de depósitos (ensuciamiento), un fallo común en las bujías estándar.\n- Electrodo central de plata: el mejor conductor térmico y eléctrico.\n- Requieren menor voltaje.\n- Reducen el desgaste de la bobina, los cables y otros componentes del encendido.\n- Electrodo central de hilo de plata de 1,5 mm.\n\nAplicaciones\n- Motores modificados y de competición.\n- Vehículos con combustibles alternativos.\n- Motores de competición de altas RPM con tiempos reducidos para la saturación de la bobina de encendido.\n- Combustibles de alto octanaje o de difícil ignición.\n- Metanol, etanol, GNC, GLP, propano, mezcla E85, alcohol, GNL, combustibles de competición, nitro, óxido nitroso.\n- Aplicaciones de aspiración natural o inducción forzada.\n- Motores estándar y de alta compresión.\n\nVida útil\n- 30.000 km o 18.000 millas.\n- 50 horas de competición."
+        }
+      ],
+      "en": [
+        {
+          "title": "Description",
+          "content": "Brisk Silver Racing Spark Plugs have a smaller diameter silver core and conventional open spark hook type earth electrode give an outstanding performance in igniting high octane fuel mixture associated with alternative fuels like CNG, LPG, Propane, E85 blend, Alcohol, LNG, Race Fuels and Nitro.\n\nSilver metal is the single best material for a spark plugs core electrode, as it can dissipate heat fast, resulting in overall lower spark plug temperature and a more powerful spark.\n\nThe stronger the spark the faster and better the flame front and flame speed giving smoother higher RPM range in engines.\n\nOur Silver Racing range works well with most aftermarket and OEM ignition systems from simple coil and distributor through electronic ignition and powerful direct ignition systems found on modern port and direct injection performance engines.\nGap settings differ depending on how much boost you are running. For tuned machines, a setting of .016\"-.018\" would be your window. For stock machines, the gap should be set to .031\" (.8mm). Thes plugs come gapped for boosted engines, so double check gap settings for your machine.\n\nOEM Upgrade ~ Replaces 0NYV-170200-1000\n\nFeatures\n- Fires properly even if fouling occurs, common standard plugs failure.\n- Silver center electrode, best thermal (heat) & electrical conductor.\n- Lower voltage requirement.\n- Reduces wear on coil, leads and other ignition parts.\n- 1.5 mm Silver Wire Center Electrode\n\nApplications\n- Tuned and race engines.\n- Alternative fuel cars.\n- High RPM race engines with short time for ignition coil saturation.\n- High octane or hard ignition fuels.\n- Methanol, ethanol, CNG, LPG, Propane, E85 blend, Alcohol, LNG, Race Fuels, Nitro, Nitrous.\n- Naturally aspirated or forced induction applications\n- Standard and high compression engines\n\nService Life\n- 30 000 km or 18 000 miles.\n- 50 hours racing"
+        }
+      ]
+    },
+    "requirements": null,
+    "reviews": "",
+    "homeInstallation": false,
+    "inHome_install": false,
+    "modelYearCompatibility": [
+      {
+        "make": "CFMOTO",
+        "model": "zforce-z10",
+        "years": "2026 - 2027",
+        "yearFrom": 2026,
+        "yearTo": 2027,
+        "trim": "Todas las versiones",
+        "fitmentType": "Direct Bolt-On",
+        "notes": ""
+      },
+      {
+        "make": "CFMOTO",
+        "model": "zforce-z10-4",
+        "years": "2026 - 2027",
+        "yearFrom": 2026,
+        "yearTo": 2027,
+        "trim": "Todas las versiones",
+        "fitmentType": "Direct Bolt-On",
+        "notes": ""
+      }
+    ],
+    "supplierUrl": "https://rpmsxs.com/products/cf-moto-z10-spark-plug-kit?_pos=1&_sid=243af1c3c&_ss=r",
+    "supplierPlatform": "SHOPIFY",
+    "supplierStockStatus": "IN_STOCK",
+    "supplierStockCount": null,
+    "supplierStockMessageEs": "Disponible para entrega o importación inmediata",
+    "supplierStockMessageEn": "In stock ready for immediate delivery or import",
+    "supplierLeadDaysMin": 7,
+    "supplierLeadDaysMax": 12,
+    "supplierLastPriceUSD": 59.95,
+    "supplierStockCheckedAt": "2026-10-22T20:12:05.628Z",
+    "relatedProductIds": [
+      "BMP-Z10-EXH-01",
+      "EVP-Z10-01"
+    ],
+    "discountPercent": 0,
+    "originalPriceCRC": 47250,
+    "voidsWarranty": false,
+    "parameters": [],
+    "ivaPercent": 13,
+    "ivaCRC": 5436,
+    "suggestedProductIds": [],
+    "suggestedComboIds": []
+  },
+  {
+    "id": "EVP-Z10-01",
+    "slug": "evp-z10-01",
+    "comp": [
+      "zforce-z10",
+      "zforce-z10-4"
+    ],
+    "category": [
+      "exhaust"
+    ],
+    "brand": [
+      "EVP"
+    ],
+    "price": {
+      "P_price_D": 155,
+      "P_price": 70618,
+      "S_price": 4902,
+      "I_price": {
+        "includes": false,
+        "I_price": 30000
+      },
+      "profit": 40000,
+      "T_price": 130538,
+      "T_price_D": "calculate in checkout with the selling value of dolar to colones",
+      "iva": {
+        "rate": 13,
+        "amount": 15018
+      }
+    },
+    "imgs": [
+      "/uploads/products/products_1792002567272_1782040001_tt_1_1024x1024_webp.webp",
+      "/uploads/products/products_1792002817458_1782040002_tt_1_1024x1024_webp.webp"
+    ],
+    "vids": [],
+    "audios": [],
+    "p_title": "Kits de tubo de respiradero EVP para CFMOTO Z10",
+    "description": {
+      "es": [
+        {
+          "title": "Descripción",
+          "content": "¡Mejor flujo, mayor durabilidad y refuerzo para soportar toda la presión del turbo! El kit de tubo de admisión EVP (que conecta la caja del filtro con el turbo) para el CFMOTO Z10 cuenta con una construcción de 5 capas de fibras de Nomex reforzadas, lo que ofrece una mejora significativa en durabilidad frente a los tubos de plástico fino originales (OEM). Con un trazado idéntico al de fábrica, nuestro tubo de silicona de una sola pieza sustituye al diseño original de dos piezas, permitiendo una transición fluida y sin interrupciones desde la caja del filtro hasta el turbo.\n\nFabricado con silicona de 5 capas, nuestro tubo mantiene una integridad estructural excepcional bajo altas presiones de sobrealimentación, ofreciendo un rendimiento fiable y resistente a reventones que los tubos originales no pueden igualar. Presenta un ajuste preciso de los puertos en ambos extremos y ofrece mayor volumen interno que el componente de serie para ayudar a mejorar el flujo de aire.\n\n- Diseño de una sola pieza desde la caja del filtro hasta el turbo, mejorando el flujo de aire respecto al diseño original de dos piezas.\n- Mayor flujo y mejor lubricidad que el plástico para una entrega de aire más fluida.\n- Grosor de pared de 6 mm y construcción de 5 capas para una durabilidad extrema.\n- El kit incluye el tubo de admisión EVP y la tornillería necesaria."
+        }
+      ],
+      "en": [
+        {
+          "title": "Description",
+          "content": "Better flow, more durability, and reinforced for ALL the boost! The EVP airbox-to-turbo Intake Tube Kit for CFMOTO Z10 features 5-ply construction from reinforced Nomex fibers, delivering a significant durability upgrade over thin plastic OEM tubes. Routed just like the factory setup, our single-piece silicone tube replaces the OEM two-piece design for a smooth, seamless transition from airbox to turbo.\n\nBuilt with 5-ply silicone, our tube maintains exceptional structural integrity under high boost, giving you reliable, burst-resistant performance the OEM tubes can't match. It's port matched at both ends and offers more internal volume than stock to help improve airflow.\n\n- One-piece design from airbox to turbo, improving airflow over the stock two-piece design\n- Higher flow and better lubricity than plastic for smoother delivery\n- 6mm wall thickness, 5-ply construction for extreme durability\n- Kit Includes EVP Intake Tube & Hardware"
+        }
+      ]
+    },
+    "requirements": null,
+    "reviews": "",
+    "homeInstallation": false,
+    "inHome_install": false,
+    "modelYearCompatibility": [
+      {
+        "make": "CFMOTO",
+        "model": "zforce-z10",
+        "years": "2026 - 2027",
+        "yearFrom": 2026,
+        "yearTo": 2027,
+        "trim": "Todas las versiones",
+        "fitmentType": "Direct Bolt-On",
+        "notes": ""
+      },
+      {
+        "make": "CFMOTO",
+        "model": "zforce-z10-4",
+        "years": "2026 - 2027",
+        "yearFrom": 2026,
+        "yearTo": 2027,
+        "trim": "Todas las versiones",
+        "fitmentType": "Direct Bolt-On",
+        "notes": ""
+      }
+    ],
+    "supplierUrl": "https://evopowersports.com/products/evp-intake-tube-kits-for-cfmoto-z10?variant=42732095766574",
+    "supplierPlatform": "SHOPIFY",
+    "supplierStockStatus": "IN_STOCK",
+    "supplierStockCount": null,
+    "supplierStockMessageEs": "Disponible para entrega o importación inmediata",
+    "supplierStockMessageEn": "In stock ready for immediate delivery or import",
+    "supplierLeadDaysMin": 7,
+    "supplierLeadDaysMax": 21,
+    "supplierLastPriceUSD": 155,
+    "supplierStockCheckedAt": "2026-10-22T18:43:42.664Z",
+    "voidsWarranty": false,
+    "relatedProductIds": [
+      "BMP-Z10-EXH-01",
+      "RPM-Z10-01"
+    ],
+    "parameters": [
+      {
+        "id": "param-1792002631522-623",
+        "nameEs": "Seleccionar Color",
+        "nameEn": "Select Color",
+        "type": "button",
+        "options": [
+          {
+            "id": "opt-1792002631522-1",
+            "labelEs": "Negro",
+            "labelEn": "Black",
+            "priceDeltaCRC": 0,
+            "imageUrl": "/uploads/products/products_1792002953736_1782040001_tt_1_1024x1024_webp.webp",
+            "supplierUrl": "https://evopowersports.com/products/evp-intake-tube-kits-for-cfmoto-z10?variant=42732095766574"
+          },
+          {
+            "id": "opt-1792002938587-304",
+            "labelEs": "Naranja",
+            "labelEn": "Orange",
+            "priceDeltaCRC": 0,
+            "imageUrl": "/uploads/products/products_1792002958046_1782040002_tt_1_1024x1024_webp.webp",
+            "supplierUrl": "https://evopowersports.com/products/evp-intake-tube-kits-for-cfmoto-z10?variant=42732095799342"
+          }
+        ]
+      }
+    ],
+    "discountPercent": 0,
+    "originalPriceCRC": 130538,
+    "ivaPercent": 13,
+    "ivaCRC": 15018,
+    "suggestedProductIds": [],
+    "suggestedComboIds": []
+  },
+  {
+    "id": "BMP-Z10-EXH-01",
+    "slug": "BMP-Z10-EXH-01",
+    "comp": [
+      "zforce-z10",
+      "zforce-z10-4"
+    ],
+    "category": [
+      "performance",
+      "exhaust"
+    ],
+    "brand": [
+      "Bikeman Performance"
+    ],
+    "price": {
+      "P_price_D": 950,
+      "P_price": 441000,
+      "S_price": 70000,
+      "I_price": {
+        "includes": true,
+        "I_price": 20000
+      },
+      "profit": 230000,
+      "T_price": 859930,
+      "T_price_D": "calculate in checkout with the selling value of dolar to colones",
+      "iva": {
+        "rate": 13,
+        "amount": 85280
+      }
+    },
+    "imgs": [
+      "/products/z10_bikeman_exhaust.webp"
+    ],
+    "vids": [],
+    "audios": [
+      "/audio/CFMOTO_Z10_Side-exit_exhaust-IDLE.wav"
+    ],
+    "p_title": "Mufla Deportiva CFMOTO Z10 - Doble Barril Salida Central",
+    "description": {
+      "es": [
+        {
+          "title": "Descripción",
+          "content": "Desata a la Bestia Dentro de tu Z10. Diseñado como un sistema completo tipo slip-on de alto rendimiento con múltiple de alto flujo y escape doble barril central.\n\nDesde Stock Hasta Combustible de Carreras: Máxima Versatilidad\nDiseñamos este sistema para que tenga un flujo completamente libre, reduciendo un peso significativo y eliminando los severos cuellos de botella del sistema de una sola pieza OEM. Gracias a este diseño optimizado de alto flujo, este sistema completo es increíblemente versátil:\nApto para Motor Stock: Instálalo directamente en tu máquina original para una mejora instantánea en sonido, reducción de peso y eficiencia de escape sin arrojar códigos de error.\nListo para Combustible de Carreras: Si planeas construir un monstruo de alto octanaje en el futuro, este sistema proporciona flujo más que suficiente para manejar calibraciones agresivas, alta presión de turbo y configuraciones de combustible de carrera. Es el único sistema de escape que necesitarás comprar para tu Z10."
+        }
+      ],
+      "en": [
+        {
+          "title": "Description",
+          "content": "Unleash the Beast Within Your Z10. Engineered as a comprehensive slip-on full system with high-performance header and double-barrel center-exit exhaust.\n\nFrom Stock to Race Gas: Ultimate Versatility\nWe designed this system to be completely free-flowing, dropping significant weight and removing the severe bottlenecks of the OEM single-piece system. Because of this optimized high-flow design, this full system is incredibly versatile:\nStock Friendly: Bolt it right onto your stock machine for an instant upgrade in sound, weight reduction, and exhaust efficiency without throwing codes.\nRace Gas Ready: If you plan on building a high-octane monster down the road, this system flows more than enough air to easily handle aggressive tunes, high boost, and race-gas configurations. It's the only exhaust system you'll ever need to buy for your Z10."
+        }
+      ]
+    },
+    "requirements": null,
+    "reviews": "",
+    "homeInstallation": false,
+    "modelYearCompatibility": [
+      {
+        "make": "CFMOTO",
+        "model": "zforce-z10",
+        "years": "2019 - 2027",
+        "yearFrom": 2019,
+        "yearTo": 2027,
+        "trim": "Todas las versiones",
+        "fitmentType": "Direct Bolt-On",
+        "notes": ""
+      },
+      {
+        "make": "CFMOTO",
+        "model": "zforce-z10-4",
+        "years": "2019 - 2027",
+        "yearFrom": 2019,
+        "yearTo": 2027,
+        "trim": "Todas las versiones",
+        "fitmentType": "Direct Bolt-On",
+        "notes": ""
+      }
+    ],
+    "inHome_install": false,
+    "supplierStockStatus": "PRE_ORDER",
+    "supplierStockCount": null,
+    "supplierPlatform": "SHOPIFY",
+    "supplierStockMessageEs": "Disponible en Preventa (Reserva prioritaria)",
+    "supplierStockMessageEn": "Available for Pre-Order (Priority reservation)",
+    "supplierLeadDaysMin": 14,
+    "supplierLeadDaysMax": 28,
+    "supplierLastPriceUSD": 979.95,
+    "supplierStockCheckedAt": "2026-10-22T18:42:50.193Z",
+    "supplierUrl": "https://bikemanperformance.com/products/double-barrel-center-exit-full-exhaust-for-cfmoto-zforce-z10",
+    "voidsWarranty": false,
+    "relatedProductIds": [
+      "EVP-Z10-01",
+      "RPM-Z10-01"
+    ],
+    "parameters": [],
+    "discountPercent": 0,
+    "originalPriceCRC": 859930,
+    "ivaPercent": 13,
+    "ivaCRC": 85280,
+    "suggestedProductIds": [],
+    "suggestedComboIds": []
+  }
+]

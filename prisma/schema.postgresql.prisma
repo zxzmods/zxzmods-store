@@ -1,0 +1,436 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Brand {
+  id            String         @id @default(cuid())
+  slug          String         @unique
+  name          String
+  logoUrl       String?
+  descriptionEs String
+  descriptionEn String
+  featured      Boolean        @default(false)
+  models        VehicleModel[]
+  createdAt     DateTime       @default(now())
+}
+
+model VehicleModel {
+  id                     String   @id @default(cuid())
+  brandId                String
+  brand                  Brand    @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  slug                   String   @unique
+  code                   String?  // e.g. "Z10", "Z10-4", "X3", "PROR", "TALON"
+  name                   String
+  category               String   // UTV, ATV, SSV
+  yearsJson              String   // e.g. "[2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025]"
+  imageUrl               String?
+  pickupServiceAvailable Boolean  @default(true)
+  createdAt              DateTime @default(now())
+}
+
+model Category {
+  id       String    @id @default(cuid())
+  slug     String    @unique
+  nameEs   String
+  nameEn   String
+  icon     String?
+  products Product[]
+}
+
+model Product {
+  id                   String                 @id @default(cuid())
+  sku                  String                 @unique
+  slug                 String                 @unique
+  nameEs               String
+  nameEn               String
+  categoryId           String?
+  category             Category?              @relation(fields: [categoryId], references: [id])
+  priceCRC             Int                    // Price in Costa Rican Colones (T_price)
+  originalPriceCRC     Int?                   @default(0) // Base price before discount
+  discountPercent      Int                    @default(0) // Percentage discount (0-100)
+  installationPriceCRC Int                    // Installation labor cost in CRC (I_price.I_price)
+  processingPriceD     Float                  @default(0) // P_price_D (USD)
+  processingPriceCRC   Int                    @default(0) // P_price (CRC)
+  shippingPriceCRC     Int                    @default(0) // S_price (CRC)
+  profitCRC            Int                    @default(0) // profit (CRC)
+  totalPriceD          String                 @default("calculate in checkout with the selling value of dolar to colones") // T_price_D
+  warrantyCategory     String                 // BOLT_ON_ELECTRICAL, MECHANICAL_DRIVETRAIN, ECU_TUNING, PARTS_ONLY
+  descriptionEs        String
+  descriptionEn        String
+  imageUrl             String
+  stockStatus          String                 @default("IN_STOCK_US") // IN_STOCK_US, SPECIAL_ORDER, IN_STOCK_CR
+  featured                  Boolean                @default(false)
+  homeInstallationAvailable Boolean                @default(true) // inHome_install
+  isInstallationIncluded    Boolean                @default(true) // I_price.includes
+  isArchived                Boolean                @default(false)
+  brandName                 String?
+  requirements              String?
+  reviews                   String?                @default("")
+  compJson                  String?
+  categoryJson              String?
+  brandJson                 String?
+  imagesJson                String?
+  videosJson                String?
+  audiosJson                String?
+  additionalImagesJson      String?
+  audioUrl                  String?
+  videoUrl                  String?
+  modelYearCompatibilityJson String?
+  parametersJson             String?                @default("[]")
+  voidsWarranty              Boolean                @default(false)
+  relatedProductIdsJson      String?                @default("[]")
+  suggestedProductIdsJson    String?                @default("[]")
+  suggestedComboIdsJson      String?                @default("[]")
+  compatibilities           ProductCompatibility[]
+  supplierUrl                String?
+  supplierPlatform           String?   // "SHOPIFY" | "SCHEMA_ORG" | "GENERIC_HTML" | "MANUAL"
+  supplierStockStatus        String    @default("IN_STOCK_US") // IN_STOCK, PRE_ORDER, LOW_STOCK, OUT_OF_STOCK, UNAVAILABLE
+  supplierStockCount         Int?
+  supplierStockMessageEs     String?
+  supplierStockMessageEn     String?
+  supplierStockCheckedAt     DateTime?
+  supplierLeadDaysMin        Int       @default(7)
+  supplierLeadDaysMax        Int       @default(12)
+  supplierLastPriceUSD       Float?
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @default(now()) @updatedAt
+}
+
+model ProductCompatibility {
+  id        String   @id @default(cuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  brandSlug String
+  modelSlug String
+  yearFrom  Int
+  yearTo    Int
+}
+
+model Combo {
+  id                   String   @id @default(cuid())
+  slug                 String   @unique
+  category             String   @default("performance") // performance, rings, lights, etc.
+  titleEs              String
+  titleEn              String
+  badgeEs              String
+  badgeEn              String
+  descriptionEs        String
+  descriptionEn        String
+  priceCRC             Int
+  originalPriceCRC     Int
+  installationPriceCRC Int
+  discountPercent      Int
+  itemsJson            String   // JSON list of components included
+  parametersJson       String?  @default("[]")
+  imageUrl             String
+  featured             Boolean  @default(true)
+  homeInstallationAvailable Boolean @default(true)
+  isArchived           Boolean  @default(false)
+  suggestedProductIdsJson String? @default("[]")
+  suggestedComboIdsJson   String? @default("[]")
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @default(now()) @updatedAt
+}
+
+model PerformancePackage {
+  id                   String   @id @default(cuid())
+  slug                 String   @unique
+  stageNumber          Int      // 1, 2, 3
+  titleEs              String
+  titleEn              String
+  targetVehicleEs      String
+  targetVehicleEn      String
+  hpGain               String   // e.g. "+15 HP", "+45 HP", "+85 HP"
+  torqueGain           String   // e.g. "+12 lb-ft", "+38 lb-ft"
+  priceCRC             Int
+  installationPriceCRC Int
+  featuresJson         String   // JSON list of package features
+  includesDyno         Boolean  @default(false)
+  includesWarranty     Boolean  @default(true)
+  featured             Boolean  @default(true)
+  homeInstallationAvailable Boolean @default(true)
+  createdAt            DateTime @default(now())
+}
+
+model WorkshopInfo {
+  id                 String   @id @default("zxz-hq")
+  name               String
+  legalName          String?  @default("ZxZ Mods Costa Rica S.A.")
+  cedulaJuridica     String?  @default("")
+  taglineEs          String
+  taglineEn          String
+  addressEs          String
+  addressEn          String
+  province           String
+  phone              String
+  whatsapp           String
+  googleMapsEmbedUrl String
+  googleMapsLink     String
+  hoursJson          String
+  latitude           Float
+  longitude          Float
+  bankAccountsJson   String?  @default("[]")
+}
+
+model GarageVehicle {
+  id        String   @id @default(cuid())
+  sessionId String
+  userId    String?
+  nickname  String?
+  brandSlug String
+  brandName String
+  modelSlug String
+  modelName String
+  year      Int
+  category  String?
+  color     String?
+  notes     String?
+  imageUrl  String?
+  isActive  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sessionId])
+  @@index([userId])
+}
+
+model User {
+  id              String    @id @default(cuid())
+  firebaseUid     String    @unique
+  email           String    @unique
+  displayName     String?
+  photoUrl        String?
+  phoneNumber     String?
+  role            String    @default("CUSTOMER") // CUSTOMER, STAFF, MASTER
+  isActive        Boolean   @default(true)
+  isBanned        Boolean   @default(false)
+  bannedAt        DateTime?
+  bannedReason    String?
+  bannedBy        String?
+  permissionsJson String?   // Granular permissions e.g. {"canEditInstallationCosts": true, "canCreateOrders": true}
+  lastLoginAt     DateTime?
+  stealthPinHash  String?   // Hashed PIN for stealth terminal auth
+  passwordHash    String?   // Secure hashed password for backdoor access
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  orders          Order[]
+}
+
+model Order {
+  id                  String   @id @default(cuid())
+  orderNumber         String   @unique
+  userId              String?
+  user                User?    @relation(fields: [userId], references: [id])
+  guestEmail          String?
+  status              String   @default("PENDING") // PENDING, PARTS_ORDERED, IN_TRANSIT, READY_FOR_INSTALL, IN_PROGRESS, COMPLETED, CANCELLED
+  totalCRC            Int
+  partsSubtotalCRC    Int
+  laborSubtotalCRC    Int
+  shippingCostCRC     Int      @default(0)
+  installationCostCRC Int      @default(0)
+  pickupCostCRC       Int      @default(0)
+  paidCurrency        String?  // CRC, USD
+  discountType        String   @default("NONE") // NONE, PERCENTAGE, FIXED
+  discountValue       Int      @default(0)
+  discountReason      String?
+  discountAppliedBy   String?
+  discountCRC         Int      @default(0)
+  taxCRC              Int      @default(0)
+  requiresElectronicInvoice Boolean @default(false)
+  electronicInvoiceJson     String? // JSON with { companyName, idType, idNumber, email, phone, economicActivity, details }
+  partsStatus         String   @default("PENDING") // PENDING, PARTS_ORDERED, IN_TRANSIT, READY_FOR_INSTALL
+  supplierNotes       String?
+  staffNotes          String?
+  assignedStaffId     String?
+  itemsJson           String   // Serialized JSON of order items
+  commentsJson        String?  @default("[]") // Serialized JSON of customer & staff comments
+  serviceType         String   @default("STORE_PICKUP") // STORE_PICKUP, HOME_SERVICE, UTV_PICKUP, SHIPPING
+  shippingAddress     String?
+  customerName        String?
+  customerPhone       String?
+  notes               String?
+  claimToken          String?  @unique
+  redeemedAt          DateTime?
+  isRedeemed          Boolean  @default(false)
+  paymentProofUrl             String?
+  paymentRejectionReason      String?
+  servicePaymentProofUrl      String?
+  installationPaymentProofUrl String?
+  isCertified                 Boolean  @default(false)
+  zxzCertificationJson        String?
+  serviceDocumentsJson        String?  @default("{}")
+  createdAt                   DateTime @default(now())
+  updatedAt                   DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  actorId     String
+  actorEmail  String
+  actorRole   String   // MASTER, STAFF
+  action      String   // UPDATE_PRICE, UPDATE_INSTALLATION_COST, CREATE_ORDER, UPDATE_ORDER_STATUS, CREATE_PRODUCT, UPDATE_PRODUCT, DELETE_PRODUCT, CREATE_COMBO, UPDATE_COMBO, DELETE_COMBO, CREATE_STAFF, UPDATE_STAFF
+  entityType  String   // PRODUCT, COMBO, ORDER, USER, SYSTEM
+  entityId    String
+  oldDataJson String?
+  newDataJson String?
+  details     String?  // Human readable description
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([entityType])
+  @@index([actorId])
+}
+
+model VerificationCode {
+  id        String   @id @default(cuid())
+  email     String
+  code      String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  used      Boolean  @default(false)
+
+  @@index([email])
+}
+
+model LogisticsRateConfig {
+  id                           String   @id @default("rates-config")
+  pickupRatePerKmCRC           Int      @default(1500)
+  deliveryRatePerKmCRC         Int      @default(800)
+  homeInstallationRatePerKmCRC Int      @default(2000)
+  pickupBaseFeeCRC             Int      @default(10000)
+  deliveryBaseFeeCRC           Int      @default(3000)
+  homeInstallationBaseFeeCRC   Int      @default(15000)
+  garageAddress                String   @default("Calle 34, Pozos, Santa Ana, Costa Rica")
+  garageLatitude               Float    @default(9.9385)
+  garageLongitude              Float    @default(-84.1962)
+  updatedAt                    DateTime @updatedAt
+  createdAt                    DateTime @default(now())
+}
+
+model ServiceSchedule {
+  id                 String   @id @default(cuid())
+  appointmentCode    String?  @unique
+  orderId            String?
+  userId             String?
+  commentsJson       String?  @default("[]")
+  serviceType        String   // delivery, installation, pickup, shop_installation
+  date               String   // YYYY-MM-DD
+  time               String   // HH:mm (e.g. "10:00")
+  timeMinutes        Int      // minutes from midnight (e.g. 600 for 10:00 AM)
+  durationMinutes    Int      // on-site duration (e.g. 15 or 30 min)
+  travelDurationMin  Int      // one-way travel duration in minutes
+  prepBufferMin      Int      @default(15) // package loading/prep buffer
+  blockedStartMin    Int      // start of blocked interval in minutes from midnight
+  blockedEndMin      Int      // end of blocked interval in minutes from midnight
+  isFullDay          Boolean  @default(false) // true for home installations
+  destinationAddress String?
+  destinationLat     Float?
+  destinationLng     Float?
+  distanceKm         Float?
+  clientName         String?
+  clientPhone        String?
+  status             String   @default("CONFIRMED") // CONFIRMED, COMPLETED, CANCELLED
+  costCRC            Int      @default(0)
+  paymentStatus      String   @default("PAID") // PAID, PENDING
+  paymentProofUrl    String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([date])
+  @@index([status])
+  @@index([userId])
+  @@index([orderId])
+}
+
+model HomePageItem {
+  id            String   @id @default(cuid())
+  type          String   @default("PRODUCT") // "PRODUCT" | "VIDEO"
+  titleEs       String
+  titleEn       String
+  category      String
+  descriptionEs String
+  descriptionEn String
+  redirectUrl   String
+  mediaUrl      String   // Image URL for product or Video/Image URL for video
+  videoUrl      String?  // Optional direct MP4 video URL if type is VIDEO
+  relatedItemsJson String? // JSON array of related products and combos for video popups
+  order         Int      @default(0)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([type])
+  @@index([isActive])
+  @@index([order])
+}
+
+model DealerBrand {
+  id          String   @id @default(cuid())
+  code        String?  // e.g. "BMP", "EVP", "RPM", "DRT"
+  slug        String?
+  name        String
+  logoUrl     String
+  redirectUrl String   @default("")
+  order       Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([isActive])
+  @@index([order])
+}
+
+model LegalDocument {
+  id                 String   @id
+  slug               String   @unique
+  order              Int      @default(0)
+  category           String   @default("GENERAL")
+  titleEs            String
+  titleEn            String   @default("")
+  badgeEs            String
+  badgeEn            String   @default("")
+  summaryEs          String
+  summaryEn          String   @default("")
+  contentEs          String
+  contentEn          String   @default("")
+  jurisdiction       String   @default("San José, Costa Rica")
+  lastUpdated        String   @default("Octubre 2026")
+  applicableLawsJson String   @default("[]")
+  isPublished        Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([slug])
+  @@index([order])
+  @@index([isPublished])
+}
+
+model DiscountCode {
+  id              String    @id @default(cuid())
+  code            String    @unique // Code string e.g. "PROMO10", "ZXZVIP", uppercase
+  description     String?   // Description / Note e.g. "Descuento lanzamiento"
+  discountType    String    @default("PERCENTAGE") // "PERCENTAGE" or "FIXED"
+  discountValue   Int       // percentage (e.g. 10) or CRC amount (e.g. 5000)
+  minOrderCRC     Int       @default(0) // Minimum parts subtotal to apply
+  maxDiscountCRC  Int?      // Optional cap for percentage discounts
+  maxUses         Int?      // Optional maximum total redemptions (null = unlimited)
+  timesUsed       Int       @default(0) // Counter of successful redemptions
+  isActive        Boolean   @default(true)
+  expiresAt       DateTime? // Optional expiration date
+  createdBy       String?   // Email or User ID of creator (Master)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([code])
+  @@index([isActive])
+}

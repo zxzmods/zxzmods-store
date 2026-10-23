@@ -1,0 +1,17 @@
+Dockerfile*
+.dockerignore
+.git
+.gitignore
+.env
+.env.*
+*.local
+node_modules
+.next
+out
+backups/
+prisma/*.db*
+scripts/data-backup.json
+scripts/*backup*.json
+*.md
+.gemini
+scratch/

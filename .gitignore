@@ -1,0 +1,65 @@
+# ==============================================================================
+# ZxZ MODS - Enterprise Security .gitignore
+# Strictly prevents credentials, secrets, backups, and local state from git
+# ==============================================================================
+
+# Dependencies
+/node_modules
+/.pnp
+.pnp.js
+
+# Testing & Coverage
+/coverage
+
+# Next.js build and cache output
+/.next/
+/out/
+tsconfig.tsbuildinfo
+
+# Production builds
+/build
+
+# Environment files and credentials (CRITICAL SECURITY)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.json-key
+*service-account*.json
+*gcp-key*.json
+*firebase-adminsdk*.json
+*credentials*.json
+credentials.json
+client_secret*.json
+
+# Database Backups & Dumps (Contains customer PII and hashed secrets)
+backups/
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+*.dump
+*.sql
+prisma/*.db
+prisma/*.db-journal
+scripts/data-backup.json
+scripts/*backup*.json
+
+# Debug & Error logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# AI Assistant & Local scratch files
+.gemini/
+scratch/
+
+# IDE & OS generated files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
