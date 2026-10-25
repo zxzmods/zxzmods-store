@@ -19,7 +19,23 @@ import {
   Check,
   MapPin,
   Edit3,
+  Key,
 } from "lucide-react";
+
+export interface VehicleChecksData {
+  keysReceived?: boolean;
+  spareKeyReceived?: boolean;
+  keysCount?: string | number;
+  fuelLevel?: "E" | "1/4" | "1/2" | "3/4" | "F" | "";
+  noPersonalBelongings?: boolean;
+  belongingsNotes?: string;
+  batteryFunctional?: boolean;
+  parkingBrakeFunctional?: boolean;
+  tiresGoodCondition?: boolean;
+  noVisibleLeaks?: boolean;
+  documentsInVehicle?: boolean;
+  keysReturnedToOwner?: boolean;
+}
 
 export interface ServiceDocumentData {
   ownerName?: string;
@@ -50,6 +66,7 @@ export interface ServiceDocumentData {
     cleanWorkArea?: boolean;
     originalPartsReturned?: boolean;
   };
+  vehicleChecks?: VehicleChecksData;
   receptionDate?: string;
   handoverDate?: string;
   garageVehicle?: any;
@@ -164,24 +181,6 @@ export function ServiceDocumentModal({
     }
   }, [order?.zxzCertificationJson, order?.orderNumber, order?.createdAt, order?.updatedAt]);
 
-  // Calculated Pickup distance and gasoline cost (₡500 per km)
-  const pickupGasData = useMemo(() => {
-    let km = 0;
-    if (typeof existingDocData?.distanceKm === "number" && existingDocData.distanceKm > 0) {
-      km = existingDocData.distanceKm;
-    } else if (typeof order?.serviceSchedule?.distanceKm === "number" && order.serviceSchedule.distanceKm > 0) {
-      km = order.serviceSchedule.distanceKm;
-    } else if (Number(order?.pickupCostCRC) > 0) {
-      const baseRate = 1500;
-      km =
-        Number(order.pickupCostCRC) > 10000
-          ? Math.round((Number(order.pickupCostCRC) - 10000) / baseRate)
-          : Math.round(Number(order.pickupCostCRC) / baseRate);
-    }
-    const cost = km > 0 ? km * 500 : 0;
-    return { km, cost };
-  }, [existingDocData, order]);
-
   // Registered phone from system (client)
   const registeredPhone = useMemo(() => {
     let docPhone = "";
@@ -229,6 +228,20 @@ export function ServiceDocumentModal({
       cleanWorkArea: false,
       originalPartsReturned: false,
     },
+    vehicleChecks: {
+      keysReceived: true,
+      spareKeyReceived: false,
+      keysCount: 1,
+      fuelLevel: "",
+      noPersonalBelongings: true,
+      belongingsNotes: "",
+      batteryFunctional: true,
+      parkingBrakeFunctional: true,
+      tiresGoodCondition: true,
+      noVisibleLeaks: true,
+      documentsInVehicle: true,
+      keysReturnedToOwner: false,
+    },
   });
 
   // Sync state when order changes (Zero Mock Data Policy: Never insert CFMOTO/ZForce unless registered)
@@ -268,6 +281,20 @@ export function ServiceDocumentModal({
           testDriven: parsed.checklist?.testDriven ?? false,
           cleanWorkArea: parsed.checklist?.cleanWorkArea ?? false,
           originalPartsReturned: parsed.checklist?.originalPartsReturned ?? false,
+        },
+        vehicleChecks: {
+          keysReceived: parsed.vehicleChecks?.keysReceived ?? true,
+          spareKeyReceived: parsed.vehicleChecks?.spareKeyReceived ?? false,
+          keysCount: parsed.vehicleChecks?.keysCount ?? 1,
+          fuelLevel: parsed.vehicleChecks?.fuelLevel ?? "",
+          noPersonalBelongings: parsed.vehicleChecks?.noPersonalBelongings ?? true,
+          belongingsNotes: parsed.vehicleChecks?.belongingsNotes ?? "",
+          batteryFunctional: parsed.vehicleChecks?.batteryFunctional ?? true,
+          parkingBrakeFunctional: parsed.vehicleChecks?.parkingBrakeFunctional ?? true,
+          tiresGoodCondition: parsed.vehicleChecks?.tiresGoodCondition ?? true,
+          noVisibleLeaks: parsed.vehicleChecks?.noVisibleLeaks ?? true,
+          documentsInVehicle: parsed.vehicleChecks?.documentsInVehicle ?? true,
+          keysReturnedToOwner: parsed.vehicleChecks?.keysReturnedToOwner ?? false,
         },
         receptionDate: parsed.receptionDate || new Date().toISOString(),
         handoverDate: parsed.handoverDate || new Date().toISOString(),
@@ -820,6 +847,188 @@ export function ServiceDocumentModal({
                 </div>
               </div>
             </div>
+
+            {/* VEHICLE CHECKS & KEYS DRAWER CONTROLS */}
+            <div className="mt-4 pt-3 border-t border-slate-200">
+              <span className="text-xs font-black uppercase text-slate-800 tracking-wider flex items-center gap-1.5 mb-2.5">
+                <Key className="w-3.5 h-3.5 text-amber-600" />
+                <span>Control de Llaves & Chequeos Técnicos del Vehículo</span>
+              </span>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5 text-xs">
+                <label className="flex items-center gap-2 p-2 rounded-lg border border-slate-200 bg-white cursor-pointer hover:bg-slate-50">
+                  <input
+                    type="checkbox"
+                    checked={formData.vehicleChecks?.keysReceived ?? true}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        vehicleChecks: { ...prev.vehicleChecks, keysReceived: e.target.checked },
+                      }))
+                    }
+                    className="w-4 h-4 rounded accent-slate-900"
+                  />
+                  <span className="font-semibold text-slate-800">Llave principal recibida</span>
+                </label>
+
+                <label className="flex items-center gap-2 p-2 rounded-lg border border-slate-200 bg-white cursor-pointer hover:bg-slate-50">
+                  <input
+                    type="checkbox"
+                    checked={formData.vehicleChecks?.spareKeyReceived ?? false}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        vehicleChecks: { ...prev.vehicleChecks, spareKeyReceived: e.target.checked },
+                      }))
+                    }
+                    className="w-4 h-4 rounded accent-slate-900"
+                  />
+                  <span className="font-semibold text-slate-800">Llave de repuesto recibida</span>
+                </label>
+
+                <div className="flex items-center gap-2 p-1.5 rounded-lg border border-slate-200 bg-white">
+                  <span className="font-semibold text-slate-700 text-xs shrink-0">Cant. llaves:</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max="5"
+                    value={formData.vehicleChecks?.keysCount ?? 1}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        vehicleChecks: { ...prev.vehicleChecks, keysCount: Number(e.target.value) || 1 },
+                      }))
+                    }
+                    className="w-16 bg-slate-50 border border-slate-200 rounded px-2 py-0.5 font-bold font-mono text-center"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2 p-1.5 rounded-lg border border-slate-200 bg-white">
+                  <span className="font-semibold text-slate-700 text-xs shrink-0">Combustible:</span>
+                  <select
+                    value={formData.vehicleChecks?.fuelLevel || ""}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        vehicleChecks: { ...prev.vehicleChecks, fuelLevel: e.target.value as any },
+                      }))
+                    }
+                    className="flex-1 bg-slate-50 border border-slate-200 rounded px-2 py-1 font-bold text-xs"
+                  >
+                    <option value="">En blanco (A mano)</option>
+                    <option value="E">E (Vacío / Reserva)</option>
+                    <option value="1/4">1/4 de tanque</option>
+                    <option value="1/2">1/2 de tanque</option>
+                    <option value="3/4">3/4 de tanque</option>
+                    <option value="F">F (Tanque Lleno)</option>
+                  </select>
+                </div>
+
+                <label className="flex items-center gap-2 p-2 rounded-lg border border-slate-200 bg-white cursor-pointer hover:bg-slate-50">
+                  <input
+                    type="checkbox"
+                    checked={formData.vehicleChecks?.noPersonalBelongings ?? true}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        vehicleChecks: { ...prev.vehicleChecks, noPersonalBelongings: e.target.checked },
+                      }))
+                    }
+                    className="w-4 h-4 rounded accent-slate-900"
+                  />
+                  <span className="font-semibold text-slate-800">Sin pertenencias en cabina</span>
+                </label>
+
+                <label className="flex items-center gap-2 p-2 rounded-lg border border-slate-200 bg-white cursor-pointer hover:bg-slate-50">
+                  <input
+                    type="checkbox"
+                    checked={formData.vehicleChecks?.batteryFunctional ?? true}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        vehicleChecks: { ...prev.vehicleChecks, batteryFunctional: e.target.checked },
+                      }))
+                    }
+                    className="w-4 h-4 rounded accent-slate-900"
+                  />
+                  <span className="font-semibold text-slate-800">Batería & encendido OK</span>
+                </label>
+
+                <label className="flex items-center gap-2 p-2 rounded-lg border border-slate-200 bg-white cursor-pointer hover:bg-slate-50">
+                  <input
+                    type="checkbox"
+                    checked={formData.vehicleChecks?.parkingBrakeFunctional ?? true}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        vehicleChecks: { ...prev.vehicleChecks, parkingBrakeFunctional: e.target.checked },
+                      }))
+                    }
+                    className="w-4 h-4 rounded accent-slate-900"
+                  />
+                  <span className="font-semibold text-slate-800">Freno estacionamiento OK</span>
+                </label>
+
+                <label className="flex items-center gap-2 p-2 rounded-lg border border-slate-200 bg-white cursor-pointer hover:bg-slate-50">
+                  <input
+                    type="checkbox"
+                    checked={formData.vehicleChecks?.tiresGoodCondition ?? true}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        vehicleChecks: { ...prev.vehicleChecks, tiresGoodCondition: e.target.checked },
+                      }))
+                    }
+                    className="w-4 h-4 rounded accent-slate-900"
+                  />
+                  <span className="font-semibold text-slate-800">Neumáticos & aros OK</span>
+                </label>
+
+                <label className="flex items-center gap-2 p-2 rounded-lg border border-slate-200 bg-white cursor-pointer hover:bg-slate-50">
+                  <input
+                    type="checkbox"
+                    checked={formData.vehicleChecks?.noVisibleLeaks ?? true}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        vehicleChecks: { ...prev.vehicleChecks, noVisibleLeaks: e.target.checked },
+                      }))
+                    }
+                    className="w-4 h-4 rounded accent-slate-900"
+                  />
+                  <span className="font-semibold text-slate-800">Sin fugas de fluidos</span>
+                </label>
+
+                <label className="flex items-center gap-2 p-2 rounded-lg border border-slate-200 bg-white cursor-pointer hover:bg-slate-50">
+                  <input
+                    type="checkbox"
+                    checked={formData.vehicleChecks?.documentsInVehicle ?? true}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        vehicleChecks: { ...prev.vehicleChecks, documentsInVehicle: e.target.checked },
+                      }))
+                    }
+                    className="w-4 h-4 rounded accent-slate-900"
+                  />
+                  <span className="font-semibold text-slate-800">Documentos a bordo</span>
+                </label>
+
+                <label className="flex items-center gap-2 p-2 rounded-lg border border-slate-200 bg-white cursor-pointer hover:bg-slate-50 col-span-2">
+                  <input
+                    type="checkbox"
+                    checked={formData.vehicleChecks?.keysReturnedToOwner ?? false}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        vehicleChecks: { ...prev.vehicleChecks, keysReturnedToOwner: e.target.checked },
+                      }))
+                    }
+                    className="w-4 h-4 rounded accent-slate-900"
+                  />
+                  <span className="font-semibold text-slate-800">Llaves devueltas formalmente al propietario</span>
+                </label>
+              </div>
+            </div>
           </div>
         )}
 
@@ -837,7 +1046,7 @@ export function ServiceDocumentModal({
                   {COMPANY_CONFIG.legalName}
                 </span>
                 <p className="text-[9.5px] font-bold text-slate-700 leading-tight">
-                  Cédula Jurídica: 3-101-829144 • Taller Especializado SxS, UTV & ATV
+                  Cédula Jurídica: {COMPANY_CONFIG.cedulaJuridica || "3-101-436132"} • Taller Especializado SxS, UTV & ATV
                 </p>
                 <p className="text-[8.5px] text-slate-600 leading-tight">
                   {COMPANY_CONFIG.location.address} • Tel: {COMPANY_CONFIG.contact.phone} • WhatsApp: {COMPANY_CONFIG.contact.whatsappDisplay}
@@ -1158,29 +1367,53 @@ export function ServiceDocumentModal({
                 {/* 1A. SOLO INSTALACIÓN: HOJA DE RECEPCIÓN */}
                 {activeCategory === "only_installation" && activeSubDoc === "reception" && (
                   <div className="flex-1 flex flex-col justify-between space-y-1.5 text-[9px]">
-                    {/* Fuel gauge & Cab belongings */}
-                    <div className="border border-slate-300 p-2 rounded-lg bg-slate-50/60 space-y-1 shrink-0">
+                    {/* Vehicle Reception & Key Custody Checklist */}
+                    <div className="border border-slate-300 p-2 rounded-lg bg-slate-50/70 space-y-1.5 shrink-0">
                       <div className="flex items-center justify-between border-b border-slate-200 pb-1">
-                        <span className="font-bold text-slate-800 uppercase text-[8.5px]">
+                        <span className="font-extrabold text-slate-900 uppercase text-[8.5px] flex items-center gap-1.5">
+                          <Key className="w-3.5 h-3.5 text-amber-600" />
+                          <span>3. Custodia de Llaves & Chequeo Técnico de Ingreso</span>
+                        </span>
+                        <div className="flex items-center gap-2.5 font-mono font-bold text-[8.5px]">
+                          <span>
+                            [{formData.vehicleChecks?.keysReceived ? " X " : "\u00A0\u00A0\u00A0"}] Llaves Recibidas ({formData.vehicleChecks?.keysCount || 1} juego)
+                          </span>
+                          <span>
+                            [{formData.vehicleChecks?.spareKeyReceived ? " X " : "\u00A0\u00A0\u00A0"}] Llave Repuesto
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[8px] font-mono border-b border-slate-200 pb-1 text-slate-800">
+                        <div>[{formData.vehicleChecks?.batteryFunctional ? " X " : "\u00A0\u00A0\u00A0"}] Batería / Arranque OK</div>
+                        <div>[{formData.vehicleChecks?.parkingBrakeFunctional ? " X " : "\u00A0\u00A0\u00A0"}] Freno Mano Operativo</div>
+                        <div>[{formData.vehicleChecks?.tiresGoodCondition ? " X " : "\u00A0\u00A0\u00A0"}] Neumáticos / Aros OK</div>
+                        <div>[{formData.vehicleChecks?.noVisibleLeaks ? " X " : "\u00A0\u00A0\u00A0"}] Sin Fugas Visibles</div>
+                      </div>
+
+                      <div className="flex items-center justify-between border-b border-slate-200 pb-1">
+                        <span className="font-bold text-slate-800 uppercase text-[8px]">
                           Combustible al Recibir:
                         </span>
-                        <div className="flex items-center gap-4 font-mono font-bold text-[9px]">
-                          <span>[ &nbsp; ] E (Vacío)</span>
-                          <span>[ &nbsp; ] 1/4</span>
-                          <span>[ &nbsp; ] 1/2</span>
-                          <span>[ &nbsp; ] 3/4</span>
-                          <span>[ &nbsp; ] F (Lleno)</span>
+                        <div className="flex items-center gap-3 font-mono font-bold text-[8.5px]">
+                          <span>[{formData.vehicleChecks?.fuelLevel === "E" ? " X " : "\u00A0\u00A0\u00A0"}] E</span>
+                          <span>[{formData.vehicleChecks?.fuelLevel === "1/4" ? " X " : "\u00A0\u00A0\u00A0"}] 1/4</span>
+                          <span>[{formData.vehicleChecks?.fuelLevel === "1/2" ? " X " : "\u00A0\u00A0\u00A0"}] 1/2</span>
+                          <span>[{formData.vehicleChecks?.fuelLevel === "3/4" ? " X " : "\u00A0\u00A0\u00A0"}] 3/4</span>
+                          <span>[{formData.vehicleChecks?.fuelLevel === "F" ? " X " : "\u00A0\u00A0\u00A0"}] F</span>
                         </div>
                       </div>
 
                       <div className="flex items-center gap-2 pt-0.5">
-                        <span className="font-bold text-slate-800 uppercase text-[8.5px] shrink-0">
+                        <span className="font-bold text-slate-800 uppercase text-[8px] shrink-0">
                           Pertenencias en Cabina:
                         </span>
-                        <span className="font-mono text-[8.5px] shrink-0">[ &nbsp; ] Sin objetos declarados</span>
+                        <span className="font-mono text-[8px] shrink-0">
+                          [{formData.vehicleChecks?.noPersonalBelongings ? " X " : "\u00A0\u00A0\u00A0"}] Sin objetos declarados
+                        </span>
                         <span className="text-slate-400">|</span>
-                        <span className="text-[8.5px] text-slate-600 truncate flex-1">
-                          Detalle: ____________________________________________________________________
+                        <span className="text-[8px] text-slate-600 truncate flex-1">
+                          Detalle: {formData.vehicleChecks?.belongingsNotes || "____________________________________________________________________"}
                         </span>
                       </div>
                     </div>
@@ -1190,7 +1423,7 @@ export function ServiceDocumentModal({
                       <div className="flex items-center justify-between shrink-0">
                         <span className="font-extrabold uppercase text-slate-900 flex items-center gap-1.5 text-[8.5px]">
                           <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
-                          <span>3. Inspección Visual de Daños Previos en Recepción</span>
+                          <span>4. Inspección Visual de Daños Previos en Recepción</span>
                         </span>
                         <span className="font-mono font-bold text-[8.5px] text-slate-800">
                           [ &nbsp; ] Sin daños aparentes
@@ -1271,7 +1504,10 @@ export function ServiceDocumentModal({
                         <div>[ &nbsp; ] 2. Conexiones eléctricas y arneses sellados</div>
                         <div>[ &nbsp; ] 3. Prueba de encendido y rodaje aprobada</div>
                         <div>[ &nbsp; ] 4. Limpieza de bahía y cabina completada</div>
-                        <div className="col-span-2">[ &nbsp; ] 5. Devolución de piezas originales reemplazadas al cliente</div>
+                        <div>[ &nbsp; ] 5. Devolución de piezas originales al cliente</div>
+                        <div className="font-bold text-slate-950">
+                          [{formData.vehicleChecks?.keysReturnedToOwner ? " X " : "\u00A0\u00A0\u00A0"}] 6. Devolución formal de llaves del vehículo al cliente
+                        </div>
                       </div>
                     </div>
 
@@ -1346,7 +1582,7 @@ export function ServiceDocumentModal({
                 {/* 3A. PICK-UP: AUTORIZACIÓN DE TRASLADO EN PLATAFORMA */}
                 {activeCategory === "pickup" && activeSubDoc === "transport_auth" && (
                   <div className="flex-1 flex flex-col justify-between space-y-1.5 text-[9px]">
-                    <div className="grid grid-cols-3 gap-2 border border-slate-300 bg-slate-50 p-2 rounded-lg shrink-0">
+                    <div className="grid grid-cols-2 gap-2 border border-slate-300 bg-slate-50 p-2 rounded-lg shrink-0">
                       <div>
                         <span className="text-[8px] font-bold text-slate-500 uppercase block">Punto de Retiro (Origen):</span>
                         <span className="font-semibold text-slate-900 block truncate text-[9px]">
@@ -1359,25 +1595,36 @@ export function ServiceDocumentModal({
                           Taller Central ZxZ Mods, Pozos de Santa Ana, San José
                         </span>
                       </div>
-                      <div>
-                        <span className="text-[8px] font-bold text-amber-800 uppercase block">Combustible Retiro (₡500/km):</span>
-                        <span className="font-bold text-[#D93412] block truncate text-[9px] font-mono">
-                          {pickupGasData.km > 0 ? `₡${pickupGasData.cost.toLocaleString()} (${pickupGasData.km} km)` : "Calculado según ruta"}
-                        </span>
-                      </div>
                     </div>
 
                     <div className="border border-slate-300 p-2 rounded-lg space-y-1.5 flex-1 flex flex-col justify-between">
                       <div className="flex items-center justify-between border-b border-slate-200 pb-1 shrink-0">
-                        <span className="text-[8.5px] font-bold text-slate-700 uppercase">
-                          Combustible al Retiro en Remolque:
+                        <span className="text-[8.5px] font-extrabold text-slate-900 uppercase flex items-center gap-1.5">
+                          <Key className="w-3.5 h-3.5 text-amber-600" />
+                          <span>Custodia en Plataforma & Entrega de Llaves al Chofer:</span>
                         </span>
-                        <div className="flex items-center gap-4 font-mono font-bold text-[9px]">
-                          <span>[ &nbsp; ] E</span>
-                          <span>[ &nbsp; ] 1/4</span>
-                          <span>[ &nbsp; ] 1/2</span>
-                          <span>[ &nbsp; ] 3/4</span>
-                          <span>[ &nbsp; ] F</span>
+                        <div className="flex items-center gap-2.5 font-mono font-bold text-[8.5px]">
+                          <span>[{formData.vehicleChecks?.keysReceived ? " X " : "\u00A0\u00A0\u00A0"}] Llaves entregadas ({formData.vehicleChecks?.keysCount || 1} juego)</span>
+                          <span>[{formData.vehicleChecks?.spareKeyReceived ? " X " : "\u00A0\u00A0\u00A0"}] Llave repuesto</span>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2 text-[8px] font-mono border-b border-slate-200 pb-1 text-slate-800">
+                        <div>[{formData.vehicleChecks?.parkingBrakeFunctional ? " X " : "\u00A0\u00A0\u00A0"}] Freno Mano & Posición P</div>
+                        <div>[{formData.vehicleChecks?.tiresGoodCondition ? " X " : "\u00A0\u00A0\u00A0"}] 4 Fajas de Amarre en Ruedas</div>
+                        <div>[{formData.vehicleChecks?.noPersonalBelongings ? " X " : "\u00A0\u00A0\u00A0"}] Sin Objetos Sueltos Cabina</div>
+                      </div>
+
+                      <div className="flex items-center justify-between border-b border-slate-200 pb-1 shrink-0">
+                        <span className="text-[8px] font-bold text-slate-700 uppercase">
+                          Combustible al Cargar en Plataforma:
+                        </span>
+                        <div className="flex items-center gap-3 font-mono font-bold text-[8.5px]">
+                          <span>[{formData.vehicleChecks?.fuelLevel === "E" ? " X " : "\u00A0\u00A0\u00A0"}] E</span>
+                          <span>[{formData.vehicleChecks?.fuelLevel === "1/4" ? " X " : "\u00A0\u00A0\u00A0"}] 1/4</span>
+                          <span>[{formData.vehicleChecks?.fuelLevel === "1/2" ? " X " : "\u00A0\u00A0\u00A0"}] 1/2</span>
+                          <span>[{formData.vehicleChecks?.fuelLevel === "3/4" ? " X " : "\u00A0\u00A0\u00A0"}] 3/4</span>
+                          <span>[{formData.vehicleChecks?.fuelLevel === "F" ? " X " : "\u00A0\u00A0\u00A0"}] F</span>
                         </div>
                       </div>
 
@@ -1438,12 +1685,18 @@ export function ServiceDocumentModal({
                 {/* 3B. PICK-UP: ACTA DE RETORNO Y ENTREGA */}
                 {activeCategory === "pickup" && activeSubDoc === "transport_return" && (
                   <div className="flex-1 flex flex-col justify-between space-y-1.5 text-[9px]">
-                    <div className="border border-slate-300 bg-emerald-50/50 p-2.5 rounded-lg space-y-1 shrink-0">
-                      <span className="font-black uppercase text-emerald-950 text-[9.5px] block">
-                        Acta de Retorno de Vehículo a Ubicación del Propietario:
-                      </span>
-                      <p className="text-[8.5px] text-slate-800 leading-snug">
-                        Se efectúa la devolución del vehículo con los trabajos mecánicos contratados totalmente instalados, pruebas dinámicas aprobadas y lavado de cortesía efectuado.
+                    <div className="border border-slate-300 bg-emerald-50/50 p-2 rounded-lg space-y-1 shrink-0">
+                      <div className="flex items-center justify-between border-b border-emerald-200/80 pb-1">
+                        <span className="font-black uppercase text-emerald-950 text-[9px] flex items-center gap-1.5">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>Acta de Retorno de Vehículo & Devolución de Llaves:</span>
+                        </span>
+                        <div className="font-mono font-bold text-[8.5px] text-emerald-900">
+                          [{formData.vehicleChecks?.keysReturnedToOwner ? " X " : "\u00A0\u00A0\u00A0"}] Llaves entregadas formalmente al cliente
+                        </div>
+                      </div>
+                      <p className="text-[8px] text-slate-800 leading-snug">
+                        Se efectúa la devolución formal del vehículo en destino con los trabajos mecánicos contratados totalmente instalados, pruebas dinámicas aprobadas y lavado de cortesía efectuado.
                       </p>
                     </div>
 
@@ -1540,7 +1793,7 @@ export function ServiceDocumentModal({
                         {formData.receiverStaffName || formData.installerStaffName || formData.driverStaffName || "Personal Autorizado ZxZ Mods"}
                       </p>
                       <p className="text-[8px] text-slate-600 font-mono">
-                        {COMPANY_CONFIG.legalName} • Céd. Jur. 3-101-829144
+                        {COMPANY_CONFIG.legalName} • Céd. Jur. {COMPANY_CONFIG.cedulaJuridica || "3-101-436132"}
                       </p>
                       <p className="text-[8px] text-slate-500 font-mono">
                         Fecha: _____ / _____ / 2026 &nbsp;&nbsp; Hora: _________

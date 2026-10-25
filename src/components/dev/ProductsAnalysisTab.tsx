@@ -196,12 +196,22 @@ export function ProductsAnalysisTab({
 
   const exchangeRate = 515; // default fallback sell rate
   const currencyPrefix = currency === "USD" ? "$" : "₡";
+
+  const getI18n = useCallback(
+    (esText?: string | null, enText?: string | null, fallback = "N/A") => {
+      if (lang === "es") return esText || enText || fallback;
+      return enText || esText || fallback;
+    },
+    [lang]
+  );
+
   const formatVal = useCallback(
-    (amountCRC: number) => {
+    (amountCRC: number | string | undefined | null) => {
+      const num = Number(amountCRC) || 0;
       if (currency === "USD") {
-        return Math.round((amountCRC / exchangeRate) * 100) / 100;
+        return Math.round((num / exchangeRate) * 100) / 100;
       }
-      return amountCRC;
+      return num;
     },
     [currency]
   );
@@ -460,7 +470,9 @@ export function ProductsAnalysisTab({
               </div>
             </div>
             <div className="text-xl sm:text-2xl font-black text-gray-900 mt-2 truncate">
-              {metrics.mostSoldBrand?.brandName || "Can-Am"}
+              {metrics.mostSoldBrand?.unitsSold
+                ? metrics.mostSoldBrand.brandName
+                : (lang === "es" ? "Sin ventas registradas" : "No sales recorded")}
             </div>
             <div className="text-xs text-amber-800 font-semibold mt-0.5">
               {metrics.mostSoldBrand?.unitsSold || 0} {lang === "es" ? "unidades vendidas" : "units sold"}
@@ -488,16 +500,22 @@ export function ProductsAnalysisTab({
             </div>
             <div
               className="text-lg font-black text-gray-900 mt-2 line-clamp-1"
-              title={lang === "es" ? metrics.mostSoldItem?.nameEs : metrics.mostSoldItem?.nameEn}
+              title={getI18n(metrics.mostSoldItem?.nameEs, metrics.mostSoldItem?.nameEn)}
             >
-              {lang === "es" ? metrics.mostSoldItem?.nameEs : metrics.mostSoldItem?.nameEn || "N/A"}
+              {getI18n(
+                metrics.mostSoldItem?.nameEs,
+                metrics.mostSoldItem?.nameEn,
+                lang === "es" ? "Sin artículos registrados" : "No items recorded"
+              )}
             </div>
             <div className="text-xs text-blue-800 font-semibold mt-0.5">
               {metrics.mostSoldItem?.unitsSold || 0} {lang === "es" ? "unidades vendidas" : "units sold"}
             </div>
           </div>
           <div className="pt-2 border-t border-blue-100 text-[11px] text-gray-600 flex justify-between items-center">
-            <span className="truncate max-w-[130px]">{metrics.mostSoldItem?.brandName || "ZxZ"}</span>
+            <span className="truncate max-w-[130px]">
+              {metrics.mostSoldItem?.brandName || (lang === "es" ? "Sin marca" : "No brand")}
+            </span>
             <span className="font-mono font-bold text-gray-900">
               {currencyPrefix}{Math.round(formatVal(metrics.mostSoldItem?.totalRevenueCRC || 0)).toLocaleString()}
             </span>
@@ -517,16 +535,22 @@ export function ProductsAnalysisTab({
             </div>
             <div
               className="text-lg font-black text-gray-900 mt-2 line-clamp-1"
-              title={lang === "es" ? metrics.mostSoldCombo?.titleEs : metrics.mostSoldCombo?.titleEn}
+              title={getI18n(metrics.mostSoldCombo?.titleEs, metrics.mostSoldCombo?.titleEn)}
             >
-              {lang === "es" ? metrics.mostSoldCombo?.titleEs : metrics.mostSoldCombo?.titleEn || "N/A"}
+              {getI18n(
+                metrics.mostSoldCombo?.titleEs,
+                metrics.mostSoldCombo?.titleEn,
+                lang === "es" ? "Sin combos vendidos" : "No combos sold"
+              )}
             </div>
             <div className="text-xs text-purple-800 font-semibold mt-0.5">
               {metrics.mostSoldCombo?.unitsSold || 0} {lang === "es" ? "paquetes vendidos" : "packs sold"}
             </div>
           </div>
           <div className="pt-2 border-t border-purple-100 text-[11px] text-gray-600 flex justify-between items-center">
-            <span className="truncate max-w-[120px]">{metrics.mostSoldCombo?.badgeEs || "Pack Especial"}</span>
+            <span className="truncate max-w-[120px]">
+              {metrics.mostSoldCombo?.badgeEs || (lang === "es" ? "Sin combo activo" : "No active combo")}
+            </span>
             <span className="font-mono font-bold text-gray-900">
               {currencyPrefix}{Math.round(formatVal(metrics.mostSoldCombo?.totalRevenueCRC || 0)).toLocaleString()}
             </span>
@@ -546,22 +570,20 @@ export function ProductsAnalysisTab({
             </div>
             <div
               className="text-lg font-black text-gray-900 mt-2 line-clamp-1"
-              title={
-                lang === "es"
-                  ? metrics.highestMarginOverall?.nameEs
-                  : metrics.highestMarginOverall?.nameEn
-              }
+              title={getI18n(metrics.highestMarginOverall?.nameEs, metrics.highestMarginOverall?.nameEn)}
             >
-              {lang === "es"
-                ? metrics.highestMarginOverall?.nameEs
-                : metrics.highestMarginOverall?.nameEn || "N/A"}
+              {getI18n(
+                metrics.highestMarginOverall?.nameEs,
+                metrics.highestMarginOverall?.nameEn,
+                lang === "es" ? "Sin datos de margen" : "No margin data"
+              )}
             </div>
             <div className="flex items-center gap-2 mt-0.5">
               <span className="text-2xl font-black text-emerald-700 font-mono">
                 {metrics.highestMarginOverall?.marginPct || 0}%
               </span>
               <span className="text-[11px] font-semibold text-emerald-800">
-                {metrics.highestMarginOverall?.type === "combo" ? "Combo Pack" : "Producto"}
+                {metrics.highestMarginOverall?.type === "combo" ? "Combo Pack" : (lang === "es" ? "Producto" : "Product")}
               </span>
             </div>
           </div>
@@ -921,26 +943,32 @@ export function ProductsAnalysisTab({
                   </span>
                 </div>
                 <div className="divide-y divide-emerald-100/80 max-h-[350px] overflow-y-auto pr-1">
-                  {rankings.topMarginProducts.map((p, idx) => (
-                    <div key={p.id || idx} className="py-2.5 flex items-center justify-between gap-2">
-                      <div className="min-w-0">
-                        <div className="text-xs font-extrabold text-slate-900 truncate">
-                          {lang === "es" ? p.nameEs : p.nameEn}
+                  {rankings.topMarginProducts.length > 0 ? (
+                    rankings.topMarginProducts.map((p, idx) => (
+                      <div key={p.id || idx} className="py-2.5 flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="text-xs font-extrabold text-slate-900 truncate">
+                            {lang === "es" ? p.nameEs : p.nameEn}
+                          </div>
+                          <div className="text-[10px] text-slate-500">
+                            {p.brandName} • {currencyPrefix}{Math.round(formatVal(p.priceCRC)).toLocaleString()}
+                          </div>
                         </div>
-                        <div className="text-[10px] text-slate-500">
-                          {p.brandName} • {currencyPrefix}{Math.round(formatVal(p.priceCRC)).toLocaleString()}
+                        <div className="text-right shrink-0">
+                          <div className="text-xs font-black text-emerald-800 font-mono">
+                            {p.marginPct}%
+                          </div>
+                          <div className="text-[10px] text-emerald-700 font-mono">
+                            +{currencyPrefix}{Math.round(formatVal(p.profitCRC)).toLocaleString()}
+                          </div>
                         </div>
                       </div>
-                      <div className="text-right shrink-0">
-                        <div className="text-xs font-black text-emerald-800 font-mono">
-                          {p.marginPct}%
-                        </div>
-                        <div className="text-[10px] text-emerald-700 font-mono">
-                          +{currencyPrefix}{Math.round(formatVal(p.profitCRC)).toLocaleString()}
-                        </div>
-                      </div>
+                    ))
+                  ) : (
+                    <div className="text-xs text-slate-400 py-8 text-center">
+                      {lang === "es" ? "No hay productos con margen registrados." : "No products found."}
                     </div>
-                  ))}
+                  )}
                 </div>
               </div>
 
@@ -956,26 +984,32 @@ export function ProductsAnalysisTab({
                   </span>
                 </div>
                 <div className="divide-y divide-purple-100/80 max-h-[350px] overflow-y-auto pr-1">
-                  {rankings.topMarginCombos.map((c, idx) => (
-                    <div key={c.id || idx} className="py-2.5 flex items-center justify-between gap-2">
-                      <div className="min-w-0">
-                        <div className="text-xs font-extrabold text-slate-900 truncate">
-                          {lang === "es" ? c.titleEs : c.titleEn}
+                  {rankings.topMarginCombos.length > 0 ? (
+                    rankings.topMarginCombos.map((c, idx) => (
+                      <div key={c.id || idx} className="py-2.5 flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="text-xs font-extrabold text-slate-900 truncate">
+                            {lang === "es" ? c.titleEs : c.titleEn}
+                          </div>
+                          <div className="text-[10px] text-slate-500">
+                            {c.badgeEs} • {currencyPrefix}{Math.round(formatVal(c.priceCRC)).toLocaleString()}
+                          </div>
                         </div>
-                        <div className="text-[10px] text-slate-500">
-                          {c.badgeEs} • {currencyPrefix}{Math.round(formatVal(c.priceCRC)).toLocaleString()}
+                        <div className="text-right shrink-0">
+                          <div className="text-xs font-black text-purple-800 font-mono">
+                            {c.marginPct}%
+                          </div>
+                          <div className="text-[10px] text-purple-700 font-mono">
+                            +{currencyPrefix}{Math.round(formatVal(c.profitCRC)).toLocaleString()}
+                          </div>
                         </div>
                       </div>
-                      <div className="text-right shrink-0">
-                        <div className="text-xs font-black text-purple-800 font-mono">
-                          {c.marginPct}%
-                        </div>
-                        <div className="text-[10px] text-purple-700 font-mono">
-                          +{currencyPrefix}{Math.round(formatVal(c.profitCRC)).toLocaleString()}
-                        </div>
-                      </div>
+                    ))
+                  ) : (
+                    <div className="text-xs text-slate-400 py-8 text-center">
+                      {lang === "es" ? "No hay combos registrados en catálogo." : "No combos found in catalog."}
                     </div>
-                  ))}
+                  )}
                 </div>
               </div>
             </div>

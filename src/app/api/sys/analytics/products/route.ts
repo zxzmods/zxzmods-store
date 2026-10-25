@@ -78,6 +78,9 @@ export async function GET(request: Request) {
           status: {
             notIn: ["CANCELLED", "PENDING", "PAYMENT_REJECTED", "COTIZACION"],
           },
+          NOT: {
+            orderNumber: { startsWith: "GAR-" },
+          },
           ...(startDate ? { createdAt: { gte: startDate } } : {}),
         },
         select: {
@@ -94,21 +97,21 @@ export async function GET(request: Request) {
     // Build fast lookup maps
     const productBySkuOrSlug = new Map<string, typeof products[0]>();
     products.forEach((p) => {
-      productBySkuOrSlug.set(p.id, p);
+      if (p.id) productBySkuOrSlug.set(p.id.toLowerCase(), p);
       if (p.sku) productBySkuOrSlug.set(p.sku.toLowerCase(), p);
       if (p.slug) productBySkuOrSlug.set(p.slug.toLowerCase(), p);
     });
 
     const comboBySlug = new Map<string, typeof combos[0]>();
     combos.forEach((c) => {
-      comboBySlug.set(c.id, c);
+      if (c.id) comboBySlug.set(c.id.toLowerCase(), c);
       if (c.slug) comboBySlug.set(c.slug.toLowerCase(), c);
     });
 
     const categoryBySlug = new Map<string, typeof categories[0]>();
     categories.forEach((cat) => {
-      categoryBySlug.set(cat.slug.toLowerCase(), cat);
-      categoryBySlug.set(cat.id, cat);
+      if (cat.slug) categoryBySlug.set(cat.slug.toLowerCase(), cat);
+      if (cat.id) categoryBySlug.set(cat.id.toLowerCase(), cat);
     });
 
     // Aggregation buckets
@@ -246,11 +249,19 @@ export async function GET(request: Request) {
           existingCat.ordersCount.add(order.id);
           categorySalesMap.set(catKey, existingCat);
         } else {
-          // Regular product item
-          const lookupKey = String(it.id || it.sku || it.slug || "").toLowerCase();
-          const dbProduct = productBySkuOrSlug.get(lookupKey);
+          // Regular product item (Handle parameterized options, composite IDs like EVP-Z10-01__param-...)
+          const rawId = String(it.productId || it.id || "");
+          const baseId = rawId.split("__")[0].trim().toLowerCase();
+          const rawSku = String(it.sku || "").split("__")[0].trim().toLowerCase();
+          const rawSlug = String(it.slug || "").trim().toLowerCase();
 
-          const itemKey = dbProduct?.sku || dbProduct?.slug || String(it.id || it.sku || "item");
+          const dbProduct =
+            (rawSku ? productBySkuOrSlug.get(rawSku) : undefined) ||
+            (baseId ? productBySkuOrSlug.get(baseId) : undefined) ||
+            (rawSlug ? productBySkuOrSlug.get(rawSlug) : undefined) ||
+            productBySkuOrSlug.get(rawId.toLowerCase());
+
+          const itemKey = dbProduct?.sku || dbProduct?.slug || baseId || "item";
           const itemNameEs = dbProduct?.nameEs || it.name || it.title || "Repuesto";
           const itemNameEn = dbProduct?.nameEn || it.nameEn || itemNameEs;
           const brandName = dbProduct?.brandName || it.brand || it.brandName || "ZxZ Performance";
@@ -336,9 +347,11 @@ export async function GET(request: Request) {
       }))
       .sort((a, b) => b.unitsSold - a.unitsSold);
 
-    // If categories have 0 confirmed sales in the selected timeframe, enrich from catalog structure
-    if (allCategoriesRanked.length === 0) {
-      categories.forEach((cat) => {
+    // Enrich allCategoriesRanked so top 5 comparison always renders up to 5 categories cleanly
+    const rankedCategorySlugs = new Set(allCategoriesRanked.map((c) => c.slug.toLowerCase()));
+    for (const cat of categories) {
+      if (allCategoriesRanked.length >= 5) break;
+      if (!rankedCategorySlugs.has(cat.slug.toLowerCase())) {
         allCategoriesRanked.push({
           id: cat.id,
           slug: cat.slug,
@@ -350,7 +363,8 @@ export async function GET(request: Request) {
           unitsSharePct: 0,
           revenueSharePct: 0,
         });
-      });
+        rankedCategorySlugs.add(cat.slug.toLowerCase());
+      }
     }
 
     const top5Categories = allCategoriesRanked.slice(0, 5);
@@ -422,27 +436,44 @@ export async function GET(request: Request) {
               type: "combo" as const,
               isProduct: false,
             }
-        : highestMarginProduct || null;
+        : highestMarginProduct
+        ? { ...highestMarginProduct, isProduct: true }
+        : highestMarginCombo
+        ? {
+            id: highestMarginCombo.id,
+            sku: highestMarginCombo.slug,
+            slug: highestMarginCombo.slug,
+            nameEs: highestMarginCombo.titleEs,
+            nameEn: highestMarginCombo.titleEn,
+            brandName: "ZxZ Performance Pack",
+            priceCRC: highestMarginCombo.priceCRC,
+            profitCRC: highestMarginCombo.profitCRC,
+            marginPct: highestMarginCombo.marginPct,
+            imageUrl: highestMarginCombo.imageUrl,
+            type: "combo" as const,
+            isProduct: false,
+          }
+        : null;
 
-    // Resolve top metrics
-    const mostSoldBrand = topBrands[0] || {
-      brandName: products[0]?.brandName || "Can-Am",
+    // Resolve top metrics without mock data fallbacks (Rule 2: Zero Mock Data Policy)
+    const mostSoldBrand = topBrands[0] || (products[0] ? {
+      brandName: products[0].brandName || "ZxZ Performance",
       unitsSold: 0,
       totalRevenueCRC: 0,
       ordersCount: 0,
       marketSharePct: 0,
-    };
+    } : null);
 
     const mostSoldItem = topItems[0] || (products[0] ? {
       id: products[0].id,
-      sku: products[0].sku,
+      sku: products[0].sku || "",
       nameEs: products[0].nameEs,
       nameEn: products[0].nameEn,
-      imageUrl: products[0].imageUrl,
+      imageUrl: products[0].imageUrl || "/images/placeholder.png",
       unitsSold: 0,
       totalRevenueCRC: 0,
-      brandName: products[0].brandName || "ZxZ Performance",
-      categoryNameEs: "Accesorios",
+      brandName: products[0].brandName || "",
+      categoryNameEs: products[0].category?.nameEs || "Accesorios",
     } : null);
 
     const mostSoldCombo = topCombos[0] || (combos[0] ? {
@@ -453,7 +484,7 @@ export async function GET(request: Request) {
       unitsSold: 0,
       totalRevenueCRC: 0,
       badgeEs: combos[0].badgeEs,
-      categoryNameEs: "Combos Especiales",
+      categoryNameEs: combos[0].category || "Combos Especiales",
     } : null);
 
     return NextResponse.json({

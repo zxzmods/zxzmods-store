@@ -37,6 +37,7 @@ import {
 import { Skeleton } from "@/components/ui/Skeleton";
 import { formatCRC, formatUSD } from "@/lib/i18n";
 import { OFFICIAL_LEGAL_DOCS } from "@/types/document";
+import { COMPANY_CONFIG } from "@/config/company";
 import { ComboSwapOpportunity, RelatedPartSuggestion } from "@/app/api/cart/smart-checkout/route";
 import { useGarage } from "@/context/GarageContext";
 
@@ -1211,12 +1212,12 @@ export default function CheckoutPage() {
                                   {lang === "es" ? "Cédula Jurídica" : "Corporate Tax ID"}
                                 </span>
                                 <span className="font-mono font-bold text-slate-800 text-xs block mt-0.5">
-                                  {acc.idCard || "3-101-849201"}
+                                  {acc.idCard || COMPANY_CONFIG.cedulaJuridica || "3-101-436132"}
                                 </span>
                               </div>
                               <button
                                 type="button"
-                                onClick={() => handleCopy(acc.idCard || "3-101-849201", `${accKey}-id`)}
+                                onClick={() => handleCopy(acc.idCard || COMPANY_CONFIG.cedulaJuridica || "3-101-436132", `${accKey}-id`)}
                                 className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold transition-all flex items-center gap-1 cursor-pointer ${
                                   isIdCopied
                                     ? "bg-emerald-600 text-white"

@@ -5,6 +5,7 @@ import { sendOrderStepNotificationEmail } from "@/lib/orderStepEmails";
 import {
   liftExpiredRejectedServiceSchedules,
   checkServiceSlotCollision,
+  parseTimeToMinutes,
 } from "@/lib/serviceSchedules";
 
 export async function POST(
@@ -14,6 +15,7 @@ export async function POST(
   try {
     const orderIdentifier = params.id;
     const body = await request.json();
+    const isReturnBooking = Boolean(body.isReturnBooking);
 
     const {
       serviceType = "installation",
@@ -77,6 +79,16 @@ export async function POST(
 
     const order = allOrders[0];
 
+    // Find any existing active service schedules for these orders
+    const existingActiveSchedules = await prisma.serviceSchedule.findMany({
+      where: {
+        OR: targetIds.flatMap((id) => [{ orderId: id }]),
+        status: { not: "CANCELLED" },
+      },
+      select: { orderId: true },
+    });
+    const scheduledOrderIds = new Set(existingActiveSchedules.map((s) => s.orderId));
+
     const isAfterPaymentConfirmation = (status: string) => {
       const s = (status || "").toUpperCase();
       return [
@@ -100,7 +112,7 @@ export async function POST(
       ].includes(s);
     };
 
-    // Check all orders qualify and are NOT already in service payment confirmation
+    // Check all orders qualify and are NOT already in service payment confirmation or already scheduled
     for (const ord of allOrders) {
       const s = (ord.status || "").toUpperCase();
       if (s === "CONFIRM_SERVICE_PAYMENT") {
@@ -108,6 +120,30 @@ export async function POST(
           {
             success: false,
             error: `La orden #${ord.orderNumber} ya cuenta con un servicio en confirmación de pago. No se puede seleccionar para otro servicio ni pagar doble.`,
+          },
+          { status: 400 }
+        );
+      }
+      const ordHasSchedule =
+        scheduledOrderIds.has(ord.id) || scheduledOrderIds.has(ord.orderNumber);
+      if (
+        !isReturnBooking &&
+        (ordHasSchedule ||
+          [
+            "WAITING_ON_DELIVERY",
+            "PICKUP_DATE_SET",
+            "HOME_INSTALL_SET",
+            "INSTALLING",
+            "INSTALLATION_PAYMENT",
+            "READY_FOR_PICKUP",
+            "READY_TO_PICK_UP",
+            "COMPLETED",
+          ].includes(s))
+      ) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `La orden #${ord.orderNumber} ya tiene un servicio programado y no puede ser programada nuevamente.`,
           },
           { status: 400 }
         );
@@ -256,7 +292,6 @@ export async function POST(
       );
     }
 
-    const isReturnBooking = Boolean(body.isReturnBooking);
     const costNumber = isReturnBooking ? 0 : (Number(serviceCostCRC) || 0);
 
     const isBacRequested =
@@ -336,22 +371,58 @@ export async function POST(
     // Travel buffer logic: time from garage to destination + 30m, to time from destination back to garage + 30m.
     // Ex: travel 90min, 1pm (780min) -> blocked 11am (780 - 120) to 3pm (780 + 120).
     const isFullDay = serviceType === "installation";
-    let targetTimeMinutes = 600; // default 10:00 AM
-    if (timeSlot && timeSlot.includes(":")) {
-      const parts = timeSlot.split(":");
-      targetTimeMinutes = parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
-    } else if (timeSlot === "afternoon") {
-      targetTimeMinutes = 840; // 2:00 PM
-    }
+    const targetTimeMinutes = parseTimeToMinutes(timeSlot);
 
     const travelMin = Math.max(0, parseInt(travelMinutes || body.travelMinutes || "0", 10) || 0);
     const bufferMin = travelMin + 30;
     const blockedStart = isFullDay ? 480 : Math.max(0, targetTimeMinutes - bufferMin);
     const blockedEnd = isFullDay ? 1200 : Math.min(1439, targetTimeMinutes + bufferMin);
 
-    const clientDisplay = allOrders
-      .map((o) => o.customerName || `#${o.orderNumber}`)
-      .join(", ");
+    let clientDisplay = typeof body.clientName === "string" && body.clientName.trim().length > 0
+      ? body.clientName.trim()
+      : "";
+
+    if (!clientDisplay) {
+      const orderUserIds = allOrders.map((o) => o.userId).filter(Boolean) as string[];
+      let usersMap = new Map<string, string>();
+      if (orderUserIds.length > 0) {
+        try {
+          const dbUsers = await prisma.user.findMany({
+            where: { id: { in: orderUserIds } },
+            select: { id: true, displayName: true },
+          });
+          usersMap = new Map(dbUsers.filter((u) => u.displayName).map((u) => [u.id, u.displayName!]));
+        } catch {}
+      }
+
+      clientDisplay = allOrders
+        .map((o) => o.customerName || (o.userId ? usersMap.get(o.userId) : null) || `#${o.orderNumber}`)
+        .filter(Boolean)
+        .join(", ");
+    }
+
+    // Calculate total installation duration for the target orders
+    let totalOrderInstallDuration = 0;
+    for (const ord of allOrders) {
+      if (ord.serviceDocumentsJson) {
+        try {
+          const doc = typeof ord.serviceDocumentsJson === "string" ? JSON.parse(ord.serviceDocumentsJson) : ord.serviceDocumentsJson;
+          if (typeof doc?.installationDurationMinutes === "number" && doc.installationDurationMinutes > 0) {
+            totalOrderInstallDuration += doc.installationDurationMinutes;
+          }
+        } catch {}
+      }
+      if (ord.itemsJson) {
+        try {
+          const items = typeof ord.itemsJson === "string" ? JSON.parse(ord.itemsJson) : ord.itemsJson;
+          if (Array.isArray(items)) {
+            const itemSum = items.reduce((sum: number, it: any) => sum + (Number(it.installationDurationMinutes) || 60) * (Number(it.quantity) || 1), 0);
+            if (totalOrderInstallDuration === 0 && itemSum > 0) totalOrderInstallDuration += itemSum;
+          }
+        } catch {}
+      }
+    }
+    if (totalOrderInstallDuration <= 0) totalOrderInstallDuration = 60;
 
     // Concurrency & Collision Prevention Transaction with N+1 Query Validation
     const { scheduleRecord, updatedOrders } = await prisma.$transaction(async (tx) => {
@@ -364,6 +435,7 @@ export async function POST(
           scheduledDate,
           timeMinutes: targetTimeMinutes,
           travelMinutes: travelMin,
+          installationDurationMinutes: totalOrderInstallDuration,
           serviceType,
           isFullDay,
           excludeOrderId: order.id,
@@ -381,20 +453,59 @@ export async function POST(
         throw collisionErr;
       }
 
-      // 3. N+1 Query Method: Check every linked order for active confirmation status
+      // 3. N+1 Query Method: Check every linked order for active confirmation or existing scheduled service
       for (const ord of allOrders) {
         const fresh = await tx.order.findUnique({
           where: { id: ord.id },
-          select: { id: true, orderNumber: true, status: true },
+          select: {
+            id: true,
+            orderNumber: true,
+            status: true,
+          },
         });
 
-        if (fresh && (fresh.status || "").toUpperCase() === "CONFIRM_SERVICE_PAYMENT") {
-          const confErr: any = new Error(
-            `La orden #${fresh.orderNumber} ya tiene un servicio en confirmación de pago. No es posible pagar doble.`
-          );
-          confErr.code = "ORDER_ALREADY_IN_CONFIRMATION";
-          confErr.status = 400;
-          throw confErr;
+        if (fresh) {
+          const freshStatus = (fresh.status || "").toUpperCase();
+          if (freshStatus === "CONFIRM_SERVICE_PAYMENT") {
+            const confErr: any = new Error(
+              `La orden #${fresh.orderNumber} ya tiene un servicio en confirmación de pago. No es posible pagar doble.`
+            );
+            confErr.code = "ORDER_ALREADY_IN_CONFIRMATION";
+            confErr.status = 400;
+            throw confErr;
+          }
+
+          const freshSchedule = await tx.serviceSchedule.findFirst({
+            where: {
+              OR: [{ orderId: fresh.id }, { orderId: fresh.orderNumber }],
+              status: { not: "CANCELLED" },
+            },
+            select: { id: true },
+          });
+
+          const hasFreshSchedule = Boolean(freshSchedule);
+
+          if (
+            !isReturnBooking &&
+            (hasFreshSchedule ||
+              [
+                "WAITING_ON_DELIVERY",
+                "PICKUP_DATE_SET",
+                "HOME_INSTALL_SET",
+                "INSTALLING",
+                "INSTALLATION_PAYMENT",
+                "READY_FOR_PICKUP",
+                "READY_TO_PICK_UP",
+                "COMPLETED",
+              ].includes(freshStatus))
+          ) {
+            const progErr: any = new Error(
+              `La orden #${fresh.orderNumber} ya tiene un servicio programado y no puede ser programada nuevamente.`
+            );
+            progErr.code = "ORDER_ALREADY_PROGRAMMED";
+            progErr.status = 400;
+            throw progErr;
+          }
         }
       }
 
@@ -482,6 +593,40 @@ export async function POST(
         updatedList.push(updated);
       }
 
+      // Compute workshop arrival, end minutes, and carryover
+      let schedWorkshopArrival: number | null = null;
+      let schedCarryoverMin = 0;
+      let schedCarryoverDate: string | null = null;
+      let schedBlockedEnd = blockedEnd;
+
+      if (serviceType === "pickup" || serviceType === "UTV_PICKUP") {
+        schedWorkshopArrival = targetTimeMinutes + travelMin + 30;
+        const totalFinish = schedWorkshopArrival + totalOrderInstallDuration + 30;
+        if (totalFinish > 1200) {
+          schedCarryoverMin = totalFinish - 1200;
+          schedBlockedEnd = 1200;
+          const [y, m, d] = scheduledDate.split("-").map(Number);
+          const dt = new Date(y, m - 1, d);
+          dt.setDate(dt.getDate() + 1);
+          schedCarryoverDate = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+        } else {
+          schedBlockedEnd = totalFinish;
+        }
+      } else if (serviceType === "shop_installation") {
+        schedWorkshopArrival = targetTimeMinutes;
+        const totalFinish = targetTimeMinutes + totalOrderInstallDuration + 30;
+        if (totalFinish > 1200) {
+          schedCarryoverMin = totalFinish - 1200;
+          schedBlockedEnd = 1200;
+          const [y, m, d] = scheduledDate.split("-").map(Number);
+          const dt = new Date(y, m - 1, d);
+          dt.setDate(dt.getDate() + 1);
+          schedCarryoverDate = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+        } else {
+          schedBlockedEnd = totalFinish;
+        }
+      }
+
       // 5. Query N+1: Create ServiceSchedule to immediately reserve the slot
       const newSchedule = await tx.serviceSchedule.create({
         data: {
@@ -493,11 +638,15 @@ export async function POST(
           date: scheduledDate,
           time: timeSlot || "10:00",
           timeMinutes: targetTimeMinutes,
-          durationMinutes: isFullDay ? 480 : 30,
+          durationMinutes: isFullDay ? 480 : totalOrderInstallDuration,
+          installationDurationMin: totalOrderInstallDuration,
+          workshopArrivalMinutes: schedWorkshopArrival,
           travelDurationMin: travelMin,
           prepBufferMin: 15,
           blockedStartMin: blockedStart,
-          blockedEndMin: blockedEnd,
+          blockedEndMin: schedBlockedEnd,
+          carryoverNextDayMinutes: schedCarryoverMin,
+          carryoverDate: schedCarryoverDate,
           isFullDay,
           destinationAddress: targetAddress,
           distanceKm: Number(distanceKm) || 0,

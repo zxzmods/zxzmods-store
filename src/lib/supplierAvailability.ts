@@ -405,7 +405,9 @@ export async function syncProductAvailability(
           productsArray[idx].supplierLeadDaysMax = updated.supplierLeadDaysMax;
           productsArray[idx].supplierLastPriceUSD = updated.supplierLastPriceUSD;
           productsArray[idx].supplierStockCheckedAt = updated.supplierStockCheckedAt ? updated.supplierStockCheckedAt.toISOString() : null;
-          await fs.writeFile(productsJsonPath, JSON.stringify(productsArray, null, 2), "utf-8");
+          if (process.env.VERCEL !== "1" && process.env.NODE_ENV !== "production") {
+            await fs.writeFile(productsJsonPath, JSON.stringify(productsArray, null, 2), "utf-8");
+          }
         }
       } catch (jsonErr) {
         // Silently continue if fs sync fails

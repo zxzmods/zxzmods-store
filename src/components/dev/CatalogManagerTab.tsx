@@ -25,6 +25,7 @@ import {
   CheckCircle,
   Calendar,
   AlertTriangle,
+  Clock,
   DollarSign,
   Calculator,
   Image as ImageIcon,
@@ -72,6 +73,7 @@ interface Product {
   installationPriceCRC: number;
   installLabourCostCRC?: number;
   installProfitCRC?: number;
+  installationDurationMinutes?: number;
   installExtraParts?: InstallExtraPart[];
   installExtraPartsJson?: string;
   installationBreakdownJson?: string | null;
@@ -163,6 +165,7 @@ interface Combo {
   installationPriceCRC: number;
   installLabourCostCRC?: number;
   installProfitCRC?: number;
+  installationDurationMinutes?: number;
   installExtraParts?: InstallExtraPart[];
   installExtraPartsJson?: string;
   installationBreakdownJson?: string | null;
@@ -886,6 +889,8 @@ function InstallationBreakdownEditor({
   extraParts,
   profitCRC,
   totalCostCRC,
+  durationMinutes = 60,
+  onDurationChange,
   onChange,
   t,
   showIncludeCheckbox = false,
@@ -898,6 +903,8 @@ function InstallationBreakdownEditor({
   extraParts: InstallExtraPart[];
   profitCRC: number;
   totalCostCRC: number;
+  durationMinutes?: number;
+  onDurationChange?: (mins: number) => void;
   onChange: (labour: number, parts: InstallExtraPart[], profit: number) => void;
   lang: "es" | "en";
   t: any;
@@ -1020,6 +1027,37 @@ function InstallationBreakdownEditor({
           </div>
         </label>
       )}
+
+      {/* Installation Duration (in the same section as setting install pricing) */}
+      <div className="bg-white p-3 rounded-xl border border-emerald-200/80 space-y-1.5 shadow-2xs">
+        <div className="flex items-center justify-between">
+          <label className="text-[11px] font-bold text-emerald-950 flex items-center gap-1.5">
+            <Clock className="w-3.5 h-3.5 text-emerald-600" />
+            <span>{t.devInstallDurationLabel || "Tiempo Estimado de Instalación (Horas):"}</span>
+          </label>
+          <span className="text-[11px] font-mono font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+            {((durationMinutes || 60) / 60).toFixed(1)} h ({durationMinutes || 60} min)
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            min="0.5"
+            step="0.5"
+            value={((durationMinutes || 60) / 60) || ""}
+            onChange={(e) => {
+              const h = Number(e.target.value) || 0;
+              onDurationChange?.(Math.max(15, Math.round(h * 60)));
+            }}
+            placeholder="1.0"
+            className="w-full bg-slate-50 border border-emerald-300 rounded-lg p-2 text-xs font-mono font-bold text-slate-900 focus:bg-white focus:outline-none focus:border-emerald-600 transition"
+          />
+          <span className="text-xs text-slate-600 font-semibold shrink-0">horas</span>
+        </div>
+        <p className="text-[9px] text-slate-400">
+          {t.devInstallDurationHelp || "Tiempo que tomará instalar esta pieza/combo en el taller o a domicilio. Se sumará al agendar citas."}
+        </p>
+      </div>
 
       {/* Step 1: Install Labour Cost */}
       <div className="bg-white p-3 rounded-xl border border-emerald-200/80 space-y-1.5 shadow-2xs">
@@ -1516,6 +1554,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
     installationPriceCRC: 0,
     installLabourCostCRC: 0,
     installProfitCRC: 0,
+    installationDurationMinutes: 60,
     installExtraParts: [] as InstallExtraPart[],
     isInstallationIncluded: true,
     // multimedia:
@@ -1576,6 +1615,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
     installationPriceCRC: 0,
     installLabourCostCRC: 0,
     installProfitCRC: 0,
+    installationDurationMinutes: 60,
     installExtraParts: [] as InstallExtraPart[],
     discountPercent: 10,
     itemsText: "",
@@ -1981,6 +2021,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       installationPriceCRC: I_price,
       installLabourCostCRC: labourCost,
       installProfitCRC: installProfit,
+      installationDurationMinutes: (prod as any).installationDurationMinutes ?? 60,
       installExtraParts: parsedExtraParts,
       isInstallationIncluded: prod.isInstallationIncluded ?? I_price_includes,
       descriptionEs: descEs,
@@ -2069,6 +2110,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       installationPriceCRC: 0,
       installLabourCostCRC: 0,
       installProfitCRC: 0,
+      installationDurationMinutes: 60,
       installExtraParts: [] as InstallExtraPart[],
       isInstallationIncluded: true,
       descriptionEs: "",
@@ -2544,6 +2586,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       installationPriceCRC: Math.round(Number(productForm.I_price) || 0),
       installLabourCostCRC: Math.round(Number(productForm.installLabourCostCRC) || 0),
       installProfitCRC: Math.round(Number(productForm.installProfitCRC) || 0),
+      installationDurationMinutes: Math.max(15, Math.round(Number(productForm.installationDurationMinutes) || 60)),
       installExtraParts: productForm.installExtraParts || [],
       installExtraPartsJson: JSON.stringify(productForm.installExtraParts || []),
       isInstallationIncluded: Boolean(productForm.I_price_includes),
@@ -2792,6 +2835,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       installationPriceCRC: effectiveComboInstall,
       installLabourCostCRC: comboLabour,
       installProfitCRC: comboProfit,
+      installationDurationMinutes: (combo as any).installationDurationMinutes ?? 60,
       installExtraParts: parsedComboExtraParts,
       discountPercent: combo.discountPercent,
       itemsText: manualItemsList.join("\n"),
@@ -2843,6 +2887,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       installationPriceCRC: 0,
       installLabourCostCRC: 0,
       installProfitCRC: 0,
+      installationDurationMinutes: 60,
       installExtraParts: [] as InstallExtraPart[],
       discountPercent: 10,
       itemsText: "",
@@ -2897,6 +2942,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
           installationPriceCRC: comboForm.installationPriceCRC,
           installLabourCostCRC: Math.round(Number(comboForm.installLabourCostCRC) || 0),
           installProfitCRC: Math.round(Number(comboForm.installProfitCRC) || 0),
+          installationDurationMinutes: Math.max(15, Math.round(Number(comboForm.installationDurationMinutes) || 60)),
           installExtraParts: comboForm.installExtraParts || [],
           installExtraPartsJson: JSON.stringify(comboForm.installExtraParts || []),
           discountPercent: comboForm.discountPercent,
@@ -4464,6 +4510,8 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                   extraParts={productForm.installExtraParts}
                   profitCRC={productForm.installProfitCRC}
                   totalCostCRC={productForm.I_price}
+                  durationMinutes={productForm.installationDurationMinutes}
+                  onDurationChange={(mins) => setProductForm((prev) => ({ ...prev, installationDurationMinutes: mins }))}
                   lang={lang}
                   t={t}
                   showIncludeCheckbox={true}
@@ -5057,10 +5105,13 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       let totalProfit = 0;
       let allExtraParts: InstallExtraPart[] = [];
       let totalInstall = 0;
+      let totalDuration = 0;
 
       comboSelectedProducts.forEach((p: any) => {
         const pLabour = Number(p.installLabourCostCRC) || Number(p.price?.I_price?.I_price) || Number(p.installationPriceCRC) || 0;
         const pProfit = Number(p.installProfitCRC) || 0;
+        const pDuration = Number(p.installationDurationMinutes) > 0 ? Number(p.installationDurationMinutes) : 60;
+        totalDuration += pDuration;
         let pParts: InstallExtraPart[] = [];
         if (Array.isArray(p.installExtraParts)) {
           pParts = p.installExtraParts;
@@ -5094,6 +5145,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
         allExtraParts,
         totalParts,
         totalInstall: computedSum,
+        totalDuration: totalDuration || 60,
       };
     }, [comboSelectedProducts]);
 
@@ -5104,6 +5156,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
         installExtraParts: comboProductsInstallSummary.allExtraParts,
         installProfitCRC: comboProductsInstallSummary.totalProfit,
         installationPriceCRC: comboProductsInstallSummary.totalInstall,
+        installationDurationMinutes: comboProductsInstallSummary.totalDuration,
       }));
       setFeedback({
         type: "success",
@@ -5777,6 +5830,8 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                     extraParts={comboForm.installExtraParts}
                     profitCRC={comboForm.installProfitCRC}
                     totalCostCRC={comboForm.installationPriceCRC}
+                    durationMinutes={comboForm.installationDurationMinutes}
+                    onDurationChange={(mins) => setComboForm((prev) => ({ ...prev, installationDurationMinutes: mins }))}
                     lang={lang}
                     t={t}
                     showIncludeCheckbox={false}

@@ -45,8 +45,19 @@ export function GoogleMapsRouteViewer({
   const { lang, t } = useLanguage();
   const [mapLoaded, setMapLoaded] = useState(false);
 
+  // Ensure embedded route map always enforces Spanish / English and Costa Rica region
+  const sanitizedEmbedUrl = React.useMemo(() => {
+    if (!googleMapsEmbedUrl) return "";
+    const targetLang = lang === "en" ? "en" : "es";
+    if (googleMapsEmbedUrl.includes("hl=") || googleMapsEmbedUrl.includes("language=")) {
+      return googleMapsEmbedUrl;
+    }
+    const separator = googleMapsEmbedUrl.includes("?") ? "&" : "?";
+    return `${googleMapsEmbedUrl}${separator}hl=${targetLang}&gl=CR`;
+  }, [googleMapsEmbedUrl, lang]);
+
   return (
-    <div className="rounded-3xl border border-gray-200 bg-white overflow-hidden shadow-sm flex flex-col transition-all">
+    <div className="rounded-3xl border border-gray-200 bg-white overflow-hidden shadow-sm flex flex-col transition-all relative isolate z-0">
       {/* Route Header HUD Bar */}
       <div className="p-4 sm:p-5 border-b border-gray-100 bg-gray-50/70 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3 w-full sm:w-auto">
@@ -100,7 +111,7 @@ export function GoogleMapsRouteViewer({
 
         {/* Google Maps Embed iframe */}
         <iframe
-          src={googleMapsEmbedUrl}
+          src={sanitizedEmbedUrl}
           title="Google Maps Route"
           className="w-full h-full border-0 filter saturate-[0.95]"
           loading="lazy"

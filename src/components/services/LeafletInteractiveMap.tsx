@@ -37,6 +37,7 @@ export default function LeafletInteractiveMap({
   const { lang, t } = useLanguage();
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
+  const tileLayerRef = useRef<L.TileLayer | null>(null);
   const originMarkerRef = useRef<L.Marker | null>(null);
   const destMarkerRef = useRef<L.Marker | null>(null);
   const polylineRef = useRef<L.Polyline | null>(null);
@@ -47,6 +48,15 @@ export default function LeafletInteractiveMap({
   useEffect(() => {
     onLocationSelectRef.current = onLocationSelect;
   }, [onLocationSelect]);
+
+  // Keep map tiles language synced in Spanish (or English) to prevent Chinese character fallbacks
+  useEffect(() => {
+    if (!tileLayerRef.current) return;
+    const targetLang = lang === "en" ? "en" : "es";
+    tileLayerRef.current.setUrl(
+      `https://{s}.google.com/vt/lyrs=m&hl=${targetLang}&gl=CR&x={x}&y={y}&z={z}`
+    );
+  }, [lang]);
 
   // Initialize Map ONCE on mount
   useEffect(() => {
@@ -62,15 +72,18 @@ export default function LeafletInteractiveMap({
 
     L.control.zoom({ position: "bottomright" }).addTo(map);
 
-    // Google Maps standard roadmap tiles (official, crisp, familiar to user)
+    // Google Maps standard roadmap tiles with strict Spanish language & Costa Rica region parameters
+    // &hl=es&gl=CR ensures that labels are strictly rendered in Spanish and never fallback to Chinese
+    const targetLang = lang === "en" ? "en" : "es";
     const googleRoadmap = L.tileLayer(
-      "https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}",
+      `https://{s}.google.com/vt/lyrs=m&hl=${targetLang}&gl=CR&x={x}&y={y}&z={z}`,
       {
         maxZoom: 20,
         subdomains: ["mt0", "mt1", "mt2", "mt3"],
       }
     );
     googleRoadmap.addTo(map);
+    tileLayerRef.current = googleRoadmap;
 
     // Custom Origin Icon (ZxZ Red Pin)
     const originIcon = L.divIcon({
@@ -311,7 +324,7 @@ export default function LeafletInteractiveMap({
   ]);
 
   return (
-    <div className="rounded-3xl border border-gray-200 bg-white overflow-hidden shadow-xs flex flex-col transition-all">
+    <div className="rounded-3xl border border-gray-200 bg-white overflow-hidden shadow-xs flex flex-col transition-all relative isolate z-0">
       {/* Route Header HUD Bar */}
       <div className="p-4 sm:p-5 border-b border-gray-100 bg-gray-50/70 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3 w-full sm:w-auto">

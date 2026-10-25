@@ -23,6 +23,8 @@ async function exportData() {
       dealerBrands,
       legalDocuments,
       homePageItems,
+      discountCodes,
+      barrialCrConfig,
     ] = await Promise.all([
       prisma.brand.findMany(),
       prisma.vehicleModel.findMany(),
@@ -36,6 +38,8 @@ async function exportData() {
       prisma.dealerBrand.findMany(),
       prisma.legalDocument.findMany(),
       prisma.homePageItem.findMany(),
+      prisma.discountCode.findMany(),
+      prisma.barrialCrConfig.findMany(),
     ]);
 
     const backupBundle = {
@@ -53,6 +57,8 @@ async function exportData() {
         dealerBrands: dealerBrands.length,
         legalDocuments: legalDocuments.length,
         homePageItems: homePageItems.length,
+        discountCodes: discountCodes.length,
+        barrialCrConfig: barrialCrConfig.length,
       },
       data: {
         brands,
@@ -67,6 +73,8 @@ async function exportData() {
         dealerBrands,
         legalDocuments,
         homePageItems,
+        discountCodes,
+        barrialCrConfig,
       },
     };
 

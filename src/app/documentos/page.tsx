@@ -124,8 +124,11 @@ function DocumentCenterContent() {
     return documents.filter(
       (d) =>
         d.titleEs.toLowerCase().includes(term) ||
+        (d.titleEn || "").toLowerCase().includes(term) ||
         d.summaryEs.toLowerCase().includes(term) ||
-        d.badgeEs.toLowerCase().includes(term)
+        (d.summaryEn || "").toLowerCase().includes(term) ||
+        d.badgeEs.toLowerCase().includes(term) ||
+        (d.badgeEn || "").toLowerCase().includes(term)
     );
   }, [documents, searchTerm]);
 
@@ -419,8 +422,16 @@ function DocumentCenterContent() {
                       {/* Bottom Certification Stamp */}
                       <div className="pt-8 border-t border-gray-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-xs text-gray-400">
                         <div>
-                          <p className="font-bold text-gray-700">{t.docsCorporateName}</p>
-                          <p>{t.docsLegalIdNotice}</p>
+                          <p className="font-bold text-gray-700">
+                            {(activeDocument as any).legalName || t.docsCorporateName}
+                          </p>
+                          <p>
+                            {lang === "en" ? "Corporate Legal ID:" : "Cédula Jurídica:"}{" "}
+                            <span className="font-mono font-semibold text-gray-600">
+                              {(activeDocument as any).cedulaJuridica || "3-101-436132"}
+                            </span>{" "}
+                            • San José, Costa Rica
+                          </p>
                         </div>
                         <button
                           onClick={handlePrint}

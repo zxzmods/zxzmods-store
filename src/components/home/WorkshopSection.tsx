@@ -206,7 +206,11 @@ export function WorkshopSection({ workshop }: WorkshopSectionProps) {
           {/* Interactive Google Maps Iframe */}
           <div className="lg:col-span-7 h-80 sm:h-96 w-full rounded-2xl overflow-hidden border border-[#2E2E34] shadow-inner relative">
             <iframe
-              src={workshop.googleMapsEmbedUrl}
+              src={
+                workshop.googleMapsEmbedUrl && !workshop.googleMapsEmbedUrl.includes("hl=") && !workshop.googleMapsEmbedUrl.includes("!2ses")
+                  ? `${workshop.googleMapsEmbedUrl}${workshop.googleMapsEmbedUrl.includes("?") ? "&" : "?"}hl=es&gl=CR`
+                  : workshop.googleMapsEmbedUrl
+              }
               width="100%"
               height="100%"
               style={{ border: 0, filter: "invert(90%) hue-rotate(180deg) contrast(95%)" }}

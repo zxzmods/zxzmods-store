@@ -30,7 +30,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const { email, code } = body || {};
+    const { email, code, name } = body || {};
 
     if (!email || !code || typeof email !== "string" || typeof code !== "string") {
       return NextResponse.json(
@@ -41,6 +41,7 @@ export async function POST(request: Request) {
 
     const cleanEmail = email.trim().toLowerCase();
     const cleanCode = code.trim();
+    const cleanName = typeof name === "string" && name.trim().length > 0 ? name.trim() : null;
     const now = Date.now();
 
     // Master test code bypass - STRICTLY prohibited unless explicitly enabled in local development
@@ -141,10 +142,38 @@ export async function POST(request: Request) {
           data: {
             firebaseUid: `email_${cleanEmail.replace(/[^a-zA-Z0-9]/g, "_")}`,
             email: cleanEmail,
-            displayName: null,
+            displayName: cleanName || null,
             role: "CUSTOMER",
             isActive: true,
             isBanned: false,
+          },
+        });
+      } else if (cleanName && (!existingUser.displayName || existingUser.displayName !== cleanName)) {
+        existingUser = await tx.user.update({
+          where: { id: existingUser.id },
+          data: { displayName: cleanName },
+        });
+      }
+
+      // If user has a name, backfill any prior orders or service schedules that lacked a customerName
+      const resolvedName = cleanName || existingUser.displayName;
+      if (resolvedName) {
+        await tx.order.updateMany({
+          where: {
+            userId: existingUser.id,
+            customerName: null,
+          },
+          data: {
+            customerName: resolvedName,
+          },
+        });
+        await tx.serviceSchedule.updateMany({
+          where: {
+            userId: existingUser.id,
+            clientName: null,
+          },
+          data: {
+            clientName: resolvedName,
           },
         });
       }

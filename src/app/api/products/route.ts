@@ -165,6 +165,7 @@ function dbProductToProductItem(dbProd: any, jsonProd?: ProductItem | null, isSt
       return jsonProd?.reviews || null;
     })(),
     homeInstallation: Boolean(dbProd.homeInstallationAvailable),
+    installationDurationMinutes: dbProd.installationDurationMinutes ?? 60,
     modelYearCompatibility,
     supplierUrl: dbProd.supplierUrl || null,
     supplierPlatform: dbProd.supplierPlatform || null,

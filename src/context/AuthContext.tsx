@@ -58,7 +58,7 @@ interface AuthContextType {
   requireAuth: (action: () => void, promptReason?: string) => boolean;
   loginWithGoogle: () => Promise<{ success: boolean; error?: string }>;
   sendEmailCode: (email: string) => Promise<{ success: boolean; devCode?: string; error?: string }>;
-  verifyEmailCode: (email: string, code: string) => Promise<{ success: boolean; error?: string }>;
+  verifyEmailCode: (email: string, code: string, name?: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
 }
@@ -236,13 +236,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Verify 6-digit code and authenticate
   const verifyEmailCode = async (
     email: string,
-    code: string
+    code: string,
+    name?: string
   ): Promise<{ success: boolean; error?: string }> => {
     try {
       const res = await fetch("/api/auth/verify-code", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, code }),
+        body: JSON.stringify({ email, code, name }),
       });
       const data = await res.json();
       if (data.success && data.user) {

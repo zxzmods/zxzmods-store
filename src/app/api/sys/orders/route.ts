@@ -11,11 +11,19 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status");
     const search = searchParams.get("search");
+    const orderType = searchParams.get("type") || "STANDARD"; // STANDARD | WARRANTY | ALL
     const page = Math.max(1, parseInt(searchParams.get("page") || "1"));
     const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") || "30")));
     const skip = (page - 1) * limit;
 
     const where: any = {};
+
+    // Standard orders pipeline must NOT include or count GAR- (warranty service) orders
+    if (orderType === "WARRANTY") {
+      where.orderNumber = { startsWith: "GAR-" };
+    } else if (orderType !== "ALL") {
+      where.NOT = { orderNumber: { startsWith: "GAR-" } };
+    }
 
     if (status && status !== "ALL") {
       if (status === "READY_FOR_PICKUP" || status === "READY_TO_PICK_UP") {
@@ -32,6 +40,7 @@ export async function GET(request: Request) {
         { customerPhone: { contains: search } },
         { guestEmail: { contains: search } },
         { user: { email: { contains: search } } },
+        { user: { displayName: { contains: search } } },
       ];
     }
 
@@ -54,7 +63,14 @@ export async function GET(request: Request) {
       }),
       prisma.order.count({ where }),
       prisma.order.findMany({
-        where: { status: "PAYMENT_REJECTED" },
+        where: {
+          status: "PAYMENT_REJECTED",
+          ...(orderType === "WARRANTY"
+            ? { orderNumber: { startsWith: "GAR-" } }
+            : orderType !== "ALL"
+            ? { NOT: { orderNumber: { startsWith: "GAR-" } } }
+            : {}),
+        },
         select: { id: true, status: true, serviceDocumentsJson: true },
       }),
     ]);
@@ -100,8 +116,15 @@ export async function GET(request: Request) {
           }
         } catch {}
       }
+      const resolvedCustomerName = order.customerName || order.user?.displayName || null;
+      const resolvedCustomerPhone = order.customerPhone || order.user?.phoneNumber || null;
+      const resolvedGuestEmail = order.guestEmail || order.user?.email || null;
+
       return {
         ...order,
+        customerName: resolvedCustomerName,
+        customerPhone: resolvedCustomerPhone,
+        guestEmail: resolvedGuestEmail,
         garageVehicle: activeVehicle,
         serviceSchedule: sched,
         isInstallationPaymentConfirmed,

@@ -76,12 +76,13 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
     success: true,
-    message: "Respaldo atómico de SQLite generado exitosamente",
+    message: "Respaldo de base de datos generado exitosamente",
     backup: {
       filename: backupResult.filename,
       sizeBytes: backupResult.sizeBytes,
       sizeMB: (backupResult.sizeBytes / 1024 / 1024).toFixed(2),
       retainedCount: backupResult.retainedCount,
+      cloudUrl: backupResult.cloudUrl,
       timestamp: new Date().toISOString(),
     },
   });

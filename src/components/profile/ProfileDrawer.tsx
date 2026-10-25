@@ -19,7 +19,9 @@ import {
   ArrowRight,
   ChevronRight,
   Calendar,
+  ShieldAlert,
 } from "lucide-react";
+import { WarrantyPartsModal } from "@/components/profile/WarrantyPartsModal";
 
 export function ProfileDrawer() {
   const router = useRouter();
@@ -30,6 +32,7 @@ export function ProfileDrawer() {
   const [displayName, setDisplayName] = useState(user?.displayName || "");
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [isWarrantyModalOpen, setIsWarrantyModalOpen] = useState(false);
 
   // Sync state if user updates
   useEffect(() => {
@@ -238,6 +241,34 @@ export function ProfileDrawer() {
               </button>
             </div>
 
+            {/* Dedicated Warranty Protection Button / Card (User Request: shows parts that void dealer warranty) */}
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={() => setIsWarrantyModalOpen(true)}
+                className="w-full p-4 rounded-2xl border border-red-200/80 hover:border-[#C02030] bg-gradient-to-r from-red-50/60 to-amber-50/40 hover:from-red-50 hover:to-amber-50 transition-all flex items-center justify-between group shadow-2xs text-left"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-[#C02030] text-white flex items-center justify-center transition-colors shadow-sm">
+                    <ShieldAlert className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-gray-900 group-hover:text-[#C02030] transition-colors flex items-center gap-2">
+                      <span>{t.warrantyProtectionProfileBtn}</span>
+                    </h4>
+                    <p className="text-xs text-gray-600 mt-0.5 line-clamp-1">
+                      {t.warrantyProtectionProfileSubtitle}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1 text-xs font-bold text-[#C02030] transition-colors">
+                  <span>{lang === "es" ? "Gestionar" : "Manage"}</span>
+                  <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                </div>
+              </button>
+            </div>
+
             {/* Profile Info Form */}
             <div className="pt-2">
               <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider mb-3">
@@ -319,6 +350,17 @@ export function ProfileDrawer() {
             </button>
           </div>
         </motion.div>
+
+        {/* Warranty Protected Parts Modal */}
+        <WarrantyPartsModal
+          isOpen={isWarrantyModalOpen}
+          onClose={() => setIsWarrantyModalOpen(false)}
+          onGoToWarrantyInfo={() => {
+            setIsWarrantyModalOpen(false);
+            closeProfileDrawer();
+            router.push("/servicios/proteccion-garantia");
+          }}
+        />
       </div>
     </AnimatePresence>
   );

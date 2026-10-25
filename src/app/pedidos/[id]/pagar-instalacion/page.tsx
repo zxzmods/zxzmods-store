@@ -13,7 +13,7 @@ import { useLanguage } from "@/context/LanguageContext";
 import { useAuth } from "@/context/AuthContext";
 import { useCart } from "@/context/CartContext";
 import { convertCRCToUSD, formatCRC, formatUSD } from "@/lib/i18n";
-import { getWhatsAppUrl } from "@/config/company";
+import { getWhatsAppUrl, COMPANY_CONFIG } from "@/config/company";
 import { DjiPaymentAnimationOverlay } from "@/components/ui/DjiPaymentAnimationOverlay";
 import { getOrderPendingInstallationCost } from "@/lib/orderServices";
 import { isOrderInInstallationPaymentStage, canPayInstallation } from "@/lib/orderWorkflow";
@@ -730,8 +730,8 @@ export default function InstallationCheckoutPage() {
                     </h3>
                     <p className="text-xs text-slate-500">
                       {lang === "es"
-                        ? "Transfiere a nombre de ZxZ Mods Costa Rica S.A. (Cédula Jurídica 3-101-829144)"
-                        : "Transfer to ZxZ Mods Costa Rica S.A. (Corporate Tax ID 3-101-829144)"}
+                        ? `Transfiere a nombre de ${COMPANY_CONFIG.legalName} (Cédula Jurídica ${COMPANY_CONFIG.cedulaJuridica || "3-101-436132"})`
+                        : `Transfer to ${COMPANY_CONFIG.legalName} (Corporate Tax ID ${COMPANY_CONFIG.cedulaJuridica || "3-101-436132"})`}
                     </p>
                   </div>
                 </div>

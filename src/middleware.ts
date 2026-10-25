@@ -50,10 +50,11 @@ export function middleware(request: NextRequest) {
 
   // 4. CORS & Allowed Origin verification for mutating requests
   const origin = request.headers.get("origin");
-  const allowedOrigins = (
-    process.env.ALLOWED_ORIGINS ||
-    "https://zxzmods.com,https://www.zxzmods.com,http://localhost:3000"
-  )
+  const defaultOrigins =
+    process.env.NODE_ENV === "production"
+      ? "https://zxzmods.com,https://www.zxzmods.com"
+      : "https://zxzmods.com,https://www.zxzmods.com,http://localhost:3000";
+  const allowedOrigins = (process.env.ALLOWED_ORIGINS || defaultOrigins)
     .split(",")
     .map((o) => o.trim());
 

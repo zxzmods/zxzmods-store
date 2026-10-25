@@ -238,6 +238,10 @@ export async function PATCH(
 
     const calculatedInstallPrice = installLabour + extraPartsSum + installProfit;
 
+    if (body.installationDurationMinutes !== undefined) {
+      updateData.installationDurationMinutes = Math.max(15, Math.round(Number(body.installationDurationMinutes) || 60));
+    }
+
     if (body.installationPriceCRC !== undefined) {
       updateData.installationPriceCRC = Math.round(Number(body.installationPriceCRC) || 0);
     } else if (body.price?.I_price?.I_price !== undefined) {
@@ -411,6 +415,7 @@ export async function PATCH(
           I_price: updatedProduct.installationPriceCRC ?? 0,
         };
         target.price.profit = updatedProduct.profitCRC ?? target.price.profit ?? 0;
+        target.installationDurationMinutes = updatedProduct.installationDurationMinutes ?? 60;
         target.price.T_price = updatedProduct.priceCRC;
         target.price.T_price_D = updatedProduct.totalPriceD || "calculate in checkout with the selling value of dolar to colones";
         target.discountPercent = updatedProduct.discountPercent || 0;
@@ -512,10 +517,12 @@ export async function PATCH(
         }
 
         productsArray[targetIdx] = target;
-        await fs.writeFile(productsJsonPath, JSON.stringify(productsArray, null, 2), "utf-8");
+        if (process.env.VERCEL !== "1" && process.env.NODE_ENV !== "production") {
+          await fs.writeFile(productsJsonPath, JSON.stringify(productsArray, null, 2), "utf-8");
+        }
       }
     } catch (syncErr) {
-      console.error("[SYS_PRODUCT_SYNC_JSON_ERROR]:", syncErr);
+      console.warn("[SYS_PRODUCT_SYNC_JSON_WARN]:", syncErr);
     }
 
     // Determine audit action type
@@ -606,7 +613,9 @@ export async function DELETE(
           );
           if (idx !== -1) {
             productsArray[idx].isArchived = isArchived;
-            await fs.writeFile(productsJsonPath, JSON.stringify(productsArray, null, 2), "utf-8");
+            if (process.env.VERCEL !== "1" && process.env.NODE_ENV !== "production") {
+              await fs.writeFile(productsJsonPath, JSON.stringify(productsArray, null, 2), "utf-8");
+            }
           }
         }
       } catch (jsonErr) {
@@ -665,10 +674,12 @@ export async function DELETE(
             p.slug?.toLowerCase() !== existing.slug.toLowerCase() &&
             p.sku?.toLowerCase() !== existing.sku.toLowerCase()
         );
-        await fs.writeFile(productsJsonPath, JSON.stringify(filtered, null, 2), "utf-8");
+        if (process.env.VERCEL !== "1" && process.env.NODE_ENV !== "production") {
+          await fs.writeFile(productsJsonPath, JSON.stringify(filtered, null, 2), "utf-8");
+        }
       }
     } catch (jsonErr) {
-      console.error("[SYS_PRODUCT_JSON_DELETE_WARN]:", jsonErr);
+      console.warn("[SYS_PRODUCT_JSON_DELETE_WARN]:", jsonErr);
     }
 
     await recordAuditLog({

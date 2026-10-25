@@ -52,6 +52,7 @@ export async function GET() {
       usersCount,
       vehiclesCount,
       auditLogs,
+      ratesConfig,
     ] = await Promise.all([
       prisma.order.findMany({
         include: {
@@ -110,9 +111,17 @@ export async function GET() {
         orderBy: { createdAt: "desc" },
         take: 15,
       }),
+      prisma.logisticsRateConfig.findUnique({
+        where: { id: "rates-config" },
+      }),
     ]);
 
-    const sellRate = getExchangeRate();
+    const dbRate =
+      ratesConfig?.useManualExchangeRate && ratesConfig?.manualExchangeRateCRC
+        ? ratesConfig.manualExchangeRateCRC
+        : ratesConfig?.cachedExchangeRateCRC;
+    const sellRate =
+      typeof dbRate === "number" && dbRate > 300 ? dbRate : getExchangeRate();
 
     // Build lookup map for products by id, sku, slug
     const productMap = new Map<string, (typeof products)[number]>();

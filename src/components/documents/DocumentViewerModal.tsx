@@ -225,14 +225,16 @@ export function DocumentViewerModal({ slug, isOpen, onClose }: DocumentViewerMod
           {/* Footer Bar */}
           <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 flex items-center justify-between gap-4">
             <span className="text-[11px] text-gray-400">
-              ZxZ Mods Costa Rica S.A. • Documento Oficial Registrado
+              {(doc as any)?.legalName || "ZxZ Mods Costa Rica S.A."} •{" "}
+              {lang === "en" ? "Corporate ID" : "Cédula Jurídica"}{" "}
+              {(doc as any)?.cedulaJuridica || "3-101-436132"}
             </span>
             <button
               type="button"
               onClick={onClose}
               className="px-5 py-2.5 rounded-xl bg-gray-900 hover:bg-black text-white text-xs font-bold uppercase tracking-wider transition-all cursor-pointer"
             >
-              Entendido y Cerrar
+              {lang === "en" ? "Understood & Close" : "Entendido y Cerrar"}
             </button>
           </div>
         </motion.div>

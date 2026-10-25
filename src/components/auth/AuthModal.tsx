@@ -6,6 +6,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useLanguage } from "@/context/LanguageContext";
 import {
   X,
+  User,
   Mail,
   ShieldCheck,
   ArrowRight,
@@ -34,6 +35,7 @@ export function AuthModal() {
   const { t, lang } = useLanguage();
 
   const [email, setEmail] = useState("");
+  const [fullName, setFullName] = useState("");
   const [code, setCode] = useState("");
   const [step, setStep] = useState<"email" | "code">("email");
   const [loading, setLoading] = useState(false);
@@ -69,8 +71,12 @@ export function AuthModal() {
   const handleSendCode = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validateTerms()) return;
+    if (!fullName || fullName.trim().length < 2) {
+      setError(t.authFullNameRequired);
+      return;
+    }
     if (!email || !email.includes("@")) {
-      setError("Por favor ingresa un correo electrónico válido");
+      setError(lang === "es" ? "Por favor ingresa un correo electrónico válido" : "Please enter a valid email address");
       return;
     }
 
@@ -94,13 +100,13 @@ export function AuthModal() {
     e.preventDefault();
     if (!validateTerms()) return;
     if (!code || code.trim().length < 6) {
-      setError("Ingresa el código de 6 dígitos");
+      setError(lang === "es" ? "Ingresa el código de 6 dígitos" : "Enter the 6-digit code");
       return;
     }
 
     setError(null);
     setLoading(true);
-    const result = await verifyEmailCode(email, code.trim());
+    const result = await verifyEmailCode(email, code.trim(), fullName.trim());
     setLoading(false);
 
     if (!result.success) {
@@ -218,6 +224,23 @@ export function AuthModal() {
             {/* Option 3: Email Verification Code Flow */}
             {step === "email" ? (
               <form onSubmit={handleSendCode} className="space-y-3.5">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+                    {t.authFullNameLabel}
+                  </label>
+                  <div className="relative">
+                    <User className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      placeholder={t.authFullNamePlaceholder}
+                      required
+                      className="w-full pl-10 pr-4 py-2.5 text-sm rounded-xl border border-gray-300 focus:border-[#C02030] focus:ring-2 focus:ring-[#C02030]/20 outline-none transition-all"
+                    />
+                  </div>
+                </div>
+
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1.5">
                     {t.profileEmail}

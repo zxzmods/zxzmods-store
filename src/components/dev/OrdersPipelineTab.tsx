@@ -353,6 +353,7 @@ export function OrdersPipelineTab({ onOrderDeleted, onOrderUpdated }: OrdersPipe
     paymentProofUrl: string;
     servicePaymentProofUrl: string;
     installationPaymentProofUrl: string;
+    installationDurationMinutes?: number;
     orderPartsCostCRC: string;
     purchaseProofUrls: string[];
   }>({
@@ -364,6 +365,7 @@ export function OrdersPipelineTab({ onOrderDeleted, onOrderUpdated }: OrdersPipe
     paymentProofUrl: "",
     servicePaymentProofUrl: "",
     installationPaymentProofUrl: "",
+    installationDurationMinutes: 60,
     orderPartsCostCRC: "",
     purchaseProofUrls: [],
   });
@@ -388,6 +390,7 @@ export function OrdersPipelineTab({ onOrderDeleted, onOrderUpdated }: OrdersPipe
   const [previewPurchaseProofUrl, setPreviewPurchaseProofUrl] = useState<string | null>(null);
   const [confirmingInstallPayment, setConfirmingInstallPayment] = useState(false);
   const [confirmingServicePayment, setConfirmingServicePayment] = useState(false);
+  const [savingDuration, setSavingDuration] = useState(false);
   const [showAdvancePopover, setShowAdvancePopover] = useState(false);
   const [advancingFromManaging, setAdvancingFromManaging] = useState(false);
 
@@ -434,10 +437,13 @@ export function OrdersPipelineTab({ onOrderDeleted, onOrderUpdated }: OrdersPipe
         if (typeof data.correctedRejectedCount === "number") {
           setServerCorrectedRejectedCount(data.correctedRejectedCount);
         }
+        const standardOrders = (data.orders || []).filter(
+          (o: any) => !o.orderNumber?.startsWith("GAR-")
+        );
         setOrders((prev) => {
           const prevStr = JSON.stringify(prev);
-          const newStr = JSON.stringify(data.orders || []);
-          return prevStr === newStr ? prev : data.orders || [];
+          const newStr = JSON.stringify(standardOrders);
+          return prevStr === newStr ? prev : standardOrders;
         });
       }
     } catch (err) {
@@ -1229,6 +1235,7 @@ export function OrdersPipelineTab({ onOrderDeleted, onOrderUpdated }: OrdersPipe
           paymentProofUrl: manageForm.paymentProofUrl.trim() || null,
           servicePaymentProofUrl: manageForm.servicePaymentProofUrl.trim() || null,
           installationPaymentProofUrl: manageForm.installationPaymentProofUrl.trim() || null,
+          installationDurationMinutes: manageForm.installationDurationMinutes || 60,
           orderPartsCostCRC: manageForm.orderPartsCostCRC !== "" ? Math.max(0, Math.round(Number(manageForm.orderPartsCostCRC) || 0)) : undefined,
           purchaseProofUrls: manageForm.purchaseProofUrls,
         }),
@@ -1567,6 +1574,7 @@ export function OrdersPipelineTab({ onOrderDeleted, onOrderUpdated }: OrdersPipe
     setManagingOrder(order);
     let initialPartsCost = "";
     let initialPurchaseProofs: string[] = [];
+    let initialDurationMinutes = 60;
     if (Array.isArray(order.purchaseProofUrls)) {
       initialPurchaseProofs = order.purchaseProofUrls;
     }
@@ -1576,8 +1584,20 @@ export function OrdersPipelineTab({ onOrderDeleted, onOrderUpdated }: OrdersPipe
         if (typeof parsed?.orderPartsCostCRC === "number") {
           initialPartsCost = String(parsed.orderPartsCostCRC);
         }
+        if (typeof parsed?.installationDurationMinutes === "number" && parsed.installationDurationMinutes > 0) {
+          initialDurationMinutes = parsed.installationDurationMinutes;
+        }
         if (initialPurchaseProofs.length === 0 && Array.isArray(parsed?.purchaseProofUrls)) {
           initialPurchaseProofs = parsed.purchaseProofUrls;
+        }
+      } catch {}
+    }
+    if (initialDurationMinutes === 60 && order.itemsJson) {
+      try {
+        const items = typeof order.itemsJson === "string" ? JSON.parse(order.itemsJson) : order.itemsJson;
+        if (Array.isArray(items) && items.length > 0) {
+          const sum = items.reduce((acc: number, it: any) => acc + (Number(it.installationDurationMinutes) || 60) * (Number(it.quantity) || 1), 0);
+          if (sum > 0) initialDurationMinutes = sum;
         }
       } catch {}
     }
@@ -1590,6 +1610,7 @@ export function OrdersPipelineTab({ onOrderDeleted, onOrderUpdated }: OrdersPipe
       paymentProofUrl: order.paymentProofUrl || "",
       servicePaymentProofUrl: order.servicePaymentProofUrl || "",
       installationPaymentProofUrl: order.installationPaymentProofUrl || "",
+      installationDurationMinutes: initialDurationMinutes,
       orderPartsCostCRC: initialPartsCost,
       purchaseProofUrls: initialPurchaseProofs,
     });
@@ -1750,6 +1771,7 @@ export function OrdersPipelineTab({ onOrderDeleted, onOrderUpdated }: OrdersPipe
           paymentProofUrl: manageForm.paymentProofUrl.trim() || null,
           servicePaymentProofUrl: manageForm.servicePaymentProofUrl.trim() || null,
           installationPaymentProofUrl: manageForm.installationPaymentProofUrl.trim() || null,
+          installationDurationMinutes: manageForm.installationDurationMinutes || 60,
           orderPartsCostCRC: manageForm.orderPartsCostCRC !== "" ? Math.max(0, Math.round(Number(manageForm.orderPartsCostCRC) || 0)) : undefined,
           purchaseProofUrls: manageForm.purchaseProofUrls,
         }),
@@ -3562,7 +3584,7 @@ export function OrdersPipelineTab({ onOrderDeleted, onOrderUpdated }: OrdersPipe
                           <span>Waze</span>
                         </a>
                         <a
-                          href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(manageForm.shippingAddress)}`}
+                          href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(manageForm.shippingAddress)}&hl=es`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-800 text-[11px] font-bold border border-blue-200 transition"
@@ -4083,7 +4105,7 @@ export function OrdersPipelineTab({ onOrderDeleted, onOrderUpdated }: OrdersPipe
                 <div className="flex justify-between py-1 border-b border-slate-50">
                   <span className="text-slate-400">Cliente:</span>
                   <span className="font-bold text-slate-900">
-                    {managingOrder.customerName || managingOrder.guestEmail || "Cliente"}
+                    {managingOrder.customerName || managingOrder.user?.displayName || managingOrder.guestEmail || managingOrder.user?.email || "Cliente"}
                   </span>
                 </div>
                 {managingOrder.customerPhone && (
@@ -4765,6 +4787,85 @@ export function OrdersPipelineTab({ onOrderDeleted, onOrderUpdated }: OrdersPipe
                 );
               })()}
 
+              {/* SET INSTALLATION DURATION (User Requirement 7: staff sets installation time) */}
+              <div className="p-3.5 bg-slate-50 border border-purple-200/80 rounded-2xl space-y-2">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-purple-600" />
+                    <div>
+                      <span className="text-xs font-bold text-slate-900 block">
+                        {t.orderInstallationDurationTitle || "Tiempo de Instalación en Taller"}
+                      </span>
+                      <span className="text-[10px] text-slate-500">
+                        {lang === "es"
+                          ? "Define las horas de bloqueo en la agenda del taller (se suman 30 min de búfer al agendar)"
+                          : "Defines blocked hours in workshop agenda (30 min buffer is added when scheduling)"}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-xs font-mono font-extrabold text-purple-900 bg-purple-100 px-2.5 py-1 rounded-lg border border-purple-200">
+                      {((manageForm.installationDurationMinutes || 60) / 60).toFixed(1)} h ({manageForm.installationDurationMinutes || 60} min)
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 pt-1">
+                  <div className="flex-1 flex items-center gap-2">
+                    <input
+                      type="number"
+                      step="0.5"
+                      min="0.5"
+                      max="48"
+                      value={((manageForm.installationDurationMinutes || 60) / 60)}
+                      onChange={(e) => {
+                        const hours = parseFloat(e.target.value) || 0.5;
+                        const mins = Math.max(15, Math.round(hours * 60));
+                        setManageForm((prev) => ({ ...prev, installationDurationMinutes: mins }));
+                      }}
+                      className="w-28 bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-purple-600 shadow-2xs"
+                    />
+                    <span className="text-xs font-semibold text-slate-600">
+                      {lang === "es" ? "horas" : "hours"}
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        setSavingDuration(true);
+                        const mins = manageForm.installationDurationMinutes || 60;
+                        const res = await fetch(`/api/sys/orders/${managingOrder.id}`, {
+                          method: "PATCH",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ installationDurationMinutes: mins }),
+                        });
+                        const data = await res.json();
+                        if (res.ok && data.success) {
+                          setFeedback({
+                            type: "success",
+                            msg: t.orderInstallationDurationSavedSuccess || "Tiempo de instalación guardado y sincronizado con la agenda.",
+                          });
+                          await fetchOrders(false);
+                        } else {
+                          alert(data.error || "Error al guardar tiempo de instalación");
+                        }
+                      } catch (e: any) {
+                        alert(e.message || "Error al conectar");
+                      } finally {
+                        setSavingDuration(false);
+                      }
+                    }}
+                    disabled={savingDuration}
+                    className="px-3 py-1.5 rounded-xl bg-purple-700 hover:bg-purple-800 text-white text-xs font-bold transition shadow-2xs flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    <span>{savingDuration ? t.devSaving : (t.orderSaveInstallationDurationBtn || "Guardar Tiempo")}</span>
+                  </button>
+                </div>
+              </div>
+
               {/* Notice for Pick-up orders */}
               {managingOrder.serviceType === "UTV_PICKUP" && (
                 <div className="p-2.5 bg-purple-50/70 border border-purple-200 rounded-xl text-[11px] text-purple-900 flex items-center gap-2">
@@ -4973,7 +5074,7 @@ export function OrdersPipelineTab({ onOrderDeleted, onOrderUpdated }: OrdersPipe
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar por # orden, cliente o teléfono..."
+              placeholder="Buscar por # orden, cliente, email o teléfono..."
               className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-4 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-slate-900 focus:bg-white transition"
             />
           </div>
@@ -5348,7 +5449,7 @@ export function OrdersPipelineTab({ onOrderDeleted, onOrderUpdated }: OrdersPipe
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600">
                     <span className="flex items-center gap-1 font-semibold text-slate-900">
                       <User className="w-3.5 h-3.5 text-slate-400" />
-                      {order.customerName || order.guestEmail || "Cliente"}
+                      {order.customerName || order.user?.displayName || order.guestEmail || order.user?.email || "Cliente"}
                     </span>
 
                     {order.customerPhone && (
@@ -5414,7 +5515,7 @@ export function OrdersPipelineTab({ onOrderDeleted, onOrderUpdated }: OrdersPipe
                           <span>Waze</span>
                         </a>
                         <a
-                          href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(order.shippingAddress || order.serviceSchedule?.destinationAddress || "")}`}
+                          href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(order.shippingAddress || order.serviceSchedule?.destinationAddress || "")}&hl=es`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-blue-50 hover:bg-blue-100 text-blue-800 text-[10px] font-bold border border-blue-200 transition"

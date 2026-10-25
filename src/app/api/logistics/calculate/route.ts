@@ -123,7 +123,7 @@ export async function POST(request: Request) {
           const geoRes = await fetch(
             `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
               resolvedDestinationName + ", Costa Rica"
-            )}&countrycodes=cr&limit=1`,
+            )}&countrycodes=cr&limit=1&accept-language=es,en`,
             {
               headers: { "User-Agent": "ZxZMods-Logistics-Platform/1.0" },
               signal: AbortSignal.timeout(2500),
@@ -164,7 +164,7 @@ export async function POST(request: Request) {
 
     const revGeocodePromise = shouldReverseGeocode
       ? fetch(
-          `https://nominatim.openstreetmap.org/reverse?format=json&lat=${finalLat}&lon=${finalLng}&zoom=18&addressdetails=1`,
+          `https://nominatim.openstreetmap.org/reverse?format=json&lat=${finalLat}&lon=${finalLng}&zoom=18&addressdetails=1&accept-language=es,en`,
           {
             headers: { "User-Agent": "ZxZMods-Logistics-Platform/1.0" },
             signal: AbortSignal.timeout(2500),
@@ -235,14 +235,14 @@ export async function POST(request: Request) {
     const deliveryCostCRC = deliveryBase + Math.round(roadDistanceKm * deliveryRate);
     const homeInstallationCostCRC = homeInstallBase + Math.round(roadDistanceKm * homeInstallRate);
 
-    // Google Maps & Waze links
+    // Google Maps & Waze links (forced Spanish & Costa Rica locale to prevent Chinese character fallbacks)
     const googleMapsEmbedUrl = `https://maps.google.com/maps?saddr=${encodeURIComponent(
       originAddress
-    )}&daddr=${finalLat},${finalLng}&output=embed`;
+    )}&daddr=${finalLat},${finalLng}&output=embed&hl=es&gl=CR`;
 
     const googleMapsDirectionsUrl = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(
       originAddress
-    )}&destination=${finalLat},${finalLng}`;
+    )}&destination=${finalLat},${finalLng}&hl=es`;
 
     const wazeUrl = `https://waze.com/ul?ll=${finalLat},${finalLng}&navigate=yes`;
 

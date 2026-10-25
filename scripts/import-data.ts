@@ -151,6 +151,35 @@ async function importData() {
       });
     }
 
+    // 13. Discount Codes
+    if (Array.isArray(data.discountCodes)) {
+      console.log(`Importing ${data.discountCodes.length} Discount Codes...`);
+      for (const dc of data.discountCodes) {
+        if (dc.createdAt) dc.createdAt = new Date(dc.createdAt);
+        if (dc.updatedAt) dc.updatedAt = new Date(dc.updatedAt);
+        if (dc.expiresAt) dc.expiresAt = new Date(dc.expiresAt);
+        await prisma.discountCode.upsert({
+          where: { id: dc.id },
+          update: dc,
+          create: dc,
+        });
+      }
+    }
+
+    // 14. BarrialCR Config
+    if (Array.isArray(data.barrialCrConfig)) {
+      console.log(`Importing ${data.barrialCrConfig.length} BarrialCR Config...`);
+      for (const bc of data.barrialCrConfig) {
+        if (bc.createdAt) bc.createdAt = new Date(bc.createdAt);
+        if (bc.updatedAt) bc.updatedAt = new Date(bc.updatedAt);
+        await prisma.barrialCrConfig.upsert({
+          where: { id: bc.id },
+          update: bc,
+          create: bc,
+        });
+      }
+    }
+
     console.log("[SUCCESS] Database import completed successfully!");
   } catch (error) {
     console.error("[IMPORT_FAILED]:", error);

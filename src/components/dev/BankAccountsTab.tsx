@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { DiscountCodesManagerSection } from "./DiscountCodesManagerSection";
 import { ExchangeRateTab } from "./ExchangeRateTab";
+import { GLOBAL_CEDULA_JURIDICA, GLOBAL_LEGAL_NAME } from "@/config/company";
 
 interface BankAccount {
   id: string;
@@ -113,8 +114,8 @@ export function BankAccountsTab({ userRole = "MASTER" }: BankAccountsTabProps) {
     setFormCurrency("CRC");
     setFormIban("");
     setFormAccountNumber("");
-    setFormOwnerName("ZxZ Mods Costa Rica S.A.");
-    setFormIdCard("3-101-849201");
+    setFormOwnerName(GLOBAL_LEGAL_NAME || "ZxZ Mods Costa Rica S.A.");
+    setFormIdCard(GLOBAL_CEDULA_JURIDICA || "3-101-436132");
     setFormType("CORRIENTE");
     setFormNotes("");
     setErrorMsg(null);
@@ -691,7 +692,7 @@ export function BankAccountsTab({ userRole = "MASTER" }: BankAccountsTabProps) {
                     type="text"
                     value={formIdCard}
                     onChange={(e) => setFormIdCard(e.target.value)}
-                    placeholder="3-101-849201"
+                    placeholder={GLOBAL_CEDULA_JURIDICA || "3-101-436132"}
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 font-mono focus:outline-none focus:border-slate-900"
                   />
                 </div>

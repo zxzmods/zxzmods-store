@@ -14,6 +14,7 @@ const DEFAULT_CONFIG = {
   deliveryBaseFeeCRC: 3000,
   homeInstallationBaseFeeCRC: 15000,
   pickupServiceEnabled: true,
+  maxConcurrentInstallations: 1,
   garageAddress: "Calle 34, Pozos, Santa Ana, San José, Costa Rica",
   garageLatitude: 9.9482,
   garageLongitude: -84.1967,
@@ -115,6 +116,7 @@ export async function PUT(request: Request) {
       deliveryBaseFeeCRC,
       homeInstallationBaseFeeCRC,
       pickupServiceEnabled,
+      maxConcurrentInstallations,
       garageAddress,
     } = body;
 
@@ -134,6 +136,21 @@ export async function PUT(request: Request) {
       );
     }
 
+    if (
+      maxConcurrentInstallations !== undefined &&
+      Number(maxConcurrentInstallations) !== (oldConfig?.maxConcurrentInstallations || 1) &&
+      session.role !== "MASTER"
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Solo usuarios con permisos de nivel Master pueden modificar la capacidad de instalaciones simultáneas.",
+          errorEn: "Only users with Master role can change maximum concurrent installations.",
+        },
+        { status: 403 }
+      );
+    }
+
     const updated = await prisma.logisticsRateConfig.upsert({
       where: { id: "rates-config" },
       create: {
@@ -144,6 +161,7 @@ export async function PUT(request: Request) {
         pickupBaseFeeCRC: Number(pickupBaseFeeCRC) ?? DEFAULT_CONFIG.pickupBaseFeeCRC,
         deliveryBaseFeeCRC: Number(deliveryBaseFeeCRC) ?? DEFAULT_CONFIG.deliveryBaseFeeCRC,
         homeInstallationBaseFeeCRC: Number(homeInstallationBaseFeeCRC) ?? DEFAULT_CONFIG.homeInstallationBaseFeeCRC,
+        maxConcurrentInstallations: Math.max(1, Math.min(20, Number(maxConcurrentInstallations) || DEFAULT_CONFIG.maxConcurrentInstallations)),
         garageAddress: (garageAddress && String(garageAddress).trim()) || DEFAULT_CONFIG.garageAddress,
         garageLatitude: DEFAULT_CONFIG.garageLatitude,
         garageLongitude: DEFAULT_CONFIG.garageLongitude,
@@ -157,6 +175,8 @@ export async function PUT(request: Request) {
         deliveryBaseFeeCRC: deliveryBaseFeeCRC !== undefined ? Number(deliveryBaseFeeCRC) : undefined,
         homeInstallationBaseFeeCRC:
           homeInstallationBaseFeeCRC !== undefined ? Number(homeInstallationBaseFeeCRC) : undefined,
+        maxConcurrentInstallations:
+          maxConcurrentInstallations !== undefined ? Math.max(1, Math.min(20, Number(maxConcurrentInstallations) || 1)) : undefined,
         garageAddress: (garageAddress && String(garageAddress).trim()) || undefined,
       },
     });

@@ -68,7 +68,7 @@ export function Navbar() {
   return (
     <>
       <header
-        className={`fixed top-0 inset-x-0 z-50 transition-all duration-300 ease-in-out ${
+        className={`fixed top-0 inset-x-0 z-[100] transition-all duration-300 ease-in-out ${
           !isSolid
             ? "bg-transparent border-b border-transparent text-white"
             : "bg-white/95 backdrop-blur-md border-b border-gray-200/90 text-[#1A1A1D] shadow-sm"
@@ -572,7 +572,7 @@ export function Navbar() {
       {mobileMenuOpen && (
         <div
           onClick={() => setMobileMenuOpen(false)}
-          className="xl:hidden fixed inset-0 top-16 sm:top-20 bg-black/40 backdrop-blur-xs z-40 transition-opacity animate-fade-in"
+          className="xl:hidden fixed inset-0 top-16 sm:top-20 bg-black/40 backdrop-blur-xs z-[90] transition-opacity animate-fade-in"
           aria-hidden="true"
         />
       )}

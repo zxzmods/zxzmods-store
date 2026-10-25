@@ -13,6 +13,8 @@ export interface TimeSlotItem {
   reasonEn?: string | null;
   departureTime?: string;
   returnTime?: string;
+  carriesOverToNextDay?: boolean;
+  carryoverHours?: number;
 }
 
 interface ServiceTimeSlotPickerProps {
@@ -24,6 +26,8 @@ interface ServiceTimeSlotPickerProps {
   fullDayReason?: string | null;
   travelMinutes?: number;
   serviceType?: string;
+  installationDurationMinutes?: number;
+  hasSelectedOrder?: boolean;
 }
 
 export function ServiceTimeSlotPicker({
@@ -35,6 +39,8 @@ export function ServiceTimeSlotPicker({
   fullDayReason = null,
   travelMinutes = 0,
   serviceType = "delivery",
+  installationDurationMinutes = 60,
+  hasSelectedOrder = false,
 }: ServiceTimeSlotPickerProps) {
   const { lang, t } = useLanguage();
 

@@ -1,6 +1,12 @@
+// ==============================================================================
+// ZxZ MODS - PRODUCTION POSTGRESQL SCHEMA (Supabase / Vercel)
+// Complete 100% parity with local schema.prisma
+// ==============================================================================
+
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 generator client {
@@ -58,6 +64,8 @@ model Product {
   processingPriceCRC   Int                    @default(0) // P_price (CRC)
   shippingPriceCRC     Int                    @default(0) // S_price (CRC)
   profitCRC            Int                    @default(0) // profit (CRC)
+  ivaPercent           Int                    @default(13) // IVA percentage (default 13%)
+  ivaCRC               Int                    @default(0) // Calculated IVA in CRC included in priceCRC
   totalPriceD          String                 @default("calculate in checkout with the selling value of dolar to colones") // T_price_D
   warrantyCategory     String                 // BOLT_ON_ELECTRICAL, MECHANICAL_DRIVETRAIN, ECU_TUNING, PARTS_ONLY
   descriptionEs        String
@@ -97,8 +105,18 @@ model Product {
   supplierLeadDaysMin        Int       @default(7)
   supplierLeadDaysMax        Int       @default(12)
   supplierLastPriceUSD       Float?
+  installLabourCostCRC       Int                    @default(0)
+  installProfitCRC           Int                    @default(0)
+  installationDurationMinutes Int?                  @default(60)
+  installExtraPartsJson      String?                @default("[]")
+  installationBreakdownJson  String?
+  reviewsList          Review[]
   createdAt            DateTime               @default(now())
   updatedAt            DateTime               @default(now()) @updatedAt
+
+  @@index([isArchived, featured])
+  @@index([categoryId])
+  @@index([stockStatus])
 }
 
 model ProductCompatibility {
@@ -124,6 +142,11 @@ model Combo {
   priceCRC             Int
   originalPriceCRC     Int
   installationPriceCRC Int
+  installLabourCostCRC Int      @default(0)
+  installProfitCRC     Int      @default(0)
+  installationDurationMinutes Int? @default(60)
+  installExtraPartsJson String? @default("[]")
+  installationBreakdownJson String?
   discountPercent      Int
   itemsJson            String   // JSON list of components included
   parametersJson       String?  @default("[]")
@@ -133,6 +156,8 @@ model Combo {
   isArchived           Boolean  @default(false)
   suggestedProductIdsJson String? @default("[]")
   suggestedComboIdsJson   String? @default("[]")
+  reviews              String?  @default("")
+  reviewsList          Review[]
   createdAt            DateTime @default(now())
   updatedAt            DateTime @default(now()) @updatedAt
 }
@@ -160,8 +185,8 @@ model PerformancePackage {
 model WorkshopInfo {
   id                 String   @id @default("zxz-hq")
   name               String
-  legalName          String?  @default("ZxZ Mods Costa Rica S.A.")
-  cedulaJuridica     String?  @default("")
+  legalName          String?  @default("Tecnicas de Redes Y Sistemas A&V")
+  cedulaJuridica     String?  @default("3-101-436132")
   taglineEs          String
   taglineEn          String
   addressEs          String
@@ -220,6 +245,7 @@ model User {
   updatedAt       DateTime  @updatedAt
 
   orders          Order[]
+  reviews         Review[]
 }
 
 model Order {
@@ -265,10 +291,35 @@ model Order {
   isCertified                 Boolean  @default(false)
   zxzCertificationJson        String?
   serviceDocumentsJson        String?  @default("{}")
+  reviews                     Review[]
   createdAt                   DateTime @default(now())
   updatedAt                   DateTime @updatedAt
 
   @@index([userId])
+}
+
+model Review {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orderId     String
+  order       Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId   String?
+  product     Product?  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  comboId     String?
+  combo       Combo?    @relation(fields: [comboId], references: [id], onDelete: Cascade)
+  rating      Int       // 1 to 5
+  title       String?
+  comment     String
+  userName    String?   // Customer display name
+  verified    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([productId])
+  @@index([comboId])
+  @@index([userId])
+  @@index([orderId])
 }
 
 model AuditLog {
@@ -303,18 +354,25 @@ model VerificationCode {
 }
 
 model LogisticsRateConfig {
-  id                           String   @id @default("rates-config")
-  pickupRatePerKmCRC           Int      @default(1500)
-  deliveryRatePerKmCRC         Int      @default(800)
-  homeInstallationRatePerKmCRC Int      @default(2000)
-  pickupBaseFeeCRC             Int      @default(10000)
-  deliveryBaseFeeCRC           Int      @default(3000)
-  homeInstallationBaseFeeCRC   Int      @default(15000)
-  garageAddress                String   @default("Calle 34, Pozos, Santa Ana, Costa Rica")
-  garageLatitude               Float    @default(9.9385)
-  garageLongitude              Float    @default(-84.1962)
-  updatedAt                    DateTime @updatedAt
-  createdAt                    DateTime @default(now())
+  id                           String    @id @default("rates-config")
+  pickupRatePerKmCRC           Int       @default(1500)
+  deliveryRatePerKmCRC         Int       @default(800)
+  homeInstallationRatePerKmCRC Int       @default(2000)
+  pickupBaseFeeCRC             Int       @default(10000)
+  deliveryBaseFeeCRC           Int       @default(3000)
+  homeInstallationBaseFeeCRC   Int       @default(15000)
+  pickupServiceEnabled         Boolean   @default(true)
+  maxConcurrentInstallations   Int       @default(1)
+  garageAddress                String    @default("Calle 34, Pozos, Santa Ana, Costa Rica")
+  garageLatitude               Float     @default(9.9385)
+  garageLongitude              Float     @default(-84.1962)
+  cachedExchangeRateCRC        Float     @default(515)
+  manualExchangeRateCRC        Float?
+  useManualExchangeRate        Boolean   @default(false)
+  exchangeRateSource           String    @default("BCCR_AUTO")
+  exchangeRateUpdatedAt        DateTime?
+  updatedAt                    DateTime  @updatedAt
+  createdAt                    DateTime  @default(now())
 }
 
 model ServiceSchedule {
@@ -328,6 +386,10 @@ model ServiceSchedule {
   time               String   // HH:mm (e.g. "10:00")
   timeMinutes        Int      // minutes from midnight (e.g. 600 for 10:00 AM)
   durationMinutes    Int      // on-site duration (e.g. 15 or 30 min)
+  installationDurationMin Int? @default(0) // actual workshop installation duration
+  workshopArrivalMinutes Int?  // minute when vehicle arrives at workshop
+  carryoverNextDayMinutes Int? @default(0) // minutes that spill into next day morning
+  carryoverDate      String?  // next day date if spilled over
   travelDurationMin  Int      // one-way travel duration in minutes
   prepBufferMin      Int      @default(15) // package loading/prep buffer
   blockedStartMin    Int      // start of blocked interval in minutes from midnight
@@ -433,4 +495,53 @@ model DiscountCode {
 
   @@index([code])
   @@index([isActive])
+}
+
+model BarrialCrConfig {
+  id                   String   @id @default("barrialcr-main")
+  title                String   @default("BarrialCR")
+  subtitleEs           String   @default("Comunidad Off-Road & Rutas UTV en Costa Rica")
+  subtitleEn           String   @default("Off-Road & UTV Rides Community in Costa Rica")
+  descriptionEs        String   @default("BarrialCR es una comunidad apasionada que organiza rutas y expediciones todoterreno por los mejores senderos, montañas y ríos de Costa Rica. Nuestro objetivo es unir a los entusiastas de UTVs y vehículos 4x4 en aventuras inolvidables con espíritu de compañerismo, adrenalina y respeto por la naturaleza.")
+  descriptionEn        String   @default("BarrialCR is a passionate community that organizes off-road trail rides and expeditions across Costa Rica's scenic mountains, rivers, and rugged trails. We bring UTV and 4x4 enthusiasts together for unforgettable adventures driven by camaraderie, adrenaline, and environmental respect.")
+  videoUrl             String   @default("/uploads/videos/videos_1791875095735_loading_screen_ZXZ_mp4.mp4")
+  posterImageUrl       String   @default("https://images.unsplash.com/photo-1558981403-c5f9899a28bc?auto=format&fit=crop&w=1920&q=85")
+  logoUrl              String   @default("/images/logo.png")
+  whatsappGroupLink    String   @default("https://chat.whatsapp.com/invite/BarrialCR")
+  whatsappBtnTextEs    String   @default("Unirse al Chat de la Comunidad")
+  whatsappBtnTextEn    String   @default("Join Community Chat")
+  isActive             Boolean  @default(true)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
+
+model Transaction {
+  id                   String   @id @default(uuid())
+  date                 DateTime @default(now())
+  type                 String   // INCOME_SALE, INCOME_SERVICE, EXPENSE_LOGISTICS, EXPENSE_OPERATIONAL
+  totalAmount          Float    // always includes 13% VAT
+  subtotal             Float    // calculated as totalAmount / 1.13
+  ivaAmount            Float    // calculated as totalAmount - subtotal
+  electronicInvoiceKey String?
+  description          String?
+  incurredBy           String?  // Person who made the expense (filled automatically with user)
+  onlyVatCredit        Boolean  @default(false) // Only counts 13% VAT in favor (not deductible from income tax / profits)
+  orderId              String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([date])
+  @@index([type])
+}
+
+model MonthlyFinancialClosure {
+  monthYear                String   @id // MM-YYYY
+  totalSalesSubtotal       Float
+  totalCogsSubtotal        Float
+  netIvaPayable            Float
+  netProfitBeforeTax       Float
+  incomeTaxProvision       Float
+  partnerDistributableCash Float
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
 }

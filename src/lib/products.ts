@@ -78,6 +78,7 @@ export interface ProductItem {
   supplierLastPriceUSD?: number | null;
   parameters?: ConfigurableParameter[];
   voidsWarranty?: boolean;
+  installationDurationMinutes?: number;
   relatedProductIds?: string[];
   relatedProducts?: ProductItem[];
   suggestedProductIds?: string[];

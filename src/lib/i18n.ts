@@ -33,6 +33,9 @@ export interface Translations {
   authModalSubtitle: string;
   authGoogleButton: string;
   authOrDivider: string;
+  authFullNameLabel: string;
+  authFullNamePlaceholder: string;
+  authFullNameRequired: string;
   authEmailPlaceholder: string;
   authSendCodeButton: string;
   authEnterCode: string;
@@ -95,6 +98,7 @@ export interface Translations {
   orderItemsLabel: string;
   ordersPageTitle: string;
   ordersPageSubtitle: string;
+  ordersSearchPlaceholder: string;
   ordersAuthRequiredTitle: string;
   ordersAuthRequiredSubtitle: string;
   ordersSignInBtn: string;
@@ -202,6 +206,26 @@ export interface Translations {
   orderUploadProofSuccessMsg: string;
   orderAttachProofStaffBtn: string;
   orderApprovePaymentStaffBtn: string;
+  devInstallDurationLabel: string;
+  devInstallDurationHelp: string;
+  orderInstallationDurationTitle: string;
+  orderInstallationDurationHoursLabel: string;
+  orderSaveInstallationDurationBtn: string;
+  orderInstallationDurationSavedSuccess: string;
+  backdoorAgendaMaxInstallsTitle: string;
+  backdoorAgendaMaxInstallsBadge: string;
+  backdoorAgendaMaxInstallsSetting: string;
+  backdoorAgendaMaxInstallsSaved: string;
+  serviceCollisionCapacityReached: string;
+  serviceEstimatedInstallationBadge: string;
+  serviceEstimatedInstallationDesc: string;
+  serviceCarryoverNextDayBadge: string;
+  backdoorAgendaDrivingTime: string;
+  backdoorAdjustTimeModalTitle: string;
+  backdoorAdjustTimeSheet: string;
+  backdoorAdjustDurationLabel: string;
+  backdoorAdjustSaveBtn: string;
+  backdoorMasterOnlyCapacity: string;
 
   // Order Notification Alerts
   orderAlertAdvancedTitle: string;
@@ -1149,6 +1173,8 @@ export interface Translations {
   serviceSubtotalNetLabel: string;
   serviceIvaTaxLabel: string;
   serviceOrderAlreadyInConfirmation: string;
+  serviceOrderAlreadyProgrammed: string;
+  serviceOrderAlreadyProgrammedBadge: string;
   serviceSlotCollisionAlert: string;
   servicePayWithCardBac: string;
   servicePayWithCardBacDesc: string;
@@ -1161,6 +1187,18 @@ export interface Translations {
   installationLaborSubtotalLabel: string;
   installationIvaTaxLabel: string;
   installationTotalWithIvaLabel: string;
+  backdoorBlockHoursModalTitle: string;
+  backdoorBlockModeLabel: string;
+  backdoorBlockModeHours: string;
+  backdoorBlockModeDay: string;
+  backdoorBlockModeRuta: string;
+  backdoorBlockStartHour: string;
+  backdoorBlockEndHour: string;
+  backdoorBlockReasonLabel: string;
+  backdoorBlockSaveBtn: string;
+  backdoorBlockedHoursBadge: string;
+  serviceBlockedHoursNotice: string;
+  serviceInTransitNotice: string;
   backdoorVehiclesTab: string;
   backdoorVehiclesTitle: string;
   backdoorVehiclesSubtitle: string;
@@ -1289,6 +1327,14 @@ export interface Translations {
   backdoorAgendaTitle: string;
   backdoorAgendaSubtitle: string;
   backdoorAgendaCalendarView: string;
+  backdoorAgendaWeekView: string;
+  backdoorAgendaMonthView: string;
+  backdoorAgendaWarrantyTab: string;
+  backdoorAgendaWeekInstallsOnly: string;
+  backdoorAgendaWeekAllServices: string;
+  backdoorAgendaWeekCurrentTime: string;
+  backdoorAgendaWarrantyCount: string;
+  backdoorAgendaWarrantyDesc: string;
   backdoorAgendaChronologicalView: string;
   backdoorAgendaScheduleServiceBtn: string;
   backdoorAgendaServiceDetails: string;
@@ -1527,6 +1573,25 @@ export interface Translations {
   warrantyProtectionFaq3A: string;
   warrantyProtectionContactBtn: string;
   warrantyProtectionBackBtn: string;
+  warrantyProtectionProfileBtn: string;
+  warrantyProtectionProfileSubtitle: string;
+  warrantyProtectionPartsTitle: string;
+  warrantyProtectionPartsSubtitle: string;
+  warrantyProtectionCostFormula: string;
+  warrantyProtectionInstallCostLabel: string;
+  warrantyProtectionDeinstallReinstallLabel: string;
+  warrantyProtectionSelectParts: string;
+  warrantyProtectionProceedService: string;
+  warrantyProtectionGoToScreen: string;
+  warrantyProtectionNoParts: string;
+  warrantyProtectionNoPartsDesc: string;
+  warrantyProtectionOnlyZxzNotice: string;
+  warrantyProtectionTotalToPay: string;
+  warrantyProtectionCreatingOrder: string;
+  warrantyProtectionLoginRequired: string;
+  warrantyProtectionLoginPrompt: string;
+  warrantyProtectionExploreCatalog: string;
+  warrantyProtectionSelectedCount: string;
 
   // Related / Recommended Products
   devRelatedProductsTitle: string;
@@ -1627,6 +1692,17 @@ export interface Translations {
   serviceDocsSignStaff: string;
   serviceDocsSaveDataBtn: string;
   serviceDocsSaveSuccess: string;
+  serviceDocsKeysCheck: string;
+  serviceDocsSpareKeyCheck: string;
+  serviceDocsKeysCount: string;
+  serviceDocsFuelLevel: string;
+  serviceDocsNoBelongings: string;
+  serviceDocsBatteryCheck: string;
+  serviceDocsParkingBrakeCheck: string;
+  serviceDocsTiresCheck: string;
+  serviceDocsLeaksCheck: string;
+  serviceDocsDocsCheck: string;
+  serviceDocsKeysReturnedCheck: string;
 
   // ZxZ Quality Certification (Warehouse Product Checked)
   zxzCertBadge: string;
@@ -1849,6 +1925,9 @@ export const translations: Record<Language, Translations> = {
     authModalSubtitle: "Gestiona tus pedidos, vehículos en garaje e información técnica",
     authGoogleButton: "Continuar con Google",
     authOrDivider: "o mediante correo electrónico",
+    authFullNameLabel: "Nombre y Apellidos",
+    authFullNamePlaceholder: "Ej: Juan Carlos Pérez",
+    authFullNameRequired: "Por favor ingresa tu nombre completo",
     authEmailPlaceholder: "nombre@ejemplo.com",
     authSendCodeButton: "Enviar Código de Verificación",
     authEnterCode: "Ingresa el código de 6 dígitos enviado a",
@@ -1911,6 +1990,7 @@ export const translations: Record<Language, Translations> = {
     orderItemsLabel: "Artículos",
     ordersPageTitle: "Mis Pedidos",
     ordersPageSubtitle: "Consulta el estado en tiempo real, seguimiento de piezas y detalles de tus pedidos.",
+    ordersSearchPlaceholder: "Buscar por # de orden, cliente o repuesto...",
     ordersAuthRequiredTitle: "Inicia Sesión para Ver tus Pedidos",
     ordersAuthRequiredSubtitle: "Accede a tu cuenta para consultar el historial de compras y estado de taller.",
     ordersSignInBtn: "Iniciar Sesión",
@@ -2017,6 +2097,26 @@ export const translations: Record<Language, Translations> = {
     orderUploadProofSuccessMsg: "¡Comprobante enviado exitosamente! Tu orden ha pasado a Confirmación de Pago.",
     orderAttachProofStaffBtn: "Adjuntar Comprobante",
     orderApprovePaymentStaffBtn: "Aprobar Pago",
+    devInstallDurationLabel: "Tiempo Estimado de Instalación (Horas):",
+    devInstallDurationHelp: "Tiempo que tomará instalar esta pieza/combo en el taller o a domicilio.",
+    orderInstallationDurationTitle: "Tiempo de Instalación en Taller",
+    orderInstallationDurationHoursLabel: "horas de instalación",
+    orderSaveInstallationDurationBtn: "Guardar Tiempo",
+    orderInstallationDurationSavedSuccess: "Tiempo de instalación actualizado exitosamente.",
+    backdoorAgendaMaxInstallsTitle: "Capacidad de Taller",
+    backdoorAgendaMaxInstallsBadge: "{count} vehículo(s) simultáneo(s)",
+    backdoorAgendaMaxInstallsSetting: "Máx. Instalaciones Simultáneas:",
+    backdoorAgendaMaxInstallsSaved: "Capacidad máxima de instalaciones actualizada a {count} vehículo(s).",
+    serviceCollisionCapacityReached: "Capacidad máxima del taller alcanzada ({max} vehículos simultáneos en ese horario). Por favor selecciona otro horario.",
+    serviceEstimatedInstallationBadge: "Tiempo estimado de instalación: {hours}h (+30m margen técnico)",
+    serviceEstimatedInstallationDesc: "Suma de los productos seleccionados en tu pedido",
+    serviceCarryoverNextDayBadge: "Continúa al día siguiente: 8:00 AM - {time}",
+    backdoorAgendaDrivingTime: "Tiempo de viaje estimado",
+    backdoorAdjustTimeModalTitle: "Ajustar Tiempo de Instalación & Hoja de Horarios",
+    backdoorAdjustTimeSheet: "Hoja de Horarios (8:00 AM - 8:00 PM)",
+    backdoorAdjustDurationLabel: "Duración de Instalación en Taller",
+    backdoorAdjustSaveBtn: "Guardar Horario & Duración",
+    backdoorMasterOnlyCapacity: "Solo usuarios con permisos de nivel Master pueden modificar la capacidad de instalaciones simultáneas.",
     orderAlertAdvancedTitle: "Pedido #{orderNumber} Avanzó",
     orderAlertUpdatedTitle: "Pedido #{orderNumber} Actualizado",
     orderAlertAdvancedDesc: "Tu pedido avanzó a la etapa: {stage}",
@@ -2293,7 +2393,7 @@ export const translations: Record<Language, Translations> = {
     checkoutFacturaIdTypeDimex: "DIMEX",
     checkoutFacturaIdTypeNite: "NITE",
     checkoutFacturaIdNumberLabel: "Número de Cédula",
-    checkoutFacturaIdNumberPlaceholder: "Ej: 3-101-849201 o 1-1234-0567",
+    checkoutFacturaIdNumberPlaceholder: "Ej: 3-101-436132 o 1-1234-0567",
     checkoutFacturaEmailLabel: "Correo Electrónico de Facturación",
     checkoutFacturaEmailPlaceholder: "facturacion@miempresa.com",
     checkoutFacturaPhoneLabel: "Teléfono de Facturación (Diferente al teléfono de entrega)",
@@ -2948,6 +3048,8 @@ export const translations: Record<Language, Translations> = {
     serviceSubtotalNetLabel: "Subtotal Neto",
     serviceIvaTaxLabel: "IVA (13%)",
     serviceOrderAlreadyInConfirmation: "Esta orden ya se encuentra en confirmación de pago de servicio. No se puede seleccionar para otro servicio.",
+    serviceOrderAlreadyProgrammed: "Esta orden ya tiene un servicio programado y no puede ser seleccionada nuevamente.",
+    serviceOrderAlreadyProgrammedBadge: "Servicio Ya Programado",
     serviceSlotCollisionAlert: "El horario seleccionado acaba de ser reservado por otro cliente. Por favor selecciona otra fecha u horario disponible.",
     servicePayWithCardBac: "Pagar con Tarjeta (BAC Compra Click)",
     servicePayWithCardBacDesc: "Solicita un enlace seguro BAC Compra Click por WhatsApp para pagar tu servicio con tarjeta de crédito o débito.",
@@ -2960,6 +3062,18 @@ export const translations: Record<Language, Translations> = {
     installationLaborSubtotalLabel: "Subtotal Mano de Obra",
     installationIvaTaxLabel: "IVA Mano de Obra (13%)",
     installationTotalWithIvaLabel: "Total a Transferir (IVA 13% inc.)",
+    backdoorBlockHoursModalTitle: "Bloquear Horario o Día en Agenda",
+    backdoorBlockModeLabel: "Tipo de Bloqueo",
+    backdoorBlockModeHours: "Horas Específicas del Día",
+    backdoorBlockModeDay: "Día Completo",
+    backdoorBlockModeRuta: "Ruta BarrialCR (Rides)",
+    backdoorBlockStartHour: "Hora de Inicio (24h)",
+    backdoorBlockEndHour: "Hora de Fin (24h)",
+    backdoorBlockReasonLabel: "Motivo / Tarea (Ej. Instalación Técnica en Taller)",
+    backdoorBlockSaveBtn: "Aplicar Bloqueo",
+    backdoorBlockedHoursBadge: "Horas Bloqueadas (Taller)",
+    serviceBlockedHoursNotice: "Horario reservado por el taller para instalaciones internas",
+    serviceInTransitNotice: "Horario no disponible: el personal técnico se encuentra en ruta/despacho externo",
     backdoorVehiclesTab: "Vehículos Garaje",
     backdoorVehiclesTitle: "Catálogo de Vehículos para Mi Garaje",
     backdoorVehiclesSubtitle: "Agrega, edita y organiza los vehículos, marcas y modelos que los clientes pueden seleccionar y registrar en su Garaje.",
@@ -3088,6 +3202,14 @@ export const translations: Record<Language, Translations> = {
     backdoorAgendaTitle: "Agenda de Servicios & Transportes",
     backdoorAgendaSubtitle: "Visualiza y gestiona todos los servicios de instalación y transporte programados en calendario estilo Google y lista cronológica.",
     backdoorAgendaCalendarView: "Vista Calendario (Google Calendar)",
+    backdoorAgendaWeekView: "Semana (Google Calendar)",
+    backdoorAgendaMonthView: "Mes",
+    backdoorAgendaWarrantyTab: "Protección Garantía (GAR)",
+    backdoorAgendaWeekInstallsOnly: "Solo Instalaciones",
+    backdoorAgendaWeekAllServices: "Todos los Servicios (General)",
+    backdoorAgendaWeekCurrentTime: "Hora actual",
+    backdoorAgendaWarrantyCount: "Órdenes de Garantía",
+    backdoorAgendaWarrantyDesc: "Desmontaje previo y reinstalación de piezas ZxZ para inspecciones de agencia",
     backdoorAgendaChronologicalView: "Lista Cronológica (Próximos Servicios)",
     backdoorAgendaScheduleServiceBtn: "Programar Servicio (/servicios)",
     backdoorAgendaServiceDetails: "Detalles del Servicio",
@@ -3103,7 +3225,7 @@ export const translations: Record<Language, Translations> = {
     backdoorSaveBlockBtn: "Guardar Bloqueo de Fecha",
     backdoorUnblockBtn: "Desbloquear Fecha",
     backdoorAppointmentCodeLabel: "Código de Cita",
-    backdoorSearchByCodeOrOrder: "Buscar por código (#SRV-... / #BLK-...) u orden...",
+    backdoorSearchByCodeOrOrder: "Buscar por código (#SRV-... / #BLK-...), orden o cliente...",
     backdoorEditAppointmentTitle: "Editar Cita de Servicio",
     backdoorEliminateAppointmentBtn: "Eliminar Cita",
     backdoorEliminateAppointmentConfirm: "¿Estás seguro de que deseas eliminar permanentemente esta cita de servicio? Esta acción no se puede deshacer.",
@@ -3278,7 +3400,7 @@ export const translations: Record<Language, Translations> = {
     backdoorLegalNamePlaceholder: "Ej: ZxZ Mods Costa Rica S.A.",
     backdoorLegalNameHelp: "Nombre legal formal que se imprime en los comprobantes de compra, cotizaciones y documentos fiscales.",
     backdoorCedulaJuridicaLabel: "Cédula Jurídica / Identificación Fiscal",
-    backdoorCedulaJuridicaPlaceholder: "Ej: 3-101-842910",
+    backdoorCedulaJuridicaPlaceholder: "Ej: 3-101-436132",
     backdoorCedulaJuridicaHelp: "Número de cédula jurídica que valida legalmente la empresa en los recibos formales de compra.",
     backdoorWhatsappLabel: "Número Oficial de WhatsApp",
     backdoorHoursLabel: "Horario de Atención",
@@ -3324,6 +3446,25 @@ export const translations: Record<Language, Translations> = {
     warrantyProtectionFaq3A: "Consérvalas en tu garaje o déjalas en custodia temporal en nuestro taller para tenerlas listas el día de tu cita previa a la agencia.",
     warrantyProtectionContactBtn: "Coordinar Protección de Garantía por WhatsApp",
     warrantyProtectionBackBtn: "Volver a Productos",
+    warrantyProtectionProfileBtn: "Protección de Garantía",
+    warrantyProtectionProfileSubtitle: "Desinstalación y reinstalación de piezas que anulan garantía",
+    warrantyProtectionPartsTitle: "Piezas Registradas con Protección de Garantía",
+    warrantyProtectionPartsSubtitle: "Tus piezas ZxZ que anulan garantía de agencia, listas para desinstalación y reinstalación",
+    warrantyProtectionCostFormula: "Costo Desinstalación & Reinstalación (Instalación × 2)",
+    warrantyProtectionInstallCostLabel: "Instalación base:",
+    warrantyProtectionDeinstallReinstallLabel: "Desinstalación + Reinstalación [Instalación × 2]:",
+    warrantyProtectionSelectParts: "Seleccionar piezas para el proceso",
+    warrantyProtectionProceedService: "Continuar a Selección de Servicio (Taller, Domicilio, Plataforma)",
+    warrantyProtectionGoToScreen: "Conocer más sobre el Servicio de Protección",
+    warrantyProtectionNoParts: "Aún no tienes piezas registradas que anulen la garantía de agencia",
+    warrantyProtectionNoPartsDesc: "Cuando compres piezas de alto rendimiento en ZxZ Mods (escapes deportivos, reprogramaciones ECU, clutch kits), se registrarán automáticamente aquí para proteger tu garantía de agencia.",
+    warrantyProtectionOnlyZxzNotice: "Solo piezas compradas en ZxZ Mods pueden ser desinstaladas y reinstaladas bajo este servicio.",
+    warrantyProtectionTotalToPay: "Total Mano de Obra (Desinstalación + Reinstalación):",
+    warrantyProtectionCreatingOrder: "Preparando orden de servicio...",
+    warrantyProtectionLoginRequired: "Inicia sesión para gestionar las piezas de tu vehículo",
+    warrantyProtectionLoginPrompt: "Accede con tu cuenta para visualizar las piezas compradas en ZxZ Mods con protección de garantía de agencia.",
+    warrantyProtectionExploreCatalog: "Explorar Catálogo de Rendimiento",
+    warrantyProtectionSelectedCount: "piezas seleccionadas",
 
     // Related / Recommended Products
     devRelatedProductsTitle: "Productos Altamente Relacionados (Recomendados)",
@@ -3424,6 +3565,17 @@ export const translations: Record<Language, Translations> = {
     serviceDocsSignStaff: "Firma y Sello ZxZ Mods",
     serviceDocsSaveDataBtn: "Guardar Datos de Documento",
     serviceDocsSaveSuccess: "Datos del documento guardados correctamente en la orden.",
+    serviceDocsKeysCheck: "Llaves del vehículo recibidas",
+    serviceDocsSpareKeyCheck: "Llave de repuesto recibida",
+    serviceDocsKeysCount: "Cantidad de llaves",
+    serviceDocsFuelLevel: "Nivel de combustible",
+    serviceDocsNoBelongings: "Sin pertenencias personales en cabina",
+    serviceDocsBatteryCheck: "Batería y encendido operativos",
+    serviceDocsParkingBrakeCheck: "Freno de estacionamiento operativo",
+    serviceDocsTiresCheck: "Neumáticos y aros en buen estado",
+    serviceDocsLeaksCheck: "Sin fugas visibles de fluidos",
+    serviceDocsDocsCheck: "Documentos del vehículo a bordo",
+    serviceDocsKeysReturnedCheck: "Devolución formal de llaves del vehículo al propietario",
 
     // ZxZ Quality Certification (Warehouse Product Checked)
     zxzCertBadge: "Certificado de Calidad ZxZ",
@@ -3644,6 +3796,9 @@ export const translations: Record<Language, Translations> = {
     authModalSubtitle: "Manage your orders, garage fleet, and technical preferences",
     authGoogleButton: "Continue with Google",
     authOrDivider: "or with email address",
+    authFullNameLabel: "Full Name",
+    authFullNamePlaceholder: "e.g. John Doe",
+    authFullNameRequired: "Please enter your full name",
     authEmailPlaceholder: "name@example.com",
     authSendCodeButton: "Send Verification Code",
     authEnterCode: "Enter the 6-digit code sent to",
@@ -3706,6 +3861,7 @@ export const translations: Record<Language, Translations> = {
     orderItemsLabel: "Items",
     ordersPageTitle: "My Orders",
     ordersPageSubtitle: "Check real-time status, parts tracking, and technical workshop progression.",
+    ordersSearchPlaceholder: "Search by order #, client, or item...",
     ordersAuthRequiredTitle: "Sign In to View Your Orders",
     ordersAuthRequiredSubtitle: "Access your account to check order history and workshop status.",
     ordersSignInBtn: "Sign In",
@@ -3812,6 +3968,26 @@ export const translations: Record<Language, Translations> = {
     orderUploadProofSuccessMsg: "Receipt uploaded successfully! Your order has moved to Payment Confirmation.",
     orderAttachProofStaffBtn: "Attach Proof",
     orderApprovePaymentStaffBtn: "Approve Payment",
+    devInstallDurationLabel: "Estimated Installation Time (Hours):",
+    devInstallDurationHelp: "Time it will take to install this part/combo in workshop or at home.",
+    orderInstallationDurationTitle: "Workshop Installation Duration",
+    orderInstallationDurationHoursLabel: "installation hours",
+    orderSaveInstallationDurationBtn: "Save Duration",
+    orderInstallationDurationSavedSuccess: "Installation duration updated successfully.",
+    backdoorAgendaMaxInstallsTitle: "Workshop Capacity",
+    backdoorAgendaMaxInstallsBadge: "{count} concurrent vehicle(s)",
+    backdoorAgendaMaxInstallsSetting: "Max Concurrent Installations:",
+    backdoorAgendaMaxInstallsSaved: "Maximum installation capacity updated to {count} vehicle(s).",
+    serviceCollisionCapacityReached: "Workshop maximum capacity reached ({max} concurrent vehicles during that time). Please choose another time slot.",
+    serviceEstimatedInstallationBadge: "Estimated installation time: {hours}h (+30m workshop buffer)",
+    serviceEstimatedInstallationDesc: "Sum of selected products in your order",
+    serviceCarryoverNextDayBadge: "Continues next morning: 8:00 AM - {time}",
+    backdoorAgendaDrivingTime: "Estimated driving time",
+    backdoorAdjustTimeModalTitle: "Adjust Installation Time & Time Sheet",
+    backdoorAdjustTimeSheet: "Time Sheet (8:00 AM - 8:00 PM)",
+    backdoorAdjustDurationLabel: "Workshop Installation Duration",
+    backdoorAdjustSaveBtn: "Save Schedule & Duration",
+    backdoorMasterOnlyCapacity: "Only users with Master role can change concurrent installations capacity.",
     orderAlertAdvancedTitle: "Order #{orderNumber} Advanced",
     orderAlertUpdatedTitle: "Order #{orderNumber} Updated",
     orderAlertAdvancedDesc: "Your order advanced to: {stage}",
@@ -4088,7 +4264,7 @@ export const translations: Record<Language, Translations> = {
     checkoutFacturaIdTypeDimex: "DIMEX",
     checkoutFacturaIdTypeNite: "NITE",
     checkoutFacturaIdNumberLabel: "Tax ID Number",
-    checkoutFacturaIdNumberPlaceholder: "e.g. 3-101-849201 or 1-1234-0567",
+    checkoutFacturaIdNumberPlaceholder: "e.g. 3-101-436132 or 1-1234-0567",
     checkoutFacturaEmailLabel: "Billing Email",
     checkoutFacturaEmailPlaceholder: "billing@mycompany.com",
     checkoutFacturaPhoneLabel: "Billing Phone (Different from delivery contact phone)",
@@ -4743,6 +4919,8 @@ export const translations: Record<Language, Translations> = {
     serviceSubtotalNetLabel: "Net Subtotal",
     serviceIvaTaxLabel: "VAT (13%)",
     serviceOrderAlreadyInConfirmation: "This order is already in service payment confirmation. It cannot be selected for another service.",
+    serviceOrderAlreadyProgrammed: "This order already has a service scheduled and cannot be selected again.",
+    serviceOrderAlreadyProgrammedBadge: "Service Already Scheduled",
     serviceSlotCollisionAlert: "The selected time slot was just reserved by another customer. Please choose a different date or time.",
     servicePayWithCardBac: "Pay with Card (BAC Compra Click)",
     servicePayWithCardBacDesc: "Request a secure BAC Compra Click link via WhatsApp to pay for your service with credit or debit card.",
@@ -4755,6 +4933,18 @@ export const translations: Record<Language, Translations> = {
     installationLaborSubtotalLabel: "Labor Subtotal",
     installationIvaTaxLabel: "Labor VAT (13%)",
     installationTotalWithIvaLabel: "Total to Transfer (13% VAT inc.)",
+    backdoorBlockHoursModalTitle: "Block Hours or Day in Agenda",
+    backdoorBlockModeLabel: "Block Type",
+    backdoorBlockModeHours: "Specific Hours of the Day",
+    backdoorBlockModeDay: "Full Day",
+    backdoorBlockModeRuta: "Ruta BarrialCR (Rides)",
+    backdoorBlockStartHour: "Start Hour (24h)",
+    backdoorBlockEndHour: "End Hour (24h)",
+    backdoorBlockReasonLabel: "Reason / Task (e.g. Workshop Technical Installation)",
+    backdoorBlockSaveBtn: "Apply Block",
+    backdoorBlockedHoursBadge: "Blocked Hours (Workshop)",
+    serviceBlockedHoursNotice: "Time slot reserved by workshop for internal installations",
+    serviceInTransitNotice: "Time slot unavailable: technical staff is on the road / external dispatch",
     backdoorVehiclesTab: "Garage Vehicles",
     backdoorVehiclesTitle: "Vehicle Catalog for My Garage",
     backdoorVehiclesSubtitle: "Add, edit, and organize vehicles, brands, and models that customers can select and register in their Garage.",
@@ -4883,6 +5073,14 @@ export const translations: Record<Language, Translations> = {
     backdoorAgendaTitle: "Services & Transport Agenda",
     backdoorAgendaSubtitle: "View and manage all scheduled installation and transport services in Google Calendar style and chronological list.",
     backdoorAgendaCalendarView: "Calendar View (Google Calendar)",
+    backdoorAgendaWeekView: "Week (Google Calendar)",
+    backdoorAgendaMonthView: "Month",
+    backdoorAgendaWarrantyTab: "Warranty Protection (GAR)",
+    backdoorAgendaWeekInstallsOnly: "Installations Only",
+    backdoorAgendaWeekAllServices: "All Services (General)",
+    backdoorAgendaWeekCurrentTime: "Current time",
+    backdoorAgendaWarrantyCount: "Warranty Orders",
+    backdoorAgendaWarrantyDesc: "Prior disassembly and reinstallation of ZxZ parts for dealer inspections",
     backdoorAgendaChronologicalView: "Chronological List (Upcoming Services)",
     backdoorAgendaScheduleServiceBtn: "Schedule Service (/servicios)",
     backdoorAgendaServiceDetails: "Service Details",
@@ -4898,7 +5096,7 @@ export const translations: Record<Language, Translations> = {
     backdoorSaveBlockBtn: "Save Date Block",
     backdoorUnblockBtn: "Unblock Date",
     backdoorAppointmentCodeLabel: "Appointment Code",
-    backdoorSearchByCodeOrOrder: "Search by code (#SRV-... / #BLK-...) or order...",
+    backdoorSearchByCodeOrOrder: "Search by code (#SRV-... / #BLK-...), order, or client...",
     backdoorEditAppointmentTitle: "Edit Service Appointment",
     backdoorEliminateAppointmentBtn: "Eliminate Appointment",
     backdoorEliminateAppointmentConfirm: "Are you sure you want to permanently delete this service appointment? This action cannot be undone.",
@@ -5073,7 +5271,7 @@ export const translations: Record<Language, Translations> = {
     backdoorLegalNamePlaceholder: "E.g.: ZxZ Mods Costa Rica S.A.",
     backdoorLegalNameHelp: "Formal legal entity name shown on purchase receipts, quotations, and official documents.",
     backdoorCedulaJuridicaLabel: "Corporate Tax ID / Cédula Jurídica",
-    backdoorCedulaJuridicaPlaceholder: "E.g.: 3-101-842910",
+    backdoorCedulaJuridicaPlaceholder: "E.g.: 3-101-436132",
     backdoorCedulaJuridicaHelp: "Corporate legal ID number validating the company on formal purchase receipts.",
     backdoorWhatsappLabel: "Official WhatsApp Number",
     backdoorHoursLabel: "Operating Hours",
@@ -5119,6 +5317,25 @@ export const translations: Record<Language, Translations> = {
     warrantyProtectionFaq3A: "Keep them in your garage or leave them safely stored in our shop so they are ready for your pre-dealer appointment.",
     warrantyProtectionContactBtn: "Coordinate Warranty Protection via WhatsApp",
     warrantyProtectionBackBtn: "Back to Products",
+    warrantyProtectionProfileBtn: "Warranty Protection",
+    warrantyProtectionProfileSubtitle: "De-install & reinstall of warranty-voiding parts",
+    warrantyProtectionPartsTitle: "Registered Warranty Protection Parts",
+    warrantyProtectionPartsSubtitle: "Your ZxZ parts that void dealer warranty, ready for de-installation and re-installation",
+    warrantyProtectionCostFormula: "De-installation & Re-installation Cost (Installation × 2)",
+    warrantyProtectionInstallCostLabel: "Base installation:",
+    warrantyProtectionDeinstallReinstallLabel: "De-install + Re-install [Installation × 2]:",
+    warrantyProtectionSelectParts: "Select parts for process",
+    warrantyProtectionProceedService: "Proceed to Service Selection (Workshop, Home, Platform)",
+    warrantyProtectionGoToScreen: "Learn more about Warranty Protection",
+    warrantyProtectionNoParts: "You do not have any registered parts that void dealer warranty yet",
+    warrantyProtectionNoPartsDesc: "When you purchase performance upgrades at ZxZ Mods (sports exhausts, ECU remapping, clutch kits), they will automatically appear here to protect your factory warranty.",
+    warrantyProtectionOnlyZxzNotice: "Only parts purchased at ZxZ Mods can be uninstalled and reinstalled under this service.",
+    warrantyProtectionTotalToPay: "Total Labor (De-installation + Re-installation):",
+    warrantyProtectionCreatingOrder: "Preparing service order...",
+    warrantyProtectionLoginRequired: "Log in to manage your vehicle's parts",
+    warrantyProtectionLoginPrompt: "Log in with your account to view purchased ZxZ Mods parts covered by dealer warranty protection.",
+    warrantyProtectionExploreCatalog: "Explore Performance Catalog",
+    warrantyProtectionSelectedCount: "parts selected",
 
     // Related / Recommended Products
     devRelatedProductsTitle: "Highly Related Products (Recommended)",
@@ -5219,6 +5436,17 @@ export const translations: Record<Language, Translations> = {
     serviceDocsSignStaff: "ZxZ Mods Staff Signature & Stamp",
     serviceDocsSaveDataBtn: "Save Document Details",
     serviceDocsSaveSuccess: "Document details saved successfully to order.",
+    serviceDocsKeysCheck: "Vehicle keys received",
+    serviceDocsSpareKeyCheck: "Spare key received",
+    serviceDocsKeysCount: "Keys count",
+    serviceDocsFuelLevel: "Fuel level",
+    serviceDocsNoBelongings: "No personal belongings in cabin",
+    serviceDocsBatteryCheck: "Battery & ignition operational",
+    serviceDocsParkingBrakeCheck: "Parking brake operational",
+    serviceDocsTiresCheck: "Tires & rims good condition",
+    serviceDocsLeaksCheck: "No visible fluid leaks",
+    serviceDocsDocsCheck: "Vehicle documents on board",
+    serviceDocsKeysReturnedCheck: "Formal return of vehicle keys to owner",
 
     // ZxZ Quality Certification (Warehouse Product Checked)
     zxzCertBadge: "ZxZ Quality Certified",

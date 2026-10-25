@@ -35,16 +35,30 @@ client_secret*.json
 
 # Database Backups & Dumps (Contains customer PII and hashed secrets)
 backups/
+/backups/
 *.db
 *.db-journal
+*.db-wal
+*.db-shm
 *.sqlite
 *.sqlite3
 *.dump
 *.sql
 prisma/*.db
 prisma/*.db-journal
+prisma/*.db-wal
+prisma/*.db-shm
 scripts/data-backup.json
 scripts/*backup*.json
+
+# User Uploads & Runtime Cache Files
+# Ignore customer payment receipts (PII) and oversized >50MB raw videos in Git;
+# keep lightweight store catalog logos/product images (/brands, /products) for immediate Vercel rendering
+/public/uploads/payments/*
+!/public/uploads/payments/.gitkeep
+/public/uploads/videos/*
+!/public/uploads/videos/.gitkeep
+/src/data/live_exchange_rate.json
 
 # Debug & Error logs
 npm-debug.log*

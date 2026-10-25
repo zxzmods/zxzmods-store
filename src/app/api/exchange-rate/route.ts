@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
+import { prisma } from "@/lib/prisma";
 import { requireStealthSession } from "@/lib/stealthAuth";
 import { recordAuditLog } from "@/lib/audit";
 
@@ -43,9 +44,40 @@ let memoryCache: MemoryCache | null = null;
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
 const PERSISTENT_CACHE_PATH = path.join(process.cwd(), "src", "data", "live_exchange_rate.json");
+const IS_SERVERLESS = process.env.VERCEL === "1" || process.env.NODE_ENV === "production";
 
-// Helper to read persistent cache
-function readPersistentCache(): ExchangeRateData | null {
+// Helper to read persistent cache (Database primary, local disk fallback)
+async function readPersistentCache(): Promise<ExchangeRateData | null> {
+  try {
+    const dbConfig = await prisma.logisticsRateConfig.findUnique({
+      where: { id: "rates-config" },
+    });
+    if (dbConfig) {
+      const activeRate =
+        dbConfig.useManualExchangeRate && dbConfig.manualExchangeRateCRC
+          ? dbConfig.manualExchangeRateCRC
+          : dbConfig.cachedExchangeRateCRC;
+      if (typeof activeRate === "number" && activeRate > 300 && activeRate < 1500) {
+        return {
+          rate: Number(activeRate.toFixed(2)),
+          buyRate: Number((activeRate - 5.21).toFixed(2)),
+          currency: "USD",
+          baseCurrency: "CRC",
+          source:
+            dbConfig.exchangeRateSource ||
+            (dbConfig.useManualExchangeRate
+              ? "Manual (Backdoor Admin)"
+              : "Banco Central de Costa Rica (BCCR)"),
+          date: getCostaRicaDateString(),
+          override: Boolean(dbConfig.useManualExchangeRate),
+          updatedAt: (dbConfig.exchangeRateUpdatedAt || dbConfig.updatedAt).toISOString(),
+        };
+      }
+    }
+  } catch (dbErr) {
+    console.warn("Could not read exchange rate from database, trying disk fallback:", dbErr);
+  }
+
   try {
     if (fs.existsSync(PERSISTENT_CACHE_PATH)) {
       const raw = fs.readFileSync(PERSISTENT_CACHE_PATH, "utf-8");
@@ -63,16 +95,41 @@ function readPersistentCache(): ExchangeRateData | null {
   return null;
 }
 
-// Helper to write persistent cache
-function writePersistentCache(data: ExchangeRateData) {
+// Helper to write persistent cache (Database primary, local disk in dev only)
+async function writePersistentCache(data: ExchangeRateData) {
   try {
-    const dir = path.dirname(PERSISTENT_CACHE_PATH);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
+    await prisma.logisticsRateConfig.upsert({
+      where: { id: "rates-config" },
+      update: {
+        cachedExchangeRateCRC: data.rate,
+        ...(data.override ? { manualExchangeRateCRC: data.rate } : {}),
+        useManualExchangeRate: Boolean(data.override),
+        exchangeRateSource: data.source,
+        exchangeRateUpdatedAt: new Date(),
+      },
+      create: {
+        id: "rates-config",
+        cachedExchangeRateCRC: data.rate,
+        manualExchangeRateCRC: data.override ? data.rate : null,
+        useManualExchangeRate: Boolean(data.override),
+        exchangeRateSource: data.source,
+        exchangeRateUpdatedAt: new Date(),
+      },
+    });
+  } catch (dbErr) {
+    console.warn("Could not write exchange rate to database:", dbErr);
+  }
+
+  if (!IS_SERVERLESS) {
+    try {
+      const dir = path.dirname(PERSISTENT_CACHE_PATH);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      fs.writeFileSync(PERSISTENT_CACHE_PATH, JSON.stringify(data, null, 2), "utf-8");
+    } catch (err) {
+      console.error("Error writing persistent exchange rate cache:", err);
     }
-    fs.writeFileSync(PERSISTENT_CACHE_PATH, JSON.stringify(data, null, 2), "utf-8");
-  } catch (err) {
-    console.error("Error writing persistent exchange rate cache:", err);
   }
 }
 
@@ -251,7 +308,7 @@ export async function GET(request: Request) {
   const includeDiagnostics = url.searchParams.get("diagnostics") === "true";
 
   // 1. Read persistent cache if present
-  const persisted = readPersistentCache();
+  const persisted = await readPersistentCache();
 
   // If MANUAL OVERRIDE is explicitly enabled by the administrator, HONOR IT UNCONDITIONALLY
   // (Do NOT expire or discard manual overrides on date roll-over: it was set intentionally by Master)
@@ -318,7 +375,7 @@ export async function GET(request: Request) {
       data: exchangeData,
       fetchedAt: now,
     };
-    writePersistentCache(exchangeData);
+    await writePersistentCache(exchangeData);
 
     return NextResponse.json({
       success: true,
@@ -382,7 +439,7 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { action, rate, buyRate, override, notes } = body || {};
 
-    const current = readPersistentCache();
+    const current = await readPersistentCache();
 
     // Action 1: Force live sync with BCCR and disable manual override
     if (action === "sync_live") {
@@ -411,7 +468,7 @@ export async function POST(request: Request) {
         diagnostics: live.diagnostics,
       };
 
-      writePersistentCache(syncedData);
+      await writePersistentCache(syncedData);
       memoryCache = {
         data: syncedData,
         fetchedAt: Date.now(),
@@ -472,7 +529,7 @@ export async function POST(request: Request) {
       notes: notes !== undefined ? String(notes).trim() : current?.notes,
     };
 
-    writePersistentCache(updatedData);
+    await writePersistentCache(updatedData);
     memoryCache = {
       data: updatedData,
       fetchedAt: Date.now(),

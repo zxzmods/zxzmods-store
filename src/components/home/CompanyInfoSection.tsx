@@ -234,7 +234,11 @@ export function CompanyInfoSection() {
             {/* Right: Clean Google Maps Embed */}
             <div className="lg:col-span-7 h-[420px] sm:h-[520px] rounded-3xl overflow-hidden border border-gray-200/90 relative shadow-sm bg-gray-100">
               <iframe
-                src={data.googleMapsEmbedUrl}
+                src={
+                  data.googleMapsEmbedUrl && !data.googleMapsEmbedUrl.includes("hl=") && !data.googleMapsEmbedUrl.includes("!2ses")
+                    ? `${data.googleMapsEmbedUrl}${data.googleMapsEmbedUrl.includes("?") ? "&" : "?"}hl=es&gl=CR`
+                    : data.googleMapsEmbedUrl
+                }
                 width="100%"
                 height="100%"
                 style={{ border: 0 }}

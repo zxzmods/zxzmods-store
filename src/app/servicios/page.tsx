@@ -168,12 +168,35 @@ function TransportServiceContent() {
       (o) => o.id === targetOrderId || o.orderNumber === targetOrderId
     );
     if (foundInAuth) {
-      if ((foundInAuth.status || "").toUpperCase() === "CONFIRM_SERVICE_PAYMENT") {
+      const foundStatus = (foundInAuth.status || "").toUpperCase();
+      if (foundStatus === "CONFIRM_SERVICE_PAYMENT") {
         setErrorMessage(
           t.serviceOrderAlreadyInConfirmation ||
             (lang === "es"
               ? "Esta orden ya se encuentra en confirmación de pago de servicio. No se puede seleccionar para otro servicio ni pagar doble."
               : "This order is already in service payment confirmation. It cannot be selected for another service.")
+        );
+        return;
+      }
+      if (
+        !isReturnBooking &&
+        (foundInAuth.isServiceScheduled ||
+          [
+            "WAITING_ON_DELIVERY",
+            "PICKUP_DATE_SET",
+            "HOME_INSTALL_SET",
+            "INSTALLING",
+            "INSTALLATION_PAYMENT",
+            "READY_FOR_PICKUP",
+            "READY_TO_PICK_UP",
+            "COMPLETED",
+          ].includes(foundStatus))
+      ) {
+        setErrorMessage(
+          t.serviceOrderAlreadyProgrammed ||
+            (lang === "es"
+              ? "Esta orden ya tiene un servicio programado y no puede ser seleccionada nuevamente."
+              : "This order already has a service scheduled and cannot be selected again.")
         );
         return;
       }
@@ -212,12 +235,35 @@ function TransportServiceContent() {
         if (isCancelled) return;
         if (data.success && data.order) {
           const ord = data.order;
-          if ((ord.status || "").toUpperCase() === "CONFIRM_SERVICE_PAYMENT") {
+          const ordStatus = (ord.status || "").toUpperCase();
+          if (ordStatus === "CONFIRM_SERVICE_PAYMENT") {
             setErrorMessage(
               t.serviceOrderAlreadyInConfirmation ||
                 (lang === "es"
                   ? "Esta orden ya se encuentra en confirmación de pago de servicio. No se puede seleccionar para otro servicio ni pagar doble."
                   : "This order is already in service payment confirmation. It cannot be selected for another service.")
+            );
+            return;
+          }
+          if (
+            !isReturnBooking &&
+            (ord.isServiceScheduled ||
+              [
+                "WAITING_ON_DELIVERY",
+                "PICKUP_DATE_SET",
+                "HOME_INSTALL_SET",
+                "INSTALLING",
+                "INSTALLATION_PAYMENT",
+                "READY_FOR_PICKUP",
+                "READY_TO_PICK_UP",
+                "COMPLETED",
+              ].includes(ordStatus))
+          ) {
+            setErrorMessage(
+              t.serviceOrderAlreadyProgrammed ||
+                (lang === "es"
+                  ? "Esta orden ya tiene un servicio programado y no puede ser seleccionada nuevamente."
+                  : "This order already has a service scheduled and cannot be selected again.")
             );
             return;
           }
@@ -287,6 +333,7 @@ function TransportServiceContent() {
   const [serviceDate, setServiceDate] = useState<string>("");
   const [serviceTimeSlot, setServiceTimeSlot] = useState<string>("08:00");
   const [availableSlots, setAvailableSlots] = useState<TimeSlotItem[]>([]);
+  const [estimatedInstallDurationMin, setEstimatedInstallDurationMin] = useState<number>(60);
   const [isSlotsLoading, setIsSlotsLoading] = useState(false);
   const [isFullDayBlocked, setIsFullDayBlocked] = useState(false);
   const [fullDayReason, setFullDayReason] = useState<string | null>(null);
@@ -562,7 +609,10 @@ function TransportServiceContent() {
       selectedService === "shop_installation"
         ? 0
         : calculation?.durationMinutes || 0;
-    const url = `/api/logistics/availability?date=${serviceDate}&travelMinutes=${travelMin}&serviceType=${selectedService}`;
+    const orderIdsQuery = selectedOrders.length > 0
+      ? `&orderIds=${selectedOrders.map((o) => encodeURIComponent(o.id)).join(",")}`
+      : "";
+    const url = `/api/logistics/availability?date=${serviceDate}&travelMinutes=${travelMin}&serviceType=${selectedService}${orderIdsQuery}`;
 
     fetch(url)
       .then((r) => r.json())
@@ -571,17 +621,24 @@ function TransportServiceContent() {
         if (json.success) {
           setIsFullDayBlocked(Boolean(json.isFullDayBlocked));
           setFullDayReason(json.fullDayReason || null);
+          if (json.orderInstallationDurationMinutes) {
+            setEstimatedInstallDurationMin(json.orderInstallationDurationMinutes);
+          }
           const slotsList: TimeSlotItem[] = json.slots || [];
           setAvailableSlots(slotsList);
 
-          // If current time is not available, select first available slot
-          const currentValid = slotsList.find(
-            (s) => s.time === serviceTimeSlot && s.available
-          );
-          if (!currentValid) {
-            const firstAvailable = slotsList.find((s) => s.available);
-            if (firstAvailable) {
-              setServiceTimeSlot(firstAvailable.time);
+          if (selectedOrders.length === 0) {
+            setServiceTimeSlot("");
+          } else {
+            // If current time is not available, select first available slot
+            const currentValid = slotsList.find(
+              (s) => s.time === serviceTimeSlot && s.available
+            );
+            if (!currentValid) {
+              const firstAvailable = slotsList.find((s) => s.available);
+              if (firstAvailable) {
+                setServiceTimeSlot(firstAvailable.time);
+              }
             }
           }
         }
@@ -596,7 +653,7 @@ function TransportServiceContent() {
     return () => {
       isMounted = false;
     };
-  }, [serviceDate, calculation?.durationMinutes, selectedService]);
+  }, [serviceDate, calculation?.durationMinutes, selectedService, selectedOrders]);
 
   // Route calculation handler
   const calculateRoute = useCallback(
@@ -751,7 +808,7 @@ function TransportServiceContent() {
       return;
     }
 
-    // Guard: Block if any selected order is already in CONFIRM_SERVICE_PAYMENT
+    // Guard: Block if any selected order is already in CONFIRM_SERVICE_PAYMENT or already scheduled
     const isAlreadyInConfirmation = selectedOrders.some((o) => {
       const s = (o.status || "").toUpperCase();
       return s === "CONFIRM_SERVICE_PAYMENT";
@@ -762,6 +819,33 @@ function TransportServiceContent() {
           (lang === "es"
             ? "Una o más órdenes seleccionadas ya se encuentran en confirmación de pago de servicio. No se puede seleccionar para otro servicio ni pagar doble."
             : "One or more selected orders are already in service payment confirmation.")
+      );
+      return;
+    }
+
+    const hasAlreadyScheduled = selectedOrders.some((o) => {
+      const s = (o.status || "").toUpperCase();
+      return (
+        !isReturnBooking &&
+        (o.isServiceScheduled ||
+          [
+            "WAITING_ON_DELIVERY",
+            "PICKUP_DATE_SET",
+            "HOME_INSTALL_SET",
+            "INSTALLING",
+            "INSTALLATION_PAYMENT",
+            "READY_FOR_PICKUP",
+            "READY_TO_PICK_UP",
+            "COMPLETED",
+          ].includes(s))
+      );
+    });
+    if (hasAlreadyScheduled) {
+      setErrorMessage(
+        t.serviceOrderAlreadyProgrammed ||
+          (lang === "es"
+            ? "Una o más órdenes seleccionadas ya tienen un servicio programado y no pueden ser programadas nuevamente."
+            : "One or more selected orders already have a service scheduled.")
       );
       return;
     }
@@ -907,7 +991,7 @@ function TransportServiceContent() {
       return;
     }
 
-    // Guard: Block if any selected order is already in CONFIRM_SERVICE_PAYMENT
+    // Guard: Block if any selected order is already in CONFIRM_SERVICE_PAYMENT or already scheduled
     const isAlreadyInConfirmation = selectedOrders.some((o) => {
       const s = (o.status || "").toUpperCase();
       return s === "CONFIRM_SERVICE_PAYMENT";
@@ -918,6 +1002,33 @@ function TransportServiceContent() {
           (lang === "es"
             ? "Una o más órdenes seleccionadas ya se encuentran en confirmación de pago de servicio. No se puede seleccionar para otro servicio ni pagar doble."
             : "One or more selected orders are already in service payment confirmation.")
+      );
+      return;
+    }
+
+    const hasAlreadyScheduled = selectedOrders.some((o) => {
+      const s = (o.status || "").toUpperCase();
+      return (
+        !isReturnBooking &&
+        (o.isServiceScheduled ||
+          [
+            "WAITING_ON_DELIVERY",
+            "PICKUP_DATE_SET",
+            "HOME_INSTALL_SET",
+            "INSTALLING",
+            "INSTALLATION_PAYMENT",
+            "READY_FOR_PICKUP",
+            "READY_TO_PICK_UP",
+            "COMPLETED",
+          ].includes(s))
+      );
+    });
+    if (hasAlreadyScheduled) {
+      setErrorMessage(
+        t.serviceOrderAlreadyProgrammed ||
+          (lang === "es"
+            ? "Una o más órdenes seleccionadas ya tienen un servicio programado y no pueden ser programadas nuevamente."
+            : "One or more selected orders already have a service scheduled.")
       );
       return;
     }
@@ -1029,7 +1140,7 @@ function TransportServiceContent() {
       return;
     }
 
-    // Guard: Block if any selected order is already in CONFIRM_SERVICE_PAYMENT
+    // Guard: Block if any selected order is already in CONFIRM_SERVICE_PAYMENT or already scheduled
     const isAlreadyInConfirmation = selectedOrders.some((o) => {
       const s = (o.status || "").toUpperCase();
       return s === "CONFIRM_SERVICE_PAYMENT";
@@ -1040,6 +1151,33 @@ function TransportServiceContent() {
           (lang === "es"
             ? "Una o más órdenes seleccionadas ya se encuentran en confirmación de pago de servicio. No se puede seleccionar para otro servicio ni pagar doble."
             : "One or more selected orders are already in service payment confirmation.")
+      );
+      return;
+    }
+
+    const hasAlreadyScheduled = selectedOrders.some((o) => {
+      const s = (o.status || "").toUpperCase();
+      return (
+        !isReturnBooking &&
+        (o.isServiceScheduled ||
+          [
+            "WAITING_ON_DELIVERY",
+            "PICKUP_DATE_SET",
+            "HOME_INSTALL_SET",
+            "INSTALLING",
+            "INSTALLATION_PAYMENT",
+            "READY_FOR_PICKUP",
+            "READY_TO_PICK_UP",
+            "COMPLETED",
+          ].includes(s))
+      );
+    });
+    if (hasAlreadyScheduled) {
+      setErrorMessage(
+        t.serviceOrderAlreadyProgrammed ||
+          (lang === "es"
+            ? "Una o más órdenes seleccionadas ya tienen un servicio programado y no pueden ser programadas nuevamente."
+            : "One or more selected orders already have a service scheduled.")
       );
       return;
     }
@@ -1231,7 +1369,220 @@ function TransportServiceContent() {
               3. Entrega / Delivery
               4. Pick-up de Vehículo
             */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* SMARTPHONE VIEW: Icon-only selector + Description of current selected service */}
+            <div className="sm:hidden space-y-3">
+              {/* 4-icon Row */}
+              <div className="grid grid-cols-4 gap-2">
+                {/* 1. Shop Installation Icon */}
+                <button
+                  type="button"
+                  onClick={() => handleSelectService("shop_installation")}
+                  disabled={isPickupBounded}
+                  className={`py-3 px-2 rounded-2xl border flex flex-col items-center justify-center transition-all cursor-pointer ${
+                    isPickupBounded
+                      ? "bg-gray-100 border-gray-200 opacity-40 cursor-not-allowed"
+                      : selectedService === "shop_installation"
+                      ? "bg-emerald-600 border-emerald-600 text-white shadow-md ring-2 ring-emerald-500/20"
+                      : "bg-white border-gray-200 text-gray-700 hover:border-gray-300 hover:bg-gray-50 shadow-2xs"
+                  }`}
+                  title={t.serviceTabShopInstallation}
+                >
+                  <Warehouse className={`w-5 h-5 ${selectedService === "shop_installation" ? "text-white" : "text-gray-700"}`} />
+                </button>
+
+                {/* 2. Home Installation Icon */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isPickupBounded) return;
+                    if (isHomeInstallationBlockedByOrder) {
+                      setErrorMessage(t.serviceHomeInstallIneligibleOrderAlert);
+                      return;
+                    }
+                    handleSelectService("installation");
+                  }}
+                  disabled={isHomeInstallationBlockedByOrder || isPickupBounded}
+                  className={`py-3 px-2 rounded-2xl border flex flex-col items-center justify-center transition-all cursor-pointer ${
+                    isHomeInstallationBlockedByOrder || isPickupBounded
+                      ? "bg-gray-100 border-gray-200 opacity-40 cursor-not-allowed"
+                      : selectedService === "installation"
+                      ? "bg-[#C02030] border-[#C02030] text-white shadow-md ring-2 ring-[#C02030]/20"
+                      : "bg-white border-gray-200 text-gray-700 hover:border-gray-300 hover:bg-gray-50 shadow-2xs"
+                  }`}
+                  title={t.serviceTabInstallation}
+                >
+                  <Wrench className={`w-5 h-5 ${selectedService === "installation" ? "text-white" : "text-gray-700"}`} />
+                </button>
+
+                {/* 3. Delivery Icon */}
+                <button
+                  type="button"
+                  onClick={() => handleSelectService("delivery")}
+                  disabled={isPickupBounded}
+                  className={`py-3 px-2 rounded-2xl border flex flex-col items-center justify-center transition-all cursor-pointer ${
+                    isPickupBounded
+                      ? "bg-gray-100 border-gray-200 opacity-40 cursor-not-allowed"
+                      : selectedService === "delivery"
+                      ? "bg-blue-600 border-blue-600 text-white shadow-md ring-2 ring-blue-500/20"
+                      : "bg-white border-gray-200 text-gray-700 hover:border-gray-300 hover:bg-gray-50 shadow-2xs"
+                  }`}
+                  title={t.serviceTabDelivery}
+                >
+                  <Truck className={`w-5 h-5 ${selectedService === "delivery" ? "text-white" : "text-gray-700"}`} />
+                </button>
+
+                {/* 4. Pick-up Icon */}
+                <button
+                  type="button"
+                  onClick={() => handleSelectService("pickup")}
+                  disabled={isPickupServiceDisabled}
+                  className={`py-3 px-2 rounded-2xl border flex flex-col items-center justify-center transition-all cursor-pointer ${
+                    isPickupServiceDisabled
+                      ? "bg-gray-100 border-gray-200 opacity-40 cursor-not-allowed"
+                      : selectedService === "pickup"
+                      ? "bg-slate-900 border-slate-900 text-white shadow-md ring-2 ring-slate-900/20"
+                      : "bg-white border-gray-200 text-gray-700 hover:border-gray-300 hover:bg-gray-50 shadow-2xs"
+                  }`}
+                  title={t.serviceTabPickup}
+                >
+                  <Car className={`w-5 h-5 ${selectedService === "pickup" ? "text-white" : "text-gray-700"}`} />
+                </button>
+              </div>
+
+              {/* Detail Card of Currently Selected Service */}
+              <div className="p-4 rounded-3xl bg-white border border-gray-200 shadow-sm space-y-3">
+                {selectedService === "shop_installation" && (
+                  <>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0">
+                          <Warehouse className="w-4 h-4" />
+                        </div>
+                        <h3 className="font-black text-sm text-gray-900">
+                          {t.serviceTabShopInstallation}
+                        </h3>
+                      </div>
+                      <span className="text-xs font-mono font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                        {t.serviceShopInstallationBadge}
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-600 leading-relaxed">
+                      {isPickupBounded
+                        ? (lang === "es" ? "No disponible: pedido asignado a retiro por plataforma." : "Not available: order assigned to towing pick-up.")
+                        : t.serviceShopInstallationDesc}
+                    </p>
+                  </>
+                )}
+
+                {selectedService === "installation" && (
+                  <>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-xl bg-[#C02030] text-white flex items-center justify-center shrink-0">
+                          <Wrench className="w-4 h-4" />
+                        </div>
+                        <h3 className="font-black text-sm text-gray-900">
+                          {t.serviceTabInstallation}
+                        </h3>
+                      </div>
+                      <span className={`text-xs font-mono font-bold ${isHomeInstallationBlockedByOrder || isPickupBounded ? "text-gray-400 line-through" : "text-gray-900"}`}>
+                        ₡{config?.homeInstallationRatePerKmCRC?.toLocaleString("es-CR")}/km
+                      </span>
+                    </div>
+                    {isHomeInstallationBlockedByOrder && (
+                      <span className="text-[10px] font-bold text-rose-600 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-full flex items-center gap-1 w-fit">
+                        <AlertCircle className="w-3 h-3 text-rose-500" />
+                        {t.serviceHomeInstallIneligibleBadge}
+                      </span>
+                    )}
+                    <p className={`text-xs leading-relaxed ${isHomeInstallationBlockedByOrder ? "text-rose-600 font-medium" : "text-gray-600"}`}>
+                      {isPickupBounded
+                        ? (lang === "es" ? "No disponible: pedido asignado a retiro por plataforma." : "Not available: order assigned to towing pick-up.")
+                        : isHomeInstallationBlockedByOrder
+                        ? t.serviceHomeInstallIneligibleReason
+                        : t.serviceInstallationDesc}
+                    </p>
+                  </>
+                )}
+
+                {selectedService === "delivery" && (
+                  <>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0">
+                          <Truck className="w-4 h-4" />
+                        </div>
+                        <h3 className="font-black text-sm text-gray-900">
+                          {t.serviceTabDelivery}
+                        </h3>
+                      </div>
+                      <span className="text-xs font-mono font-bold text-gray-900">
+                        ₡{config?.deliveryRatePerKmCRC?.toLocaleString("es-CR")}/km
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-600 leading-relaxed">
+                      {isPickupBounded
+                        ? (lang === "es" ? "No disponible: pedido asignado a retiro por plataforma." : "Not available: order assigned to towing pick-up.")
+                        : t.serviceDeliveryDesc}
+                    </p>
+                  </>
+                )}
+
+                {selectedService === "pickup" && (
+                  <>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-xl bg-slate-900 text-white flex items-center justify-center shrink-0">
+                          <Car className="w-4 h-4" />
+                        </div>
+                        <h3 className="font-black text-sm text-gray-900">
+                          {isReturnBooking
+                            ? (lang === "es" ? "Retorno / Entrega de Vehículo" : "Vehicle Return Delivery")
+                            : t.serviceTabPickup}
+                        </h3>
+                      </div>
+                      <span className={`text-xs font-mono font-bold ${isPickupServiceDisabled ? "text-gray-400 line-through" : isReturnBooking ? "text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200" : "text-gray-900"}`}>
+                        {isReturnBooking ? (lang === "es" ? "₡0 (Cancelado)" : "₡0 (Paid)") : `₡${config?.pickupRatePerKmCRC?.toLocaleString("es-CR")}/km`}
+                      </span>
+                    </div>
+                    {isGlobalPickupDisabled ? (
+                      <span className="text-[10px] font-bold text-rose-600 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-full flex items-center gap-1 w-fit">
+                        <AlertCircle className="w-3 h-3 text-rose-500" />
+                        {t.servicePickupDisabledBadge}
+                      </span>
+                    ) : isPickupVehicleIncompatible ? (
+                      <span className="text-[10px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-full flex items-center gap-1 w-fit">
+                        <AlertCircle className="w-3 h-3 text-rose-500" />
+                        {t.servicePickupVehicleIncompatibleBadge}
+                      </span>
+                    ) : hasGarageVehicle ? (
+                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full flex items-center gap-1 w-fit">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                        <span>{effectiveGarageVehicle?.modelName || effectiveGarageVehicle?.modelSlug}</span>
+                      </span>
+                    ) : null}
+                    <p className={`text-xs leading-relaxed ${isPickupServiceDisabled ? "text-rose-600 font-medium" : "text-gray-600"}`}>
+                      {isGlobalPickupDisabled
+                        ? t.servicePickupDisabledDesc
+                        : isPickupVehicleIncompatible
+                        ? `${t.servicePickupVehicleIncompatibleDesc} (${effectiveGarageVehicle?.brandName || effectiveGarageVehicle?.brandSlug || ""} ${effectiveGarageVehicle?.modelName || effectiveGarageVehicle?.modelSlug || ""})`
+                        : isReturnBooking
+                        ? (lang === "es" ? "Coordinación para la entrega de tu vehículo tras la instalación." : "Coordinate date to return your vehicle after installation.")
+                        : t.servicePickupDesc}
+                    </p>
+                    {!isPickupServiceDisabled && !isReturnBooking && (
+                      <div className="text-[10px] text-emerald-800 bg-emerald-50 border border-emerald-200/80 px-2.5 py-1 rounded-lg flex items-center gap-1.5 font-semibold leading-tight">
+                        <Check className="w-3 h-3 text-emerald-600 shrink-0" />
+                        <span>{t.servicePickupRoundTripNotice}</span>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* DESKTOP VIEW: 4 full service cards */}
+            <div className="hidden sm:grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
               {/* 1. Solo Instalación (En Taller) */}
               <button
                 type="button"
@@ -1583,17 +1934,39 @@ function TransportServiceContent() {
                       blockedReasons={blockedReasons}
                     />
 
-                    {/* DYNAMIC TIME SLOT PICKER (8:00 AM - 8:00 PM) */}
-                    <ServiceTimeSlotPicker
-                      slots={availableSlots}
-                      selectedTime={serviceTimeSlot}
-                      onSelectTime={setServiceTimeSlot}
-                      isLoading={isSlotsLoading}
-                      isFullDayBlocked={isFullDayBlocked}
-                      fullDayReason={fullDayReason}
-                      travelMinutes={selectedService === "shop_installation" ? 0 : (calculation?.durationMinutes || 0)}
-                      serviceType={selectedService}
-                    />
+                    {/* DYNAMIC TIME SLOT PICKER (8:00 AM - 8:00 PM) - ONLY SHOWN WHEN ORDER(S) SELECTED */}
+                    {selectedOrders.length > 0 ? (
+                      <ServiceTimeSlotPicker
+                        slots={availableSlots}
+                        selectedTime={serviceTimeSlot}
+                        onSelectTime={setServiceTimeSlot}
+                        isLoading={isSlotsLoading}
+                        isFullDayBlocked={isFullDayBlocked}
+                        fullDayReason={fullDayReason}
+                        travelMinutes={selectedService === "shop_installation" ? 0 : (calculation?.durationMinutes || 0)}
+                        serviceType={selectedService}
+                        installationDurationMinutes={estimatedInstallDurationMin}
+                        hasSelectedOrder={selectedOrders.length > 0}
+                      />
+                    ) : (
+                      <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/90 flex items-center gap-3 text-slate-700 animate-fade-in">
+                        <div className="w-8 h-8 rounded-xl bg-slate-200/80 border border-slate-300 flex items-center justify-center shrink-0 text-slate-700">
+                          <AlertCircle className="w-4 h-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-slate-900">
+                            {lang === "es"
+                              ? "Selecciona tu pedido arriba para ver los horarios disponibles"
+                              : "Select your order above to view available time slots"}
+                          </p>
+                          <p className="text-[11px] text-slate-500 font-medium">
+                            {lang === "es"
+                              ? "La hoja de horarios se habilitará automáticamente al escoger el pedido."
+                              : "The time sheet will be enabled automatically once you select an order."}
+                          </p>
+                        </div>
+                      </div>
+                    )}
 
                     {/* GARAGE COMPATIBILITY CHECK SECTION (Below Calendar & Arrival Time) */}
                     {selectedService === "pickup" && (

@@ -150,6 +150,7 @@ export async function POST(request: Request) {
         originalPriceCRC: finalOriginalPriceCRC,
         discountPercent: discountPct,
         installationPriceCRC: finalInstallPrice,
+        installationDurationMinutes: Math.max(15, Math.round(Number(body.installationDurationMinutes) || 60)),
         installLabourCostCRC: installLabour,
         installProfitCRC: installProfit,
         installExtraPartsJson: extraPartsJson,
@@ -282,6 +283,7 @@ export async function POST(request: Request) {
               includes: Boolean(newProduct.isInstallationIncluded),
               I_price: newProduct.installationPriceCRC,
             },
+            installationDurationMinutes: newProduct.installationDurationMinutes ?? 60,
             profit: newProduct.profitCRC,
             T_price: newProduct.priceCRC,
             T_price_D: newProduct.totalPriceD,
@@ -324,10 +326,12 @@ export async function POST(request: Request) {
         };
 
         productsArray.unshift(jsonFormattedProduct);
-        await fs.writeFile(productsJsonPath, JSON.stringify(productsArray, null, 2), "utf-8");
+        if (process.env.VERCEL !== "1" && process.env.NODE_ENV !== "production") {
+          await fs.writeFile(productsJsonPath, JSON.stringify(productsArray, null, 2), "utf-8");
+        }
       }
     } catch (syncErr) {
-      console.error("[SYS_PRODUCT_CREATE_JSON_SYNC_ERROR]:", syncErr);
+      console.warn("[SYS_PRODUCT_CREATE_JSON_SYNC_WARN]:", syncErr);
     }
 
     await recordAuditLog({

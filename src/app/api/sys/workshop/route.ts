@@ -146,35 +146,37 @@ export async function PUT(request: Request) {
       updated.cedulaJuridica
     );
 
-    // Also keep GLOBAL_MASTER_PHONE and GLOBAL_MASTER_WHATSAPP in src/config/company.ts synced
-    try {
-      const companyConfigPath = path.join(process.cwd(), "src", "config", "company.ts");
-      if (fs.existsSync(companyConfigPath)) {
-        let content = fs.readFileSync(companyConfigPath, "utf8");
-        content = content.replace(
-          /export let GLOBAL_MASTER_PHONE = "[^"]*";/,
-          `export let GLOBAL_MASTER_PHONE = ${JSON.stringify(updated.phone)};`
-        );
-        content = content.replace(
-          /export let GLOBAL_MASTER_WHATSAPP = "[^"]*";/,
-          `export let GLOBAL_MASTER_WHATSAPP = ${JSON.stringify(updated.whatsapp)};`
-        );
-        if (updated.legalName) {
+    // Also keep GLOBAL_MASTER_PHONE and GLOBAL_MASTER_WHATSAPP in src/config/company.ts synced (local dev only)
+    if (process.env.VERCEL !== "1" && process.env.NODE_ENV !== "production") {
+      try {
+        const companyConfigPath = path.join(process.cwd(), "src", "config", "company.ts");
+        if (fs.existsSync(companyConfigPath)) {
+          let content = fs.readFileSync(companyConfigPath, "utf8");
           content = content.replace(
-            /export let GLOBAL_LEGAL_NAME = "[^"]*";/,
-            `export let GLOBAL_LEGAL_NAME = ${JSON.stringify(updated.legalName)};`
+            /export let GLOBAL_MASTER_PHONE = "[^"]*";/,
+            `export let GLOBAL_MASTER_PHONE = ${JSON.stringify(updated.phone)};`
           );
-        }
-        if (updated.cedulaJuridica !== undefined && updated.cedulaJuridica !== null) {
           content = content.replace(
-            /export let GLOBAL_CEDULA_JURIDICA = "[^"]*";/,
-            `export let GLOBAL_CEDULA_JURIDICA = ${JSON.stringify(updated.cedulaJuridica)};`
+            /export let GLOBAL_MASTER_WHATSAPP = "[^"]*";/,
+            `export let GLOBAL_MASTER_WHATSAPP = ${JSON.stringify(updated.whatsapp)};`
           );
+          if (updated.legalName) {
+            content = content.replace(
+              /export let GLOBAL_LEGAL_NAME = "[^"]*";/,
+              `export let GLOBAL_LEGAL_NAME = ${JSON.stringify(updated.legalName)};`
+            );
+          }
+          if (updated.cedulaJuridica !== undefined && updated.cedulaJuridica !== null) {
+            content = content.replace(
+              /export let GLOBAL_CEDULA_JURIDICA = "[^"]*";/,
+              `export let GLOBAL_CEDULA_JURIDICA = ${JSON.stringify(updated.cedulaJuridica)};`
+            );
+          }
+          fs.writeFileSync(companyConfigPath, content, "utf8");
         }
-        fs.writeFileSync(companyConfigPath, content, "utf8");
+      } catch (syncErr) {
+        console.warn("Could not write updated global phone to company.ts:", syncErr);
       }
-    } catch (syncErr) {
-      console.warn("Could not write updated global phone to company.ts:", syncErr);
     }
 
     return NextResponse.json({

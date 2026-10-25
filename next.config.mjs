@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: process.env.NODE_ENV === "production" ? "standalone" : undefined,
+  output: process.env.DOCKER_BUILD === "true" ? "standalone" : undefined,
   reactStrictMode: true,
   images: {
     unoptimized: true,
@@ -51,10 +51,10 @@ const nextConfig = {
               "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://apis.google.com https://www.googletagmanager.com",
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
               "font-src 'self' https://fonts.gstatic.com data:",
-              "img-src 'self' data: blob: https://storage.googleapis.com https://images.unsplash.com https://*.tile.openstreetmap.org https://maps.googleapis.com https://*.google.com",
-              "connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://storage.googleapis.com https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.hacienda.go.cr",
+              "img-src 'self' data: blob: https://storage.googleapis.com https://*.supabase.co https://images.unsplash.com https://*.tile.openstreetmap.org https://maps.googleapis.com https://*.google.com",
+              "connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://*.googleapis.com https://storage.googleapis.com https://*.supabase.co https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.hacienda.go.cr https://tipodecambio.paginasweb.cr",
               "frame-src 'self' https://www.google.com https://maps.google.com https://*.firebaseapp.com",
-              "media-src 'self' data: blob: https://storage.googleapis.com",
+              "media-src 'self' data: blob: https://storage.googleapis.com https://*.supabase.co",
             ].join("; "),
           },
         ],

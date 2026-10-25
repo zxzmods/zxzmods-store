@@ -40,6 +40,10 @@ import {
   AlertTriangle,
   Fuel,
 } from "lucide-react";
+import {
+  WarrantyLegalDocumentModal,
+  WarrantyLegalDocumentData,
+} from "@/components/services/WarrantyLegalDocumentModal";
 
 // Client-only dynamic import for Leaflet map
 const LeafletInteractiveMap = dynamic(
@@ -63,6 +67,12 @@ interface ServiceItem {
   time: string; // HH:mm
   timeMinutes: number;
   durationMinutes: number;
+  installationDurationMin?: number | null;
+  workshopArrivalMinutes?: number | null;
+  travelDurationMin?: number | null;
+  carryoverNextDayMinutes?: number | null;
+  carryoverDate?: string | null;
+  isFullDay?: boolean;
   destinationAddress: string | null;
   destinationLat?: number | null;
   destinationLng?: number | null;
@@ -84,6 +94,12 @@ interface ServiceItem {
     totalCRC: number;
     paymentProofUrl?: string | null;
   } | null;
+  user?: {
+    id: string;
+    displayName: string | null;
+    email: string | null;
+    phoneNumber: string | null;
+  } | null;
 }
 
 interface OrderReady {
@@ -92,10 +108,17 @@ interface OrderReady {
   status: string;
   customerName: string | null;
   customerPhone: string | null;
+  guestEmail?: string | null;
   shippingAddress: string | null;
   itemsJson: string;
   totalCRC: number;
   createdAt: string;
+  user?: {
+    id: string;
+    displayName: string | null;
+    email: string | null;
+    phoneNumber: string | null;
+  } | null;
 }
 
 const SERVICE_META: Record<
@@ -150,6 +173,14 @@ const SERVICE_META: Record<
     badgeColor: "bg-rose-600 text-white",
     defaultCost: 0,
   },
+  blocked_hours: {
+    labelEs: "Horas Bloqueadas (Taller)",
+    labelEn: "Blocked Hours (Workshop)",
+    icon: Lock,
+    color: "bg-amber-50 text-amber-900 border-amber-300",
+    badgeColor: "bg-amber-600 text-white",
+    defaultCost: 0,
+  },
 };
 
 const QUICK_SHORTCUTS = [
@@ -173,17 +204,38 @@ for (let h = 8; h <= 20; h++) {
   }
 }
 
-export function ServicesAgendaTab() {
+interface ServicesAgendaTabProps {
+  userRole?: "MASTER" | "STAFF";
+}
+
+export function ServicesAgendaTab({ userRole = "STAFF" }: ServicesAgendaTabProps) {
+  const isMaster = userRole === "MASTER";
   const { t, lang } = useLanguage();
 
   // Data state
   const [schedules, setSchedules] = useState<ServiceItem[]>([]);
   const [ordersReady, setOrdersReady] = useState<OrderReady[]>([]);
+  const [maxConcurrentInstallations, setMaxConcurrentInstallations] = useState<number>(1);
+  const [savingCapacity, setSavingCapacity] = useState(false);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
 
-  // View state: "calendar" (Google Calendar) | "column" (Chronological) | "program" (Screen from Screenshot)
-  const [viewMode, setViewMode] = useState<"calendar" | "column" | "program">("calendar");
+  // View state: "week" (Google Calendar Week) | "calendar" (Month) | "column" (Chronological) | "program" (Schedule Service) | "warranty" (GAR System)
+  const [viewMode, setViewMode] = useState<"week" | "calendar" | "column" | "program" | "warranty">("week");
+  const [weekMode, setWeekMode] = useState<"installations" | "all">("installations");
+  const [warrantyOrders, setWarrantyOrders] = useState<OrderReady[]>([]);
+  const [miniMonthDate, setMiniMonthDate] = useState(() => new Date());
+  const [nowMinutes, setNowMinutes] = useState(() => {
+    const n = new Date();
+    return n.getHours() * 60 + n.getMinutes();
+  });
+  const [warrantyStatusFilter, setWarrantyStatusFilter] = useState("ALL");
+  const [warrantySearch, setWarrantySearch] = useState("");
+  const [programOrderFilter, setProgramOrderFilter] = useState<"ALL" | "STANDARD" | "WARRANTY">("ALL");
+  const [updatingOrderStatus, setUpdatingOrderStatus] = useState<string | null>(null);
+  const [viewingGARLegalDoc, setViewingGARLegalDoc] = useState<WarrantyLegalDocumentData | null>(null);
+  const [deletingGAROrder, setDeletingGAROrder] = useState<OrderReady | null>(null);
+  const [deletingGARLoading, setDeletingGARLoading] = useState(false);
 
   // Search filter for agenda (by appointment code, order number, or client name)
   const [agendaSearch, setAgendaSearch] = useState("");
@@ -195,6 +247,45 @@ export function ServicesAgendaTab() {
   const [selectedSchedule, setSelectedSchedule] = useState<ServiceItem | null>(null);
   const [updatingPayment, setUpdatingPayment] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; msg: string } | null>(null);
+
+  // Adjust Installation Time Sheet Modal
+  const [adjustingSchedule, setAdjustingSchedule] = useState<ServiceItem | null>(null);
+  const [adjustDate, setAdjustDate] = useState("");
+  const [adjustDurationMin, setAdjustDurationMin] = useState(60);
+  const [adjustTime, setAdjustTime] = useState("");
+  const [adjustSlots, setAdjustSlots] = useState<any[]>([]);
+  const [adjustSlotsLoading, setAdjustSlotsLoading] = useState(false);
+  const [adjustSaving, setAdjustSaving] = useState(false);
+
+  // Real-time minute tracker for the red indicator line in Google Calendar weekly view
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const n = new Date();
+      setNowMinutes(n.getHours() * 60 + n.getMinutes());
+    }, 60000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const formatMinTo12h = (min: number): string => {
+    const h = Math.floor(min / 60);
+    const m = min % 60;
+    const ampm = h >= 12 ? "PM" : "AM";
+    const displayH = h % 12 || 12;
+    return `${String(displayH).padStart(2, "0")}:${String(m).padStart(2, "0")} ${ampm}`;
+  };
+
+  const parse12hToMin = (tStr: string): number => {
+    if (!tStr) return 0;
+    const clean = tStr.trim();
+    const isPM = clean.toUpperCase().includes("PM");
+    const isAM = clean.toUpperCase().includes("AM");
+    const [hStr, mStr] = clean.replace(/AM|PM/gi, "").trim().split(":");
+    let h = parseInt(hStr, 10) || 0;
+    const m = parseInt(mStr, 10) || 0;
+    if (isPM && h < 12) h += 12;
+    if (isAM && h === 12) h = 0;
+    return h * 60 + m;
+  };
 
   // -------------------------------------------------------------
   // PROGRAM SERVICE FORM STATE
@@ -221,7 +312,7 @@ export function ServicesAgendaTab() {
   const [calculatedRoute, setCalculatedRoute] = useState<any>(null);
 
   // -------------------------------------------------------------
-  // BLOCKED DAYS MANAGEMENT STATE
+  // BLOCKED DAYS & HOURS MANAGEMENT STATE
   // -------------------------------------------------------------
   const [showBlockModal, setShowBlockModal] = useState(false);
   const [blockDate, setBlockDate] = useState(() => {
@@ -229,6 +320,10 @@ export function ServicesAgendaTab() {
     d.setDate(d.getDate() + 1);
     return d.toISOString().split("T")[0];
   });
+  const [blockMode, setBlockMode] = useState<"hours" | "day" | "ruta">("hours");
+  const [blockStartHour, setBlockStartHour] = useState("09:00");
+  const [blockEndHour, setBlockEndHour] = useState("13:00");
+  const [blockReason, setBlockReason] = useState("");
   const [isBlockRutaBarrial, setIsBlockRutaBarrial] = useState(false);
   const [blockRutaTitle, setBlockRutaTitle] = useState("");
   const [blockRutaMeetingPoint, setBlockRutaMeetingPoint] = useState("");
@@ -291,6 +386,14 @@ export function ServicesAgendaTab() {
           const newStr = JSON.stringify(data.ordersReady || []);
           return prevStr === newStr ? prev : data.ordersReady || [];
         });
+        setWarrantyOrders((prev) => {
+          const prevStr = JSON.stringify(prev);
+          const newStr = JSON.stringify(data.warrantyOrders || []);
+          return prevStr === newStr ? prev : data.warrantyOrders || [];
+        });
+        if (typeof data.maxConcurrentInstallations === "number") {
+          setMaxConcurrentInstallations(data.maxConcurrentInstallations);
+        }
         setLastUpdated(new Date());
       }
     } catch (err) {
@@ -512,55 +615,92 @@ export function ServicesAgendaTab() {
   };
 
   // -------------------------------------------------------------
-  // BLOCK / UNBLOCK DATE ACTIONS
+  // BLOCK / UNBLOCK DATE & HOURS ACTIONS
   // -------------------------------------------------------------
-  const existingBlockOnDate = useMemo(() => {
-    return schedules.find(
+  const existingBlocksOnDate = useMemo(() => {
+    return schedules.filter(
       (s) =>
         s.date === blockDate &&
-        (s.status === "BLOCKED" || s.serviceType === "ruta_barrial" || s.serviceType === "blocked_day")
+        (s.status === "BLOCKED" ||
+          s.serviceType === "ruta_barrial" ||
+          s.serviceType === "blocked_day" ||
+          s.serviceType === "blocked_hours")
     );
   }, [schedules, blockDate]);
+
+  const hasFullDayBlockOnDate = useMemo(() => {
+    return existingBlocksOnDate.some(
+      (s) =>
+        s.isFullDay ||
+        s.serviceType === "ruta_barrial" ||
+        s.serviceType === "blocked_day"
+    );
+  }, [existingBlocksOnDate]);
 
   const handleSaveBlockDay = async () => {
     if (!blockDate) return;
     setBlockSaving(true);
     setFeedback(null);
     try {
+      const isHours = blockMode === "hours";
+      const isRuta = blockMode === "ruta";
+      const isFullDay = blockMode !== "hours";
+
+      const payload = {
+        scheduledDate: blockDate,
+        timeSlot: isHours
+          ? `${blockStartHour} - ${blockEndHour}`
+          : isRuta && blockRutaTime
+          ? blockRutaTime
+          : "08:00",
+        serviceType: isRuta ? "ruta_barrial" : isHours ? "blocked_hours" : "blocked_day",
+        status: "BLOCKED",
+        isFullDay,
+        startHour: isHours ? blockStartHour : undefined,
+        endHour: isHours ? blockEndHour : undefined,
+        reason: isHours
+          ? blockReason.trim() || (lang === "es" ? "Instalación Técnica en Taller" : "Workshop Technical Installation")
+          : isRuta
+          ? blockRutaMeetingPoint.trim() || "Ruta BarrialCR"
+          : (lang === "es" ? "Día Bloqueado por Taller" : "Day Blocked by Workshop"),
+        destinationAddress: isHours
+          ? blockReason.trim() || (lang === "es" ? "Instalación Técnica en Taller" : "Workshop Technical Installation")
+          : isRuta
+          ? blockRutaMeetingPoint.trim() || "Ruta BarrialCR"
+          : (lang === "es" ? "Día Bloqueado por Taller" : "Day Blocked by Workshop"),
+        clientName: isRuta
+          ? blockRutaTitle.trim() || "Ruta BarrialCR"
+          : isHours
+          ? (lang === "es" ? "Bloqueo Interno Taller (Instalación)" : "Workshop Internal Block")
+          : (lang === "es" ? "Bloqueo Interno Taller" : "Workshop Internal Block"),
+        costCRC: 0,
+        paymentStatus: "PAID",
+      };
+
       const res = await fetch("/api/sys/services", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          scheduledDate: blockDate,
-          timeSlot: isBlockRutaBarrial && blockRutaTime ? blockRutaTime : "08:00",
-          serviceType: isBlockRutaBarrial ? "ruta_barrial" : "blocked_day",
-          status: "BLOCKED",
-          isFullDay: true,
-          destinationAddress: isBlockRutaBarrial
-            ? blockRutaMeetingPoint.trim() || "Ruta BarrialCR"
-            : "Día Bloqueado por Taller",
-          clientName: isBlockRutaBarrial
-            ? blockRutaTitle.trim() || "Ruta BarrialCR"
-            : "Bloqueo Interno Taller",
-          costCRC: 0,
-          paymentStatus: "PAID",
-        }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (res.ok && data.success) {
         setFeedback({
           type: "success",
-          msg: isBlockRutaBarrial
+          msg: isHours
+            ? (lang === "es"
+                ? `Horario ${blockStartHour} a ${blockEndHour} bloqueado exitosamente (#${data.schedule?.appointmentCode || "BLK"}).`
+                : `Time window ${blockStartHour} to ${blockEndHour} blocked successfully (#${data.schedule?.appointmentCode || "BLK"}).`)
+            : isRuta
             ? `Fecha ${blockDate} bloqueada por Ruta BarrialCR exitosamente (#${data.schedule?.appointmentCode || "BLK"}).`
-            : `Fecha ${blockDate} bloqueada exitosamente (#${data.schedule?.appointmentCode || "BLK"}).`,
+            : `Día ${blockDate} bloqueado exitosamente (#${data.schedule?.appointmentCode || "BLK"}).`,
         });
         await fetchServices(true);
         setShowBlockModal(false);
       } else {
-        setFeedback({ type: "error", msg: data.error || "Error al bloquear la fecha" });
+        setFeedback({ type: "error", msg: data.error || "Error al aplicar el bloqueo" });
       }
     } catch {
-      setFeedback({ type: "error", msg: "Error de conexión al bloquear fecha" });
+      setFeedback({ type: "error", msg: "Error de conexión al aplicar el bloqueo" });
     } finally {
       setBlockSaving(false);
     }
@@ -595,7 +735,11 @@ export function ServicesAgendaTab() {
   // ELIMINATE / DELETE APPOINTMENT ACTION
   // -------------------------------------------------------------
   const handleDeleteAppointment = async (schedule: ServiceItem) => {
-    const isBlock = schedule.status === "BLOCKED" || schedule.serviceType === "ruta_barrial" || schedule.serviceType === "blocked_day";
+    const isBlock =
+      schedule.status === "BLOCKED" ||
+      schedule.serviceType === "ruta_barrial" ||
+      schedule.serviceType === "blocked_day" ||
+      schedule.serviceType === "blocked_hours";
     const promptMsg = isBlock
       ? "¿Deseas desbloquear y eliminar este bloqueo de fecha?"
       : t.backdoorEliminateAppointmentConfirm;
@@ -704,6 +848,335 @@ export function ServicesAgendaTab() {
   };
 
   // -------------------------------------------------------------
+  // ADJUST INSTALLATION TIME SHEET ACTIONS
+  // -------------------------------------------------------------
+  const handleOpenAdjustTimeModal = (sch: ServiceItem) => {
+    setAdjustingSchedule(sch);
+    setAdjustDate(sch.date);
+    setAdjustDurationMin(
+      sch.installationDurationMin && sch.installationDurationMin > 0
+        ? sch.installationDurationMin
+        : 60
+    );
+    const isPickup = sch.serviceType === "pickup" || sch.serviceType === "UTV_PICKUP";
+    if (isPickup) {
+      const arrivalMin = sch.workshopArrivalMinutes || (sch.timeMinutes + (sch.travelDurationMin || 0) + 30);
+      setAdjustTime(formatMinTo12h(arrivalMin));
+    } else {
+      setAdjustTime(sch.time);
+    }
+  };
+
+  useEffect(() => {
+    if (!adjustingSchedule || !adjustDate) return;
+    let isCancelled = false;
+    setAdjustSlotsLoading(true);
+
+    // Always fetch availability against workshop installation capacity for the installation time sheet
+    const sType = "shop_installation";
+    const url = `/api/logistics/availability?date=${encodeURIComponent(
+      adjustDate
+    )}&serviceType=${encodeURIComponent(sType)}&installDurationMinutes=${adjustDurationMin}`;
+
+    fetch(url)
+      .then((res) => res.json())
+      .then((data) => {
+        if (!isCancelled && data.success && Array.isArray(data.slots)) {
+          setAdjustSlots(data.slots);
+        }
+      })
+      .catch((err) => console.error("Error loading slots for adjustment:", err))
+      .finally(() => {
+        if (!isCancelled) setAdjustSlotsLoading(false);
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [adjustingSchedule, adjustDate, adjustDurationMin]);
+
+  const handleSaveAdjustTime = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!adjustingSchedule) return;
+    setAdjustSaving(true);
+    const isPickup = adjustingSchedule.serviceType === "pickup" || adjustingSchedule.serviceType === "UTV_PICKUP";
+
+    const payload: any = {
+      id: adjustingSchedule.id,
+      date: adjustDate,
+      installationDurationMin: adjustDurationMin,
+    };
+
+    if (isPickup) {
+      // Modify ONLY workshop installation arrival time, keeping customer's pick-up time untouched
+      payload.workshopArrivalMinutes = parse12hToMin(adjustTime);
+    } else {
+      payload.time = adjustTime;
+      payload.workshopArrivalMinutes = parse12hToMin(adjustTime);
+    }
+
+    try {
+      const res = await fetch("/api/sys/services", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Error al actualizar horario");
+      }
+      setFeedback({
+        type: "success",
+        msg:
+          lang === "es"
+            ? (isPickup
+                ? "Horario de instalación en taller actualizado exitosamente. La hora de retiro del cliente se mantiene intacta."
+                : "Horario y duración de instalación actualizados exitosamente.")
+            : (isPickup
+                ? "Workshop installation time updated successfully. Customer pick-up time remains untouched."
+                : "Installation time and duration updated successfully."),
+      });
+      const updatedItem = data.schedule;
+      setAdjustingSchedule(null);
+      setSelectedSchedule((prev) =>
+        prev
+          ? {
+              ...prev,
+              date: adjustDate,
+              time: isPickup ? prev.time : adjustTime,
+              installationDurationMin: adjustDurationMin,
+              workshopArrivalMinutes:
+                updatedItem?.workshopArrivalMinutes ?? (isPickup ? parse12hToMin(adjustTime) : prev.workshopArrivalMinutes),
+              carryoverNextDayMinutes:
+                updatedItem?.carryoverNextDayMinutes ?? prev.carryoverNextDayMinutes,
+              carryoverDate: updatedItem?.carryoverDate ?? prev.carryoverDate,
+            }
+          : null
+      );
+      fetchServices();
+    } catch (err: any) {
+      setFeedback({
+        type: "error",
+        msg: err.message || "Error al actualizar horario",
+      });
+    } finally {
+      setAdjustSaving(false);
+    }
+  };
+
+  // -------------------------------------------------------------
+  // WEEKLY GOOGLE CALENDAR CALCULATIONS (Screenshot 2 Implementation)
+  // -------------------------------------------------------------
+  const WEEK_DISPLAY_HOURS = [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22];
+
+  const weekDays = useMemo(() => {
+    const current = new Date(currentDate);
+    const dayOfWeek = current.getDay(); // 0 is Sunday
+    const sunday = new Date(current);
+    sunday.setDate(current.getDate() - dayOfWeek);
+    sunday.setHours(0, 0, 0, 0);
+
+    const days: Array<{
+      date: Date;
+      dateStr: string;
+      dayNameEs: string;
+      dayNameEn: string;
+      dayNumber: number;
+      isToday: boolean;
+    }> = [];
+
+    const todayStr = new Date().toISOString().split("T")[0];
+
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(sunday);
+      d.setDate(sunday.getDate() + i);
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, "0");
+      const dd = String(d.getDate()).padStart(2, "0");
+      const dateStr = `${yyyy}-${mm}-${dd}`;
+
+      const dayNameEs = ["DOM", "LUN", "MAR", "MIÉ", "JUE", "VIE", "SÁB"][i];
+      const dayNameEn = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"][i];
+
+      days.push({
+        date: d,
+        dateStr,
+        dayNameEs,
+        dayNameEn,
+        dayNumber: d.getDate(),
+        isToday: dateStr === todayStr,
+      });
+    }
+
+    return days;
+  }, [currentDate]);
+
+  const weekRangeTitle = useMemo(() => {
+    if (weekDays.length < 7) return "";
+    const start = weekDays[0].date;
+    const end = weekDays[6].date;
+    const startDay = start.getDate();
+    const endDay = end.getDate();
+    const startMonth = start.toLocaleDateString(lang === "es" ? "es-CR" : "en-US", { month: "short" });
+    const endMonth = end.toLocaleDateString(lang === "es" ? "es-CR" : "en-US", { month: "short" });
+    const y = end.getFullYear();
+
+    if (startMonth === endMonth) {
+      return `${startDay} – ${endDay} ${startMonth} ${y}`;
+    }
+    return `${startDay} ${startMonth} – ${endDay} ${endMonth} ${y}`;
+  }, [weekDays, lang]);
+
+  // Mini Month Calendar logic for the left sidebar in Screenshot 2
+  const miniYear = miniMonthDate.getFullYear();
+  const miniMonth = miniMonthDate.getMonth();
+  const miniMonthName = useMemo(() => {
+    const d = new Date(miniYear, miniMonth, 1);
+    const raw = d.toLocaleDateString(lang === "es" ? "es-CR" : "en-US", {
+      month: "long",
+      year: "numeric",
+    });
+    return raw.replace(/\s+de\s+/gi, " ");
+  }, [miniYear, miniMonth, lang]);
+
+  const miniCalendarDays = useMemo(() => {
+    const firstDayIndex = new Date(miniYear, miniMonth, 1).getDay();
+    const daysInCurrentMonth = new Date(miniYear, miniMonth + 1, 0).getDate();
+    const daysInPrevMonth = new Date(miniYear, miniMonth, 0).getDate();
+
+    const days: Array<{
+      date: Date;
+      dateStr: string;
+      dayNumber: number;
+      isCurrentMonth: boolean;
+      isToday: boolean;
+      isInSelectedWeek: boolean;
+    }> = [];
+
+    const todayStr = new Date().toISOString().split("T")[0];
+    const selectedWeekDateStrs = new Set(weekDays.map((w) => w.dateStr));
+
+    // Previous month padding
+    for (let i = firstDayIndex - 1; i >= 0; i--) {
+      const dNum = daysInPrevMonth - i;
+      const d = new Date(miniYear, miniMonth - 1, dNum);
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, "0");
+      const dd = String(dNum).padStart(2, "0");
+      const dateStr = `${yyyy}-${mm}-${dd}`;
+      days.push({
+        date: d,
+        dateStr,
+        dayNumber: dNum,
+        isCurrentMonth: false,
+        isToday: dateStr === todayStr,
+        isInSelectedWeek: selectedWeekDateStrs.has(dateStr),
+      });
+    }
+
+    // Current month days
+    for (let dNum = 1; dNum <= daysInCurrentMonth; dNum++) {
+      const d = new Date(miniYear, miniMonth, dNum);
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, "0");
+      const dd = String(dNum).padStart(2, "0");
+      const dateStr = `${yyyy}-${mm}-${dd}`;
+      days.push({
+        date: d,
+        dateStr,
+        dayNumber: dNum,
+        isCurrentMonth: true,
+        isToday: dateStr === todayStr,
+        isInSelectedWeek: selectedWeekDateStrs.has(dateStr),
+      });
+    }
+
+    // Next month padding
+    const remaining = 35 - days.length >= 0 ? 35 - days.length : 42 - days.length;
+    for (let dNum = 1; dNum <= remaining; dNum++) {
+      const d = new Date(miniYear, miniMonth + 1, dNum);
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, "0");
+      const dd = String(dNum).padStart(2, "0");
+      const dateStr = `${yyyy}-${mm}-${dd}`;
+      days.push({
+        date: d,
+        dateStr,
+        dayNumber: dNum,
+        isCurrentMonth: false,
+        isToday: dateStr === todayStr,
+        isInSelectedWeek: selectedWeekDateStrs.has(dateStr),
+      });
+    }
+
+    return days;
+  }, [miniYear, miniMonth, weekDays]);
+
+  // Update status for Warranty Protection Orders (GAR-)
+  const handleUpdateGARStatus = async (orderId: string, nextStatus: string) => {
+    setUpdatingOrderStatus(orderId);
+    try {
+      const res = await fetch(`/api/sys/orders/${orderId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setFeedback({
+          type: "success",
+          msg: `Estado de orden GAR actualizado a ${nextStatus}`,
+        });
+        fetchServices();
+      } else {
+        setFeedback({
+          type: "error",
+          msg: data.error || "Error al actualizar estado de orden GAR",
+        });
+      }
+    } catch (err: any) {
+      setFeedback({
+        type: "error",
+        msg: err.message || "Error al conectar con el servidor",
+      });
+    } finally {
+      setUpdatingOrderStatus(null);
+    }
+  };
+
+  // Delete/eliminate a GAR service order and its associated schedule
+  const handleDeleteGARService = async (garOrder: OrderReady) => {
+    setDeletingGARLoading(true);
+    try {
+      const res = await fetch(`/api/sys/orders/${garOrder.id}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setFeedback({
+          type: "success",
+          msg: `Servicio de Garantía #${garOrder.orderNumber} eliminado correctamente`,
+        });
+        setDeletingGAROrder(null);
+        fetchServices();
+      } else {
+        setFeedback({
+          type: "error",
+          msg: data.error || "Error al eliminar servicio de garantía",
+        });
+      }
+    } catch (err: any) {
+      setFeedback({
+        type: "error",
+        msg: err.message || "Error al conectar con el servidor",
+      });
+    } finally {
+      setDeletingGARLoading(false);
+    }
+  };
+
+  // -------------------------------------------------------------
   // CALENDAR HELPER CALCULATIONS (Google Calendar Month View)
   // Requirement: Month and year formatted WITHOUT "de" (e.g. "Octubre 2026")
   // -------------------------------------------------------------
@@ -783,20 +1256,24 @@ export function ServicesAgendaTab() {
     return days;
   }, [year, month]);
 
-  // Filtered schedules according to search query (code, order number, or client name)
+  // Filtered schedules according to search query (code, order number, client name, or phone)
   const filteredSchedules = useMemo(() => {
     if (!agendaSearch.trim()) return schedules;
     const q = agendaSearch.toLowerCase().trim();
     return schedules.filter((s) => {
       const code = (s.appointmentCode || "").toLowerCase();
       const orderNum = (s.order?.orderNumber || "").toLowerCase();
-      const client = (s.clientName || "").toLowerCase();
+      const client = (s.clientName || s.order?.customerName || s.user?.displayName || "").toLowerCase();
       const dest = (s.destinationAddress || "").toLowerCase();
+      const phone = (s.clientPhone || s.order?.customerPhone || s.user?.phoneNumber || "").toLowerCase();
+      const userEmail = (s.user?.email || "").toLowerCase();
       return (
         code.includes(q) ||
         orderNum.includes(q) ||
         client.includes(q) ||
-        dest.includes(q)
+        dest.includes(q) ||
+        phone.includes(q) ||
+        userEmail.includes(q)
       );
     });
   }, [schedules, agendaSearch]);
@@ -865,17 +1342,29 @@ export function ServicesAgendaTab() {
     ].filter((g) => g.items.length > 0);
   }, [sortedChronological]);
 
-  // Filtered orders ready for search in Program Service view
+  // Filtered orders ready for search in Program Service view (with support for GAR warranty orders filter)
   const filteredOrdersReady = useMemo(() => {
-    if (!orderSearchQuery.trim()) return ordersReady;
+    let list = ordersReady;
+    if (programOrderFilter === "STANDARD") {
+      list = list.filter((o) => !o.orderNumber.startsWith("GAR-"));
+    } else if (programOrderFilter === "WARRANTY") {
+      list = list.filter((o) => o.orderNumber.startsWith("GAR-"));
+    }
+    if (!orderSearchQuery.trim()) return list;
     const q = orderSearchQuery.toLowerCase().trim();
-    return ordersReady.filter((o) => {
+    return list.filter((o) => {
       const ordNum = (o.orderNumber || "").toLowerCase();
-      const cust = (o.customerName || "").toLowerCase();
-      const phone = (o.customerPhone || "").toLowerCase();
-      return ordNum.includes(q) || cust.includes(q) || phone.includes(q);
+      const cust = (o.customerName || o.user?.displayName || "").toLowerCase();
+      const phone = (o.customerPhone || o.user?.phoneNumber || "").toLowerCase();
+      const email = (o.guestEmail || o.user?.email || "").toLowerCase();
+      return (
+        ordNum.includes(q) ||
+        cust.includes(q) ||
+        phone.includes(q) ||
+        email.includes(q)
+      );
     });
-  }, [ordersReady, orderSearchQuery]);
+  }, [ordersReady, programOrderFilter, orderSearchQuery]);
 
   return (
     <div className="space-y-6">
@@ -897,36 +1386,154 @@ export function ServicesAgendaTab() {
 
         {/* View Switcher, Block Days CTA & Action Controls */}
         <div className="flex flex-wrap items-center gap-2">
+          {/* Workshop Concurrent Installation Capacity Control */}
+          <div className="bg-purple-50/90 border border-purple-200 rounded-xl px-2.5 py-1 flex items-center gap-2 shadow-2xs">
+            <div className="flex items-center gap-1.5">
+              <Wrench className="w-3.5 h-3.5 text-purple-600" />
+              <div className="text-left">
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-purple-900 block leading-tight">
+                  {t.backdoorAgendaMaxInstallsBadge || "Capacidad Taller"}
+                </span>
+                <span className="text-[9px] text-purple-700 block leading-tight">
+                  {lang === "es" ? "Instalaciones simultáneas" : "Concurrent installs"}
+                </span>
+              </div>
+            </div>
+            <div className="flex items-center gap-1 border-l border-purple-200 pl-2">
+              {!isMaster && (
+                <span title={t.backdoorMasterOnlyCapacity || "Solo Master puede modificar la capacidad de vehículos simultáneos"}>
+                  <Lock className="w-3.5 h-3.5 text-purple-400 shrink-0 mr-0.5" />
+                </span>
+              )}
+              <button
+                type="button"
+                disabled={!isMaster || savingCapacity || maxConcurrentInstallations <= 1}
+                onClick={async () => {
+                  if (!isMaster) return;
+                  const newVal = Math.max(1, maxConcurrentInstallations - 1);
+                  setMaxConcurrentInstallations(newVal);
+                  setSavingCapacity(true);
+                  try {
+                    const res = await fetch("/api/logistics/config", {
+                      method: "PUT",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ maxConcurrentInstallations: newVal }),
+                    });
+                    const resData = await res.json();
+                    if (!res.ok || !resData.success) {
+                      throw new Error(resData.error || "Error al actualizar capacidad");
+                    }
+                    setFeedback({
+                      type: "success",
+                      msg: t.backdoorAgendaMaxInstallsSaved || "Capacidad de taller actualizada exitosamente.",
+                    });
+                  } catch (err: any) {
+                    setFeedback({ type: "error", msg: err.message || "Error al actualizar capacidad" });
+                  } finally {
+                    setSavingCapacity(false);
+                  }
+                }}
+                className={`w-5 h-5 rounded-md font-bold text-xs flex items-center justify-center transition ${
+                  isMaster
+                    ? "bg-purple-200 hover:bg-purple-300 text-purple-900 cursor-pointer disabled:opacity-40"
+                    : "bg-purple-100 text-purple-400 cursor-not-allowed opacity-50"
+                }`}
+                title={!isMaster ? (t.backdoorMasterOnlyCapacity || "Solo Master puede modificar capacidad") : "Disminuir capacidad"}
+              >
+                -
+              </button>
+              <span className="font-mono font-black text-xs text-purple-950 w-5 text-center">
+                {maxConcurrentInstallations}
+              </span>
+              <button
+                type="button"
+                disabled={!isMaster || savingCapacity || maxConcurrentInstallations >= 20}
+                onClick={async () => {
+                  if (!isMaster) return;
+                  const newVal = Math.min(20, maxConcurrentInstallations + 1);
+                  setMaxConcurrentInstallations(newVal);
+                  setSavingCapacity(true);
+                  try {
+                    const res = await fetch("/api/logistics/config", {
+                      method: "PUT",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ maxConcurrentInstallations: newVal }),
+                    });
+                    const resData = await res.json();
+                    if (!res.ok || !resData.success) {
+                      throw new Error(resData.error || "Error al actualizar capacidad");
+                    }
+                    setFeedback({
+                      type: "success",
+                      msg: t.backdoorAgendaMaxInstallsSaved || "Capacidad de taller actualizada exitosamente.",
+                    });
+                  } catch (err: any) {
+                    setFeedback({ type: "error", msg: err.message || "Error al actualizar capacidad" });
+                  } finally {
+                    setSavingCapacity(false);
+                  }
+                }}
+                className={`w-5 h-5 rounded-md font-bold text-xs flex items-center justify-center transition ${
+                  isMaster
+                    ? "bg-purple-200 hover:bg-purple-300 text-purple-900 cursor-pointer disabled:opacity-40"
+                    : "bg-purple-100 text-purple-400 cursor-not-allowed opacity-50"
+                }`}
+                title={!isMaster ? (t.backdoorMasterOnlyCapacity || "Solo Master puede modificar capacidad") : "Aumentar capacidad"}
+              >
+                +
+              </button>
+            </div>
+          </div>
+
           {/* View Mode Buttons */}
-          <div className="bg-slate-200/80 p-1 rounded-xl flex items-center gap-1 text-xs font-bold">
+          <div className="bg-slate-200/80 p-1 rounded-xl flex items-center gap-1 text-xs font-bold overflow-x-auto">
+            {/* 1. Week View (Google Calendar - Screenshot 2) */}
+            <button
+              type="button"
+              onClick={() => setViewMode("week")}
+              className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 shrink-0 ${
+                viewMode === "week"
+                  ? "bg-white text-slate-900 shadow-xs"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              <Clock className="w-3.5 h-3.5 text-[#C02030]" />
+              <span>{t.backdoorAgendaWeekView || "Semana"}</span>
+            </button>
+
+            {/* 2. Month Calendar View */}
             <button
               type="button"
               onClick={() => setViewMode("calendar")}
-              className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 shrink-0 ${
                 viewMode === "calendar"
                   ? "bg-white text-slate-900 shadow-xs"
                   : "text-slate-600 hover:text-slate-900"
               }`}
             >
-              <CalendarIcon className="w-3.5 h-3.5 text-[#C02030]" />
-              <span>{t.backdoorAgendaCalendarView}</span>
+              <CalendarIcon className="w-3.5 h-3.5 text-blue-600" />
+              <span>{t.backdoorAgendaMonthView || "Mes"}</span>
             </button>
+
+            {/* 3. Chronological View */}
             <button
               type="button"
               onClick={() => setViewMode("column")}
-              className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 shrink-0 ${
                 viewMode === "column"
                   ? "bg-white text-slate-900 shadow-xs"
                   : "text-slate-600 hover:text-slate-900"
               }`}
             >
-              <Layers className="w-3.5 h-3.5 text-blue-600" />
+              <Layers className="w-3.5 h-3.5 text-slate-600" />
               <span>{t.backdoorAgendaChronologicalView}</span>
             </button>
+
+            {/* 4. Program Service View */}
             <button
               type="button"
               onClick={() => setViewMode("program")}
-              className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 shrink-0 ${
                 viewMode === "program"
                   ? "bg-white text-slate-900 shadow-xs"
                   : "text-slate-600 hover:text-slate-900"
@@ -934,6 +1541,31 @@ export function ServicesAgendaTab() {
             >
               <Plus className="w-3.5 h-3.5 text-emerald-600" />
               <span>{t.backdoorAgendaScheduleServiceBtn}</span>
+            </button>
+
+            {/* 5. Warranty Protection Sub-System (GAR) */}
+            <button
+              type="button"
+              onClick={() => setViewMode("warranty")}
+              className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 shrink-0 ${
+                viewMode === "warranty"
+                  ? "bg-amber-500 text-white shadow-xs"
+                  : "text-amber-800 hover:text-amber-950 bg-amber-100/60"
+              }`}
+            >
+              <ShieldCheck className="w-3.5 h-3.5" />
+              <span>{t.backdoorAgendaWarrantyTab || "Garantías (GAR)"}</span>
+              {warrantyOrders.length > 0 && (
+                <span
+                  className={`ml-1 px-1.5 py-0.2 rounded-full text-[9px] font-mono font-black ${
+                    viewMode === "warranty"
+                      ? "bg-white text-amber-900"
+                      : "bg-[#C02030] text-white"
+                  }`}
+                >
+                  {warrantyOrders.length}
+                </span>
+              )}
             </button>
           </div>
 
@@ -985,7 +1617,7 @@ export function ServicesAgendaTab() {
       )}
 
       {/* Search Bar for Appointments (Appointment Code, Order Number, Client) */}
-      {(viewMode === "calendar" || viewMode === "column") && (
+      {(viewMode === "week" || viewMode === "calendar" || viewMode === "column") && (
         <div className="bg-white rounded-2xl border border-slate-200 p-3 shadow-xs flex items-center justify-between gap-3">
           <div className="relative flex-1">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5 pointer-events-none" />
@@ -1009,6 +1641,429 @@ export function ServicesAgendaTab() {
           <span className="text-[11px] font-mono font-bold text-slate-500 shrink-0 px-2">
             {filteredSchedules.length} / {schedules.length} citas
           </span>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* 0. GOOGLE CALENDAR WEEKLY VIEW (Screenshot 2 Match) */}
+      {/* ========================================================= */}
+      {viewMode === "week" && (
+        <div className="bg-white rounded-3xl border border-slate-200 p-4 sm:p-6 shadow-xs space-y-4">
+          {/* Top Controls Bar */}
+          <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  const now = new Date();
+                  setCurrentDate(now);
+                  setMiniMonthDate(now);
+                }}
+                className="px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50 transition"
+              >
+                {lang === "es" ? "Hoy" : "Today"}
+              </button>
+              <div className="flex items-center border border-slate-200 rounded-xl overflow-hidden bg-white">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const prev = new Date(currentDate);
+                    prev.setDate(prev.getDate() - 7);
+                    setCurrentDate(prev);
+                    setMiniMonthDate(prev);
+                  }}
+                  className="p-1.5 text-slate-600 hover:bg-slate-50 transition"
+                  title="Semana anterior"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = new Date(currentDate);
+                    next.setDate(next.getDate() + 7);
+                    setCurrentDate(next);
+                    setMiniMonthDate(next);
+                  }}
+                  className="p-1.5 text-slate-600 hover:bg-slate-50 transition"
+                  title="Semana siguiente"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+              <h3 className="text-base sm:text-lg font-black text-slate-900 capitalize tracking-tight">
+                {weekRangeTitle}
+              </h3>
+            </div>
+
+            {/* Installations Only vs All Services (General) Toggle */}
+            <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-xl self-start sm:self-auto">
+              <button
+                type="button"
+                onClick={() => setWeekMode("installations")}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+                  weekMode === "installations"
+                    ? "bg-white text-slate-900 shadow-2xs"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                <Wrench className="w-3.5 h-3.5 text-[#C02030]" />
+                <span>{t.backdoorAgendaWeekInstallsOnly || "Solo Instalaciones"}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setWeekMode("all")}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+                  weekMode === "all"
+                    ? "bg-white text-slate-900 shadow-2xs"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                <Layers className="w-3.5 h-3.5 text-blue-600" />
+                <span>{t.backdoorAgendaWeekAllServices || "Todos los Servicios (General)"}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Main Layout: Left Sidebar (Mini Month Calendar) + Weekly Grid */}
+          <div className="flex flex-col lg:flex-row gap-5 items-start">
+            {/* Left Sidebar (Screenshot 2 Match: + Create Button & Mini Calendar) */}
+            <div className="w-full lg:w-56 shrink-0 space-y-4">
+              {/* + Create Button (Matches Google Calendar "+ Create") */}
+              <button
+                type="button"
+                onClick={() => setShowBlockModal(true)}
+                className="w-full py-2.5 px-4 rounded-2xl bg-white border border-slate-200 shadow-xs hover:shadow-md text-slate-800 text-xs font-black flex items-center justify-center gap-2.5 transition group"
+              >
+                <div className="w-5 h-5 rounded-full bg-slate-100 flex items-center justify-center text-red-600 group-hover:bg-[#C02030] group-hover:text-white transition">
+                  <Plus className="w-3.5 h-3.5" />
+                </div>
+                <span>+ {lang === "es" ? "Bloquear Horario" : "Block Time"}</span>
+              </button>
+
+              {/* Mini Month Calendar */}
+              <div className="p-3 rounded-2xl border border-slate-200 bg-white shadow-2xs space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black text-slate-900 capitalize">
+                    {miniMonthName}
+                  </span>
+                  <div className="flex items-center gap-0.5">
+                    <button
+                      type="button"
+                      onClick={() => setMiniMonthDate(new Date(miniYear, miniMonth - 1, 1))}
+                      className="p-1 rounded-md text-slate-500 hover:bg-slate-100 transition"
+                    >
+                      <ChevronLeft className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMiniMonthDate(new Date(miniYear, miniMonth + 1, 1))}
+                      className="p-1 rounded-md text-slate-500 hover:bg-slate-100 transition"
+                    >
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Day of Week Labels */}
+                <div className="grid grid-cols-7 text-center text-[10px] font-bold text-slate-400">
+                  <span>D</span>
+                  <span>L</span>
+                  <span>M</span>
+                  <span>M</span>
+                  <span>J</span>
+                  <span>V</span>
+                  <span>S</span>
+                </div>
+
+                {/* Mini Month Days Grid */}
+                <div className="grid grid-cols-7 gap-y-1 text-center text-[11px]">
+                  {miniCalendarDays.map((cell, idx) => (
+                    <button
+                      key={`${cell.dateStr}-${idx}`}
+                      type="button"
+                      onClick={() => {
+                        setCurrentDate(new Date(cell.date));
+                      }}
+                      className={`h-6 w-6 mx-auto rounded-full flex items-center justify-center font-bold transition ${
+                        cell.isToday
+                          ? "bg-blue-600 text-white"
+                          : cell.isInSelectedWeek
+                          ? "bg-blue-50 text-blue-900 font-black ring-1 ring-blue-300"
+                          : cell.isCurrentMonth
+                          ? "text-slate-800 hover:bg-slate-100"
+                          : "text-slate-300 hover:bg-slate-50"
+                      }`}
+                    >
+                      {cell.dayNumber}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Quick Summary Pill */}
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-[11px] text-slate-600 space-y-1">
+                <div className="flex items-center justify-between font-bold">
+                  <span>Modo:</span>
+                  <span className="text-slate-900">
+                    {weekMode === "installations" ? "Solo Instalaciones" : "Todos los Servicios"}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-[10px] text-slate-400">
+                  <span>Horario operativo:</span>
+                  <span className="font-mono">7:00 AM – 10:00 PM</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Weekly Google Calendar Grid (Screenshot 2 Match) */}
+            <div className="flex-1 min-w-0 border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-2xs">
+              <div className="overflow-x-auto">
+                <div className="min-w-[750px]">
+                  {/* Day Column Headers */}
+                  <div className="grid grid-cols-[64px_repeat(7,1fr)] border-b border-slate-200 bg-slate-50/70">
+                    {/* Timezone / GMT */}
+                    <div className="p-2.5 text-[10px] font-mono font-extrabold text-slate-400 flex items-center justify-center border-r border-slate-200">
+                      GMT-06
+                    </div>
+                    {/* 7 Days of the Week */}
+                    {weekDays.map((day) => (
+                      <div
+                        key={day.dateStr}
+                        className={`p-2 text-center border-r border-slate-200 last:border-r-0 ${
+                          day.isToday ? "bg-blue-50/40" : ""
+                        }`}
+                      >
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
+                          {lang === "es" ? day.dayNameEs : day.dayNameEn}
+                        </span>
+                        <div className="mt-0.5">
+                          <span
+                            className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-black ${
+                              day.isToday
+                                ? "bg-blue-600 text-white shadow-xs"
+                                : "text-slate-900"
+                            }`}
+                          >
+                            {day.dayNumber}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Hourly Rows Grid */}
+                  <div className="relative grid grid-cols-[64px_repeat(7,1fr)]">
+                    {/* Time Labels Gutter */}
+                    <div className="border-r border-slate-200 bg-slate-50/40 select-none">
+                      {WEEK_DISPLAY_HOURS.map((h) => {
+                        const ampm = h >= 12 ? "PM" : "AM";
+                        const displayH = h % 12 || 12;
+                        return (
+                          <div
+                            key={h}
+                            className="h-[60px] pr-2 text-right text-[10px] font-bold text-slate-400 relative border-b border-slate-100 flex items-start justify-end pt-1"
+                          >
+                            <span>{displayH} {ampm}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* 7 Day Vertical Columns */}
+                    {weekDays.map((day) => {
+                      // Filter schedules for this day
+                      const daySchedules = (schedulesByDate.get(day.dateStr) || []).filter((sch) => {
+                        if (weekMode === "installations") {
+                          return (
+                            sch.serviceType === "shop_installation" ||
+                            sch.serviceType === "installation" ||
+                            Boolean(sch.order?.orderNumber?.startsWith("GAR-")) ||
+                            Boolean(sch.installationDurationMin && sch.installationDurationMin > 0) ||
+                            sch.status === "BLOCKED" ||
+                            sch.serviceType === "blocked_day" ||
+                            sch.serviceType === "blocked_hours"
+                          );
+                        }
+                        return true;
+                      });
+
+                      const isCurrentDay = day.isToday;
+                      const redLineTopPx = nowMinutes >= 420 && nowMinutes <= 1320 ? nowMinutes - 420 : null;
+
+                      return (
+                        <div
+                          key={day.dateStr}
+                          className={`relative border-r border-slate-200 last:border-r-0 ${
+                            isCurrentDay ? "bg-blue-50/15" : "bg-white"
+                          }`}
+                          style={{ height: `${WEEK_DISPLAY_HOURS.length * 60}px` }}
+                        >
+                          {/* Horizontal Hourly Lines */}
+                          {WEEK_DISPLAY_HOURS.map((h) => (
+                            <div
+                              key={h}
+                              className="h-[60px] border-b border-slate-100 w-full"
+                            />
+                          ))}
+
+                          {/* Red Indicator Line for Current Time (Screenshot 2 Match) */}
+                          {isCurrentDay && redLineTopPx !== null && (
+                            <div
+                              className="absolute left-0 right-0 z-20 pointer-events-none flex items-center"
+                              style={{ top: `${redLineTopPx}px` }}
+                            >
+                              <div className="w-2.5 h-2.5 rounded-full bg-red-600 -ml-1.5 shrink-0 shadow-xs" />
+                              <div className="w-full h-0.5 bg-red-600" />
+                            </div>
+                          )}
+
+                          {/* Event Blocks (With distinct separation between Pick-up Transport and Pick-up Installation) */}
+                          {(() => {
+                            const eventBlocks: Array<{
+                              key: string;
+                              sch: ServiceItem;
+                              startMin: number;
+                              durMin: number;
+                              title: string;
+                              subtitle: string;
+                              tag: string;
+                              icon: any;
+                              colorClass: string;
+                              isInstallationAdjustment: boolean;
+                            }> = [];
+
+                            for (const sch of daySchedules) {
+                              const isPickup = sch.serviceType === "pickup" || sch.serviceType === "UTV_PICKUP";
+                              const isBlocked = sch.status === "BLOCKED" || sch.serviceType === "ruta_barrial" || sch.serviceType === "blocked_day" || sch.serviceType === "blocked_hours";
+                              const isWarranty = Boolean(sch.order?.orderNumber?.startsWith("GAR-"));
+
+                              if (isPickup) {
+                                // 1. Pick-up Transport Block (Platform truck driving) - Visible in "all" services mode
+                                if (weekMode === "all") {
+                                  const travelDur = Math.max(30, sch.travelDurationMin || 45);
+                                  eventBlocks.push({
+                                    key: `${sch.id}_transport`,
+                                    sch,
+                                    startMin: sch.timeMinutes,
+                                    durMin: travelDur,
+                                    title: `Retiro Plataforma • #${sch.order?.orderNumber || sch.appointmentCode || "SRV"}`,
+                                    subtitle: sch.clientName || sch.order?.customerName || "Cliente",
+                                    tag: `~${travelDur}m traslado`,
+                                    icon: Car,
+                                    colorClass: "bg-slate-100 text-slate-900 border-slate-300 hover:bg-slate-200/90",
+                                    isInstallationAdjustment: false,
+                                  });
+                                }
+
+                                // 2. Pick-up Workshop Installation Block - Starts post-arrival (30m prep)
+                                const installDur = sch.installationDurationMin || 120;
+                                const installStartMin = sch.workshopArrivalMinutes || (sch.timeMinutes + (sch.travelDurationMin || 45) + 30);
+                                eventBlocks.push({
+                                  key: `${sch.id}_install`,
+                                  sch,
+                                  startMin: installStartMin,
+                                  durMin: installDur,
+                                  title: `Instalación Taller (UTV Retirado) • #${sch.order?.orderNumber || sch.appointmentCode || "SRV"}`,
+                                  subtitle: sch.clientName || sch.order?.customerName || "Cliente",
+                                  tag: `${installDur}m inst`,
+                                  icon: Warehouse,
+                                  colorClass: isWarranty
+                                    ? "bg-amber-50 text-amber-950 border-amber-300 ring-1 ring-amber-400/40"
+                                    : "bg-emerald-50 text-emerald-950 border-emerald-400 hover:bg-emerald-100/90",
+                                  isInstallationAdjustment: true,
+                                });
+                              } else {
+                                // Standard Service Block
+                                const dur = sch.durationMinutes || sch.installationDurationMin || 60;
+                                const meta = SERVICE_META[sch.serviceType] || SERVICE_META.installation;
+                                eventBlocks.push({
+                                  key: sch.id,
+                                  sch,
+                                  startMin: sch.timeMinutes,
+                                  durMin: dur,
+                                  title: `${isBlocked ? "Bloqueo Taller" : meta.labelEs} • #${sch.order?.orderNumber || sch.appointmentCode || "SRV"}`,
+                                  subtitle: sch.clientName || sch.order?.customerName || meta.labelEs,
+                                  tag: `${dur}m`,
+                                  icon: isWarranty ? ShieldCheck : isBlocked ? Lock : meta.icon,
+                                  colorClass: isBlocked
+                                    ? "bg-rose-100/90 text-rose-950 border-rose-300"
+                                    : isWarranty
+                                    ? "bg-amber-50 text-amber-950 border-amber-300 ring-1 ring-amber-400/40"
+                                    : sch.serviceType === "shop_installation"
+                                    ? "bg-emerald-50 text-emerald-950 border-emerald-300"
+                                    : sch.serviceType === "installation"
+                                    ? "bg-red-50 text-red-950 border-red-300"
+                                    : sch.serviceType === "delivery"
+                                    ? "bg-blue-50 text-blue-950 border-blue-300"
+                                    : "bg-slate-100 text-slate-900 border-slate-300",
+                                  isInstallationAdjustment: Boolean(
+                                    sch.serviceType === "shop_installation" ||
+                                    sch.serviceType === "installation" ||
+                                    isWarranty
+                                  ),
+                                });
+                              }
+                            }
+
+                            return eventBlocks.map((blk) => {
+                              const topPx = Math.max(0, blk.startMin - 420);
+                              const heightPx = Math.max(28, blk.durMin);
+                              const Icon = blk.icon;
+
+                              return (
+                                <div
+                                  key={blk.key}
+                                  onClick={() => {
+                                    if (blk.isInstallationAdjustment) {
+                                      handleOpenAdjustTimeModal(blk.sch);
+                                    } else {
+                                      setSelectedSchedule(blk.sch);
+                                    }
+                                  }}
+                                  style={{
+                                    top: `${topPx}px`,
+                                    height: `${heightPx}px`,
+                                  }}
+                                  className={`absolute left-1 right-1 rounded-xl p-1.5 border shadow-2xs cursor-pointer z-10 transition hover:shadow-md hover:scale-[1.01] flex flex-col justify-between overflow-hidden group ${blk.colorClass}`}
+                                  title={`${blk.title} | ${blk.subtitle} (${blk.tag})`}
+                                >
+                                  <div>
+                                    <div className="flex items-center justify-between gap-1">
+                                      <div className="flex items-center gap-1 min-w-0">
+                                        <Icon className="w-3 h-3 shrink-0 text-[#C02030]" />
+                                        <span className="font-mono text-[9px] font-extrabold truncate">
+                                          {blk.title}
+                                        </span>
+                                      </div>
+                                      <span className="text-[8.5px] font-mono font-bold opacity-75 shrink-0">
+                                        {formatMinTo12h(blk.startMin)}
+                                      </span>
+                                    </div>
+
+                                    <p className="text-[10px] font-bold line-clamp-1 mt-0.5">
+                                      {blk.subtitle}
+                                    </p>
+                                  </div>
+
+                                  <div className="flex items-center justify-between text-[8.5px] font-mono pt-0.5 border-t border-black/5 mt-auto">
+                                    <span>{blk.tag}</span>
+                                    <span className="text-[#C02030] font-black group-hover:underline">
+                                      {blk.isInstallationAdjustment ? "Ajustar Inst →" : "Detalles →"}
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            });
+                          })()}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -1112,11 +2167,68 @@ export function ServicesAgendaTab() {
                     {/* Event Chips Container (Google Calendar style) */}
                     <div className="space-y-1 flex-1 overflow-y-auto max-h-[85px]">
                       {daySchedules.map((sch) => {
+                        const isPickup = sch.serviceType === "pickup" || sch.serviceType === "UTV_PICKUP";
                         const meta =
                           SERVICE_META[sch.serviceType] || SERVICE_META.installation;
                         const isPaid = sch.paymentStatus === "PAID";
                         const isBlocked = sch.status === "BLOCKED" || sch.serviceType === "ruta_barrial" || sch.serviceType === "blocked_day";
                         const Icon = meta.icon;
+
+                        // If Pick-up service, render distinct separated chips: 1) Platform Transport & 2) Workshop Installation
+                        if (isPickup) {
+                          const installStartMin = sch.workshopArrivalMinutes || (sch.timeMinutes + (sch.travelDurationMin || 45) + 30);
+                          const installDurMin = sch.installationDurationMin || 120;
+
+                          return (
+                            <React.Fragment key={sch.id}>
+                              {/* 1. Pick-up Transport Chip */}
+                              <button
+                                type="button"
+                                onClick={() => setSelectedSchedule(sch)}
+                                className="w-full text-left p-1 rounded-lg border text-[10px] font-bold flex items-center gap-1 truncate shadow-xs transition hover:brightness-95 bg-slate-100 text-slate-800 border-slate-300"
+                                title={`Retiro en Plataforma | ${sch.time} - ${sch.clientName || "Cliente"} (~${sch.travelDurationMin || 45} min viaje)`}
+                              >
+                                {sch.appointmentCode && (
+                                  <span className="font-mono text-[9px] px-1 py-0.2 rounded bg-black/10 shrink-0">
+                                    {sch.appointmentCode}
+                                  </span>
+                                )}
+                                <Car className="w-3 h-3 shrink-0 text-slate-700" />
+                                <span className="truncate flex-1">
+                                  {sch.time} Retiro Plataforma: {sch.order?.orderNumber ? `#${sch.order.orderNumber}` : sch.clientName || "Cliente"}
+                                  <span className="opacity-90 font-mono text-[9px] ml-1 bg-white/70 px-1 py-0.2 rounded text-slate-800">
+                                    ~{sch.travelDurationMin || 45}m viaje
+                                  </span>
+                                </span>
+                                <span
+                                  className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                                    isPaid ? "bg-emerald-600" : "bg-amber-500"
+                                  }`}
+                                  title={isPaid ? "Pago confirmado" : "Pago pendiente"}
+                                />
+                              </button>
+
+                              {/* 2. Pick-up Workshop Installation Chip */}
+                              <button
+                                type="button"
+                                onClick={() => handleOpenAdjustTimeModal(sch)}
+                                className="w-full text-left p-1 rounded-lg border text-[10px] font-bold flex items-center gap-1 truncate shadow-xs transition hover:brightness-95 bg-emerald-50 text-emerald-900 border-emerald-300"
+                                title={`Instalación en Taller (Post-llegada) | ${formatMinTo12h(installStartMin)} - ${sch.clientName || "Cliente"} (${(installDurMin / 60).toFixed(1)}h)`}
+                              >
+                                <Warehouse className="w-3 h-3 shrink-0 text-emerald-700" />
+                                <span className="truncate flex-1">
+                                  {formatMinTo12h(installStartMin)} Inst. Taller: {sch.order?.orderNumber ? `#${sch.order.orderNumber}` : sch.clientName || "Cliente"}
+                                  <span className="opacity-90 font-mono text-[9px] ml-1 bg-emerald-100 text-emerald-950 px-1 py-0.2 rounded font-bold">
+                                    {(installDurMin / 60).toFixed(1)}h
+                                  </span>
+                                </span>
+                                <span className="text-[8px] font-black text-emerald-800 shrink-0">
+                                  Taller
+                                </span>
+                              </button>
+                            </React.Fragment>
+                          );
+                        }
 
                         return (
                           <button
@@ -1130,7 +2242,7 @@ export function ServicesAgendaTab() {
                                   : "bg-rose-100 text-rose-900 border-rose-300 font-extrabold"
                                 : meta.color
                             }`}
-                            title={`${sch.appointmentCode || ""} | ${sch.time} - ${sch.clientName || "Cliente"} (${meta.labelEs})`}
+                            title={`${sch.appointmentCode || ""} | ${sch.time} - ${sch.clientName || "Cliente"} (${meta.labelEs})${sch.travelDurationMin ? ` | Traslado: ~${sch.travelDurationMin} min` : ""}`}
                           >
                             {sch.appointmentCode && (
                               <span className="font-mono text-[9px] px-1 py-0.2 rounded bg-black/10 shrink-0">
@@ -1142,8 +2254,23 @@ export function ServicesAgendaTab() {
                               {sch.serviceType === "ruta_barrial"
                                 ? "Ruta BarrialCR"
                                 : sch.order?.orderNumber
-                                ? `#${sch.order.orderNumber}`
+                                ? `#${sch.order.orderNumber}${sch.clientName ? ` • ${sch.clientName}` : ""}`
                                 : sch.clientName || meta.labelEs}
+                              {Boolean(sch.installationDurationMin) && (
+                                <span className="opacity-70 font-mono text-[9px] ml-1">
+                                  ({(sch.installationDurationMin! / 60).toFixed(1)}h)
+                                </span>
+                              )}
+                              {Boolean(sch.travelDurationMin && sch.travelDurationMin > 0) && (
+                                <span className="opacity-90 font-mono text-[9px] ml-1 bg-white/70 px-1 py-0.2 rounded text-slate-800" title={`Tiempo de viaje: ~${sch.travelDurationMin} min`}>
+                                  ~{sch.travelDurationMin}m viaje
+                                </span>
+                              )}
+                              {Boolean(sch.carryoverNextDayMinutes && sch.carryoverNextDayMinutes > 0) && (
+                                <span className="ml-1 text-[8px] bg-amber-200 text-amber-900 px-1 py-0.2 rounded font-black">
+                                  +1d
+                                </span>
+                              )}
                             </span>
                             {!isBlocked && (
                               <span
@@ -1223,13 +2350,30 @@ export function ServicesAgendaTab() {
 
                         {/* Appointment Code badge */}
                         {sch.appointmentCode && (
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <span className="text-[10px] font-mono font-extrabold px-2 py-0.5 rounded-md bg-slate-100 text-slate-800 border border-slate-200">
                               #{sch.appointmentCode}
                             </span>
                             {sch.order && (
                               <span className="text-[10px] font-mono font-bold text-[#C02030]">
                                 #{sch.order.orderNumber}
+                              </span>
+                            )}
+                            {Boolean(sch.installationDurationMin) && (
+                              <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md bg-purple-50 text-purple-800 border border-purple-200 flex items-center gap-1">
+                                <Clock className="w-2.5 h-2.5 text-purple-600" />
+                                <span>{(sch.installationDurationMin! / 60).toFixed(1)}h inst.</span>
+                              </span>
+                            )}
+                            {Boolean(sch.travelDurationMin && sch.travelDurationMin > 0) && (
+                              <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md bg-sky-50 text-sky-800 border border-sky-200 flex items-center gap-1">
+                                <Navigation className="w-2.5 h-2.5 text-sky-600" />
+                                <span>~{sch.travelDurationMin} min viaje</span>
+                              </span>
+                            )}
+                            {Boolean(sch.carryoverNextDayMinutes && sch.carryoverNextDayMinutes > 0) && (
+                              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300">
+                                +1d ({(sch.carryoverNextDayMinutes! / 60).toFixed(1)}h)
                               </span>
                             )}
                           </div>
@@ -1240,7 +2384,7 @@ export function ServicesAgendaTab() {
                           <h4 className="text-xs font-black text-slate-900 line-clamp-1">
                             {sch.serviceType === "ruta_barrial"
                               ? "Ruta BarrialCR (Rides - Día Bloqueado)"
-                              : sch.clientName || sch.order?.customerName || "Cliente ZxZ"}
+                              : sch.clientName || sch.order?.customerName || sch.user?.displayName || "Cliente ZxZ"}
                           </h4>
                           {sch.clientPhone && (
                             <a
@@ -1394,6 +2538,44 @@ export function ServicesAgendaTab() {
             ) : (
               /* Search input & dropdown results */
               <div className="space-y-3">
+                {/* Order Type Filter Pills */}
+                <div className="flex items-center gap-1.5 pb-1">
+                  <button
+                    type="button"
+                    onClick={() => setProgramOrderFilter("ALL")}
+                    className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition ${
+                      programOrderFilter === "ALL"
+                        ? "bg-slate-900 text-white"
+                        : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    }`}
+                  >
+                    Todas ({ordersReady.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setProgramOrderFilter("STANDARD")}
+                    className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition ${
+                      programOrderFilter === "STANDARD"
+                        ? "bg-slate-900 text-white"
+                        : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    }`}
+                  >
+                    Repuestos / Combos
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setProgramOrderFilter("WARRANTY")}
+                    className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition flex items-center gap-1 ${
+                      programOrderFilter === "WARRANTY"
+                        ? "bg-amber-500 text-white"
+                        : "bg-amber-50 text-amber-900 border border-amber-200 hover:bg-amber-100"
+                    }`}
+                  >
+                    <ShieldCheck className="w-3 h-3" />
+                    <span>Garantías ({ordersReady.filter((o) => o.orderNumber.startsWith("GAR-")).length})</span>
+                  </button>
+                </div>
+
                 <div className="relative">
                   <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
                   <input
@@ -1414,9 +2596,17 @@ export function ServicesAgendaTab() {
                       className="w-full p-3 rounded-2xl border border-slate-200 bg-gray-50/70 hover:bg-white hover:border-slate-900 text-left transition flex items-center justify-between gap-3"
                     >
                       <div>
-                        <span className="text-[10px] font-mono font-bold text-[#C02030] block">
-                          #{ord.orderNumber}
-                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] font-mono font-bold text-[#C02030] block">
+                            #{ord.orderNumber}
+                          </span>
+                          {ord.orderNumber.startsWith("GAR-") && (
+                            <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-0.5">
+                              <ShieldCheck className="w-2.5 h-2.5 text-amber-700" />
+                              <span>Garantía</span>
+                            </span>
+                          )}
+                        </div>
                         <p className="text-xs font-bold text-slate-900">
                           {ord.customerName || "Cliente"}
                         </p>
@@ -1850,6 +3040,298 @@ export function ServicesAgendaTab() {
       )}
 
       {/* ========================================================= */}
+      {/* 4. GARANTIAS / WARRANTY SYSTEM VIEW (GAR- Orders) */}
+      {/* ========================================================= */}
+      {viewMode === "warranty" && (
+        <div className="bg-white rounded-3xl border border-slate-200 p-5 sm:p-6 shadow-xs space-y-6 animate-fade-in">
+          {/* Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-amber-500 text-white flex items-center justify-center shadow-sm">
+                <ShieldCheck className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight flex items-center gap-2">
+                  <span>Protección de Garantía de Agencia (GAR)</span>
+                  <span className="px-2 py-0.5 rounded-full text-xs font-mono font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                    {warrantyOrders.length}
+                  </span>
+                </h3>
+                <p className="text-xs text-slate-500">
+                  {t.backdoorAgendaWarrantyDesc || "Gestión de desinstalación de piezas ZxZ y reinstalación temporal OEM previo a inspecciones de agencia."}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => fetchServices(false)}
+                className="p-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 transition"
+                title="Refrescar órdenes de garantía"
+              >
+                <RefreshCw className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Filter Pills */}
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs font-bold">
+            {[
+              { id: "ALL", label: "Todas" },
+              { id: "PROGRAM_SERVICE", label: "Por Programar Servicio" },
+              { id: "SCHEDULED", label: "Citas Programadas" },
+              { id: "INSTALLING", label: "En Instalación / Taller" },
+              { id: "COMPLETED", label: "Completadas" },
+            ].map((f) => (
+              <button
+                key={f.id}
+                type="button"
+                onClick={() => setWarrantyStatusFilter(f.id)}
+                className={`px-3 py-1.5 rounded-xl border transition shrink-0 ${
+                  warrantyStatusFilter === f.id
+                    ? "bg-slate-900 text-white border-slate-900 shadow-xs"
+                    : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Cards List */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {warrantyOrders
+              .filter((ord) => {
+                if (warrantyStatusFilter === "PROGRAM_SERVICE") return ord.status === "PROGRAM_SERVICE";
+                if (warrantyStatusFilter === "SCHEDULED") {
+                  return ["WAITING_ON_DELIVERY", "PICKUP_DATE_SET", "HOME_INSTALL_SET"].includes(ord.status);
+                }
+                if (warrantyStatusFilter === "INSTALLING") return ord.status === "INSTALLING";
+                if (warrantyStatusFilter === "COMPLETED") return ord.status === "COMPLETED";
+                return true;
+              })
+              .map((ord) => {
+                let itemsList: any[] = [];
+                try {
+                  itemsList = typeof ord.itemsJson === "string" ? JSON.parse(ord.itemsJson) : ord.itemsJson;
+                } catch {}
+
+                const dateStr = new Date(ord.createdAt).toLocaleDateString(lang === "es" ? "es-CR" : "en-US", {
+                  day: "numeric",
+                  month: "short",
+                  year: "numeric",
+                });
+
+                return (
+                  <div
+                    key={ord.id}
+                    className="p-4 rounded-2xl border border-slate-200 bg-white hover:border-slate-300 shadow-2xs space-y-3 flex flex-col justify-between transition"
+                  >
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-mono font-black text-amber-700 bg-amber-50 px-2 py-0.5 rounded-lg border border-amber-200">
+                          #{ord.orderNumber}
+                        </span>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                          {ord.status}
+                        </span>
+                      </div>
+
+                      <div>
+                        <h4 className="text-sm font-bold text-slate-900">
+                          {ord.customerName || "Cliente"}
+                        </h4>
+                        <div className="flex items-center gap-2 text-xs text-slate-500 font-mono">
+                          {ord.customerPhone && (
+                            <a href={`tel:${ord.customerPhone}`} className="hover:underline text-blue-600">
+                              {ord.customerPhone}
+                            </a>
+                          )}
+                          <span>•</span>
+                          <span>{dateStr}</span>
+                        </div>
+                      </div>
+
+                      {/* Parts to Deinstall & Reinstall */}
+                      <div className="pt-2 border-t border-slate-100 space-y-1.5">
+                        <span className="text-[10px] uppercase font-bold text-slate-400 block">
+                          Piezas a Desmontar / Reinstalar:
+                        </span>
+                        <div className="space-y-1 max-h-36 overflow-y-auto">
+                          {itemsList.map((item, idx) => (
+                            <div key={idx} className="flex items-center gap-2 text-xs p-1.5 rounded-xl bg-slate-50 border border-slate-100">
+                              <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 overflow-hidden shrink-0 flex items-center justify-center">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={item.imageUrl || "/images/placeholder.png"}
+                                  alt={item.name || "Pieza"}
+                                  className="w-full h-full object-cover"
+                                />
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="text-[11px] font-bold truncate text-slate-800">
+                                  {item.name || item.title || "Pieza ZxZ"}
+                                </p>
+                                <p className="text-[10px] font-mono text-slate-500">
+                                  Mano de obra: ₡{(item.deinstallReinstallCostCRC || (item.installationPriceCRC ? item.installationPriceCRC * 2 : 0) || 0).toLocaleString()}
+                                </p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="pt-2 border-t border-slate-100 space-y-2">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-slate-500">Total Mano de Obra [Inst × 2]:</span>
+                        <span className="font-mono font-bold text-slate-900">
+                          {formatCRC(ord.totalCRC)}
+                        </span>
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex items-center gap-1.5 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setProgramSelectedOrder(ord);
+                            setProgramServiceType("shop_installation");
+                            setViewMode("program");
+                          }}
+                          className="flex-1 py-2 px-2.5 rounded-xl bg-[#C02030] hover:bg-[#A01825] text-white text-xs font-bold transition flex items-center justify-center gap-1 shadow-2xs"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Programar</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setViewingGARLegalDoc({
+                              orderNumber: ord.orderNumber,
+                              orderId: ord.id,
+                              createdAt: ord.createdAt,
+                              customerName: ord.customerName || ord.user?.displayName || "Cliente",
+                              customerPhone: ord.customerPhone || ord.user?.phoneNumber || null,
+                              customerEmail: ord.guestEmail || ord.user?.email || null,
+                              totalCRC: ord.totalCRC,
+                              items: itemsList.map((it: any) => ({
+                                name: it.name || it.title || "Pieza ZxZ",
+                                sku: it.sku || "N/A",
+                                priceCRC: it.deinstallReinstallCostCRC || (it.installationPriceCRC ? it.installationPriceCRC * 2 : 0),
+                              })),
+                            });
+                          }}
+                          className="py-2 px-2.5 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-bold transition flex items-center gap-1"
+                          title="Ver contrato legal de garantía y términos de exoneración"
+                        >
+                          <FileText className="w-3.5 h-3.5 text-amber-600" />
+                          <span className="hidden sm:inline">Contrato</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={updatingOrderStatus === ord.id}
+                          onClick={() => {
+                            const next = ord.status === "PROGRAM_SERVICE"
+                              ? "INSTALLING"
+                              : ord.status === "INSTALLING"
+                              ? "COMPLETED"
+                              : "COMPLETED";
+                            handleUpdateGARStatus(ord.id, next);
+                          }}
+                          className="py-2 px-2.5 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-bold transition"
+                          title="Avanzar estado del servicio"
+                        >
+                          {updatingOrderStatus === ord.id ? "..." : "Avanzar →"}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setDeletingGAROrder(ord)}
+                          className="py-2 px-2 rounded-xl border border-red-200 text-red-600 hover:bg-red-50 text-xs font-bold transition"
+                          title="Eliminar este servicio de garantía"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+
+          {warrantyOrders.length === 0 && (
+            <div className="p-8 text-center bg-slate-50 border border-slate-200 rounded-3xl space-y-2">
+              <ShieldCheck className="w-8 h-8 text-slate-400 mx-auto" />
+              <h4 className="text-sm font-bold text-slate-700">No hay órdenes de garantía activas</h4>
+              <p className="text-xs text-slate-500">
+                Cuando los clientes soliciten protección de garantía para desinstalar piezas ZxZ antes de visitar el concesionario, aparecerán en este panel.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Legal Document Modal for GAR Orders */}
+      {viewingGARLegalDoc && (
+        <WarrantyLegalDocumentModal
+          data={viewingGARLegalDoc}
+          onClose={() => setViewingGARLegalDoc(null)}
+        />
+      )}
+
+      {/* GAR Deletion Confirmation Modal */}
+      {deletingGAROrder && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl border border-slate-200 w-full max-w-md p-6 shadow-2xl space-y-4 animate-fade-in">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-red-100 text-red-600 flex items-center justify-center font-bold shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-black text-slate-900">
+                  ¿Eliminar Servicio de Garantía?
+                </h3>
+                <span className="text-xs font-mono font-bold text-[#C02030]">
+                  #{deletingGAROrder.orderNumber}
+                </span>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed">
+              ¿Estás seguro de que deseas eliminar permanentemente la orden de servicio de garantía{" "}
+              <strong>#{deletingGAROrder.orderNumber}</strong> de{" "}
+              <strong>{deletingGAROrder.customerName || "Cliente"}</strong>? Se cancelará la solicitud y
+              se liberará cualquier horario de servicio o instalación agendado en el calendario.
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setDeletingGAROrder(null)}
+                disabled={deletingGARLoading}
+                className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDeleteGARService(deletingGAROrder)}
+                disabled={deletingGARLoading}
+                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition flex items-center gap-1.5 disabled:opacity-50"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{deletingGARLoading ? "Eliminando..." : "Confirmar Eliminación"}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
       {/* 4. DETAIL MODAL (With Edit & Delete options) */}
       {/* ========================================================= */}
       {selectedSchedule && (
@@ -1913,6 +3395,40 @@ export function ServicesAgendaTab() {
                 </div>
               </div>
 
+              {/* Installation Duration & Workshop Buffer details */}
+              {(selectedSchedule.serviceType === "shop_installation" || selectedSchedule.serviceType === "pickup" || selectedSchedule.serviceType === "UTV_PICKUP" || Boolean(selectedSchedule.installationDurationMin)) && (
+                <div className="p-3 rounded-2xl bg-purple-50/80 border border-purple-200/90 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] uppercase font-bold text-purple-900 flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 text-purple-600" />
+                      <span>{t.backdoorAdjustDurationLabel || "Tiempo de Instalación en Taller"}:</span>
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-black text-xs text-purple-950">
+                        {((selectedSchedule.installationDurationMin || 60) / 60).toFixed(1)} h ({selectedSchedule.installationDurationMin || 60} min)
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenAdjustTimeModal(selectedSchedule)}
+                        className="px-2.5 py-1 rounded-lg bg-purple-900 hover:bg-purple-800 text-white text-[10px] font-bold transition flex items-center gap-1 shadow-2xs cursor-pointer"
+                        title="Ajustar tiempo de instalación y horario en la hoja de tiempo"
+                      >
+                        <Clock className="w-3 h-3 text-purple-300" />
+                        <span>Ajustar Horario</span>
+                      </button>
+                    </div>
+                  </div>
+                  {Boolean(selectedSchedule.carryoverNextDayMinutes && selectedSchedule.carryoverNextDayMinutes > 0) && (
+                    <div className="p-2 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-950 flex items-start gap-1.5 leading-snug">
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                      <span>
+                        <strong>Continuación al día siguiente:</strong> El montaje finaliza el {selectedSchedule.carryoverDate || "día hábil siguiente"} a partir de las 8:00 AM (restan {((selectedSchedule.carryoverNextDayMinutes || 0) / 60).toFixed(1)} horas).
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Destination */}
               {selectedSchedule.destinationAddress && (
                 <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1">
@@ -1926,6 +3442,12 @@ export function ServicesAgendaTab() {
                     <span className="text-[10px] font-mono text-slate-500 block">
                       Distancia: {selectedSchedule.distanceKm} km desde Calle 34 Pozos
                     </span>
+                  ) : null}
+                  {selectedSchedule.travelDurationMin ? (
+                    <div className="flex items-center gap-1.5 text-[11px] font-mono font-bold text-slate-700 pt-1.5 border-t border-slate-200/60 mt-1">
+                      <Navigation className="w-3 h-3 text-[#C02030] shrink-0" />
+                      <span>{t.backdoorAgendaDrivingTime}: ~{selectedSchedule.travelDurationMin} min</span>
+                    </div>
                   ) : null}
                 </div>
               )}
@@ -2058,6 +3580,15 @@ export function ServicesAgendaTab() {
               <div className="flex items-center gap-2">
                 <button
                   type="button"
+                  onClick={() => handleOpenAdjustTimeModal(selectedSchedule)}
+                  className="px-3.5 py-2 rounded-xl bg-purple-50 hover:bg-purple-100 border border-purple-200 text-purple-950 text-xs font-bold transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                  title="Abrir hoja de horarios para modificar fecha, hora o duración de instalación"
+                >
+                  <Clock className="w-3.5 h-3.5 text-purple-700" />
+                  <span>Ajustar Hoja de Tiempo</span>
+                </button>
+                <button
+                  type="button"
                   onClick={() => {
                     handleOpenEditModal(selectedSchedule);
                   }}
@@ -2122,87 +3653,177 @@ export function ServicesAgendaTab() {
                 />
               </div>
 
-              {/* Status of this date if already blocked */}
-              {existingBlockOnDate && (
-                <div className="p-3 rounded-2xl bg-amber-50 border border-amber-200 space-y-2">
-                  <div className="flex items-center gap-2 text-amber-900 font-bold">
-                    <AlertTriangle className="w-4 h-4 text-amber-600" />
-                    <span>Fecha actualmente bloqueada</span>
+              {/* Status of this date if blocks already exist */}
+              {existingBlocksOnDate.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-1.5 text-slate-800 font-bold text-[11px]">
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Bloqueos activos en esta fecha ({existingBlocksOnDate.length}):</span>
                   </div>
-                  <p className="text-[11px] text-amber-800">
-                    {existingBlockOnDate.serviceType === "ruta_barrial"
-                      ? "Bloqueado por: Ruta BarrialCR (Rides)"
-                      : "Bloqueado por: Taller ZxZ"}
-                  </p>
-                  <button
-                    type="button"
-                    disabled={blockSaving}
-                    onClick={() => handleUnblockDay(existingBlockOnDate.id)}
-                    className="w-full py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold transition flex items-center justify-center gap-1.5 shadow-sm"
-                  >
-                    <Unlock className="w-3.5 h-3.5" />
-                    <span>{t.backdoorUnblockBtn}</span>
-                  </button>
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {existingBlocksOnDate.map((blk) => {
+                      const isFull = blk.isFullDay || blk.serviceType === "blocked_day" || blk.serviceType === "ruta_barrial";
+                      return (
+                        <div
+                          key={blk.id}
+                          className="p-3 rounded-2xl bg-amber-50/80 border border-amber-200 flex items-center justify-between gap-3 text-xs"
+                        >
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="font-mono font-bold text-[10px] px-2 py-0.5 rounded-md bg-amber-200 text-amber-900">
+                                {isFull ? "Día Completo" : `Horas: ${blk.time}`}
+                              </span>
+                              <span className="text-[10px] font-mono text-slate-500">
+                                #{blk.appointmentCode || blk.id.slice(-4)}
+                              </span>
+                            </div>
+                            <p className="text-[11px] font-semibold text-slate-800 mt-1 truncate">
+                              {blk.destinationAddress || blk.clientName || "Bloqueo Interno Taller"}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            disabled={blockSaving}
+                            onClick={() => handleUnblockDay(blk.id)}
+                            className="px-2.5 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-[11px] transition flex items-center gap-1 shrink-0 shadow-2xs"
+                            title="Eliminar este bloqueo"
+                          >
+                            <Unlock className="w-3 h-3" />
+                            <span>{t.backdoorUnblockBtn}</span>
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
 
-              {/* Toggles */}
-              {!existingBlockOnDate && (
+              {/* Block Options (allowed if date does NOT have a full-day block) */}
+              {!hasFullDayBlockOnDate && (
                 <div className="space-y-3 p-4 rounded-2xl bg-slate-50 border border-slate-200">
-                  {/* Toggle 1: Block Full Day */}
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <span className="font-bold text-slate-900 block">
-                        {t.backdoorBlockDayToggle}
-                      </span>
-                      <span className="text-[10px] text-slate-500">
-                        Inhabilita agendar citas este día en /servicios
-                      </span>
-                    </div>
-                    <span className="font-mono font-bold text-xs text-red-600 bg-red-50 px-2 py-0.5 rounded-md border border-red-200">
-                      Día Completo
-                    </span>
-                  </div>
-
-                  {/* Toggle 2: Ruta BarrialCR */}
-                  <div className="pt-2 border-t border-slate-200/80 flex items-center justify-between">
-                    <div className="pr-3">
-                      <span className="font-bold text-slate-900 block">
-                        {t.backdoorRutaBarrialToggle}
-                      </span>
-                      <span className="text-[10px] text-slate-500">
-                        Los clientes verán la etiqueta &quot;Ruta BarrialCR&quot; en el calendario de /servicios
-                      </span>
-                    </div>
-                    <label className="relative inline-flex items-center cursor-pointer shrink-0">
-                      <input
-                        type="checkbox"
-                        checked={isBlockRutaBarrial}
-                        onChange={(e) => setIsBlockRutaBarrial(e.target.checked)}
-                        className="sr-only peer"
-                      />
-                      <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+                  {/* Mode selector pills */}
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-700 block mb-1.5">
+                      {t.backdoorBlockModeLabel || "Modalidad de Bloqueo"}:
                     </label>
+                    <div className="grid grid-cols-3 gap-1.5 p-1 rounded-xl bg-slate-200/70 text-[11px] font-bold text-slate-600">
+                      <button
+                        type="button"
+                        onClick={() => setBlockMode("hours")}
+                        className={`py-1.5 px-2 rounded-lg transition-all flex items-center justify-center gap-1 ${
+                          blockMode === "hours"
+                            ? "bg-white text-slate-900 shadow-xs"
+                            : "hover:text-slate-900"
+                        }`}
+                      >
+                        <Clock className="w-3 h-3 text-amber-600" />
+                        <span>Horas</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setBlockMode("day")}
+                        className={`py-1.5 px-2 rounded-lg transition-all flex items-center justify-center gap-1 ${
+                          blockMode === "day"
+                            ? "bg-white text-slate-900 shadow-xs"
+                            : "hover:text-slate-900"
+                        }`}
+                      >
+                        <Lock className="w-3 h-3 text-rose-600" />
+                        <span>Día Completo</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setBlockMode("ruta")}
+                        className={`py-1.5 px-2 rounded-lg transition-all flex items-center justify-center gap-1 ${
+                          blockMode === "ruta"
+                            ? "bg-white text-slate-900 shadow-xs"
+                            : "hover:text-slate-900"
+                        }`}
+                      >
+                        <Car className="w-3 h-3 text-blue-600" />
+                        <span>Ruta Barrial</span>
+                      </button>
+                    </div>
                   </div>
 
-                  {/* Optional BarrialCR Details */}
-                  {isBlockRutaBarrial && (
-                    <div className="pt-3 border-t border-amber-200/60 space-y-2.5 animate-in fade-in">
+                  {/* Mode 1: Hours */}
+                  {blockMode === "hours" && (
+                    <div className="space-y-2.5 pt-2 border-t border-slate-200 animate-fade-in">
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-700 block mb-1">
+                            {t.backdoorBlockStartHour || "Hora Inicio"}:
+                          </label>
+                          <input
+                            type="time"
+                            value={blockStartHour}
+                            onChange={(e) => setBlockStartHour(e.target.value)}
+                            className="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-300 font-mono focus:outline-none focus:border-amber-500 bg-white"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-700 block mb-1">
+                            {t.backdoorBlockEndHour || "Hora Fin"}:
+                          </label>
+                          <input
+                            type="time"
+                            value={blockEndHour}
+                            onChange={(e) => setBlockEndHour(e.target.value)}
+                            className="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-300 font-mono focus:outline-none focus:border-amber-500 bg-white"
+                          />
+                        </div>
+                      </div>
+
                       <div>
-                        <label className="text-[11px] font-bold text-slate-800 block mb-1">
-                          Nombre / Destino de la Ruta (Visible en /barrialcr):
+                        <label className="text-[10px] font-bold text-slate-700 block mb-1">
+                          {t.backdoorBlockReasonLabel || "Motivo / Tarea de Taller"}:
+                        </label>
+                        <input
+                          type="text"
+                          value={blockReason}
+                          onChange={(e) => setBlockReason(e.target.value)}
+                          placeholder="Ej: Instalación en taller (no saturar personal)"
+                          className="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-300 focus:outline-none focus:border-amber-500 bg-white"
+                        />
+                      </div>
+
+                      <p className="text-[10.5px] text-slate-500 leading-tight">
+                        Estas horas quedarán inhabilitadas en el selector de citas para todos los clientes (incluye margen de traslado).
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Mode 2: Full Day */}
+                  {blockMode === "day" && (
+                    <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-[11px] text-rose-900 leading-relaxed space-y-1 animate-fade-in">
+                      <div className="font-bold flex items-center gap-1.5 text-rose-950">
+                        <Lock className="w-3.5 h-3.5 text-rose-600" />
+                        <span>Bloqueo Total de Jornada (08:00 - 20:00)</span>
+                      </div>
+                      <p>
+                        Inhabilita completamente la fecha seleccionada en /servicios para entregas, pick-up e instalaciones.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Mode 3: Ruta BarrialCR */}
+                  {blockMode === "ruta" && (
+                    <div className="space-y-2.5 pt-2 border-t border-slate-200 animate-fade-in">
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-800 block mb-1">
+                          Nombre / Destino de la Ruta:
                         </label>
                         <input
                           type="text"
                           value={blockRutaTitle}
                           onChange={(e) => setBlockRutaTitle(e.target.value)}
                           placeholder="Ej: Ruta Cerro de la Muerte / Volcán Irazú"
-                          className="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-300 focus:outline-none focus:border-amber-500"
+                          className="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-300 focus:outline-none focus:border-amber-500 bg-white"
                         />
                       </div>
                       <div className="grid grid-cols-2 gap-2">
                         <div>
-                          <label className="text-[11px] font-bold text-slate-800 block mb-1">
+                          <label className="text-[10px] font-bold text-slate-800 block mb-1">
                             Punto de Encuentro:
                           </label>
                           <input
@@ -2210,18 +3831,18 @@ export function ServicesAgendaTab() {
                             value={blockRutaMeetingPoint}
                             onChange={(e) => setBlockRutaMeetingPoint(e.target.value)}
                             placeholder="Ej: Gasolinera El Guarco"
-                            className="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-300 focus:outline-none focus:border-amber-500"
+                            className="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-300 focus:outline-none focus:border-amber-500 bg-white"
                           />
                         </div>
                         <div>
-                          <label className="text-[11px] font-bold text-slate-800 block mb-1">
+                          <label className="text-[10px] font-bold text-slate-800 block mb-1">
                             Hora de Salida:
                           </label>
                           <input
                             type="time"
                             value={blockRutaTime}
                             onChange={(e) => setBlockRutaTime(e.target.value)}
-                            className="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-300 focus:outline-none focus:border-amber-500 font-mono"
+                            className="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-300 focus:outline-none focus:border-amber-500 font-mono bg-white"
                           />
                         </div>
                       </div>
@@ -2240,15 +3861,15 @@ export function ServicesAgendaTab() {
               >
                 Cerrar
               </button>
-              {!existingBlockOnDate && (
+              {!hasFullDayBlockOnDate && (
                 <button
                   type="button"
                   disabled={blockSaving}
                   onClick={handleSaveBlockDay}
-                  className="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-sm disabled:opacity-50"
+                  className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white font-bold text-xs transition flex items-center gap-1.5 shadow-sm"
                 >
                   <Lock className="w-3.5 h-3.5" />
-                  <span>{blockSaving ? "Guardando..." : t.backdoorSaveBlockBtn}</span>
+                  <span>{blockSaving ? "Guardando..." : (t.backdoorBlockSaveBtn || "Aplicar Bloqueo")}</span>
                 </button>
               )}
             </div>
@@ -2444,6 +4065,212 @@ export function ServicesAgendaTab() {
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* 7. ADJUST INSTALLATION TIME SHEET MODAL */}
+      {/* ========================================================= */}
+      {adjustingSchedule && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-xl p-6 shadow-2xl space-y-4 animate-fade-in max-h-[92vh] overflow-y-auto">
+            {/* Modal Header */}
+            <div className="flex items-start justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-2xl bg-purple-900 text-white flex items-center justify-center">
+                  <Clock className="w-4 h-4 text-purple-300" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-slate-900">
+                    {t.backdoorAdjustTimeModalTitle || "Ajustar Tiempo de Instalación & Hoja de Horarios"}
+                  </h3>
+                  <p className="text-[11px] font-mono font-bold text-slate-500">
+                    #{adjustingSchedule.appointmentCode || adjustingSchedule.id} • {adjustingSchedule.clientName || "Cliente"}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAdjustingSchedule(null)}
+                className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="space-y-4 text-xs">
+              {/* If pickup service, display explicit separation between Customer Pick-up and Workshop Installation */}
+              {(adjustingSchedule.serviceType === "pickup" || adjustingSchedule.serviceType === "UTV_PICKUP") && (
+                <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-lg bg-slate-900 text-white flex items-center justify-center shrink-0">
+                      <Car className="w-3.5 h-3.5" />
+                    </div>
+                    <div>
+                      <span className="font-black text-slate-900 block">Retiro de Vehículo (Pick-up)</span>
+                      <span className="text-[11px] text-slate-500">
+                        Hora de retiro del cliente: <strong className="font-mono text-slate-900">{adjustingSchedule.time}</strong> (No se modifica)
+                      </span>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-mono font-black text-purple-900 bg-purple-100 px-2.5 py-1 rounded-full border border-purple-200 self-start sm:self-auto shrink-0">
+                    Ajuste Exclusivo de Taller
+                  </span>
+                </div>
+              )}
+
+              {/* Date & Current Time Row */}
+              <div className="grid grid-cols-2 gap-3 p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80">
+                <div>
+                  <label className="text-[10px] uppercase font-extrabold text-slate-400 block mb-1">
+                    Fecha del Servicio:
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={adjustDate}
+                    onChange={(e) => setAdjustDate(e.target.value)}
+                    className="w-full bg-white border border-slate-200 rounded-xl p-2 text-slate-900 font-bold focus:outline-none focus:border-slate-900"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] uppercase font-extrabold text-slate-400 block mb-1">
+                    {(adjustingSchedule.serviceType === "pickup" || adjustingSchedule.serviceType === "UTV_PICKUP")
+                      ? "Inicio Instalación Taller:"
+                      : "Hora Seleccionada:"}
+                  </label>
+                  <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl p-2 font-mono font-black text-slate-900">
+                    <Clock className="w-3.5 h-3.5 text-purple-600" />
+                    <span>{adjustTime || "Sin seleccionar"}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Installation Duration Adjuster */}
+              <div className="p-3.5 rounded-2xl bg-purple-50/70 border border-purple-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-black text-purple-950 flex items-center gap-1.5">
+                    <Wrench className="w-3.5 h-3.5 text-purple-600" />
+                    <span>{t.backdoorAdjustDurationLabel || "Duración de Instalación en Taller"}:</span>
+                  </label>
+                  <span className="font-mono font-black text-sm text-purple-950 bg-white px-2.5 py-0.5 rounded-lg border border-purple-200 shadow-2xs">
+                    {(adjustDurationMin / 60).toFixed(1)} h ({adjustDurationMin} min)
+                  </span>
+                </div>
+
+                {/* Duration Presets Pills */}
+                <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                  {[60, 90, 120, 150, 180, 240, 300].map((mins) => (
+                    <button
+                      key={mins}
+                      type="button"
+                      onClick={() => setAdjustDurationMin(mins)}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold transition cursor-pointer ${
+                        adjustDurationMin === mins
+                          ? "bg-purple-900 text-white shadow-xs"
+                          : "bg-white text-purple-900 border border-purple-200 hover:bg-purple-100"
+                      }`}
+                    >
+                      {(mins / 60).toFixed(1)}h
+                    </button>
+                  ))}
+                  <div className="flex items-center gap-1 ml-auto">
+                    <button
+                      type="button"
+                      disabled={adjustDurationMin <= 15}
+                      onClick={() => setAdjustDurationMin((m) => Math.max(15, m - 30))}
+                      className="w-6 h-6 rounded-md bg-white border border-purple-200 font-bold text-xs hover:bg-purple-100 disabled:opacity-40 cursor-pointer"
+                    >
+                      -
+                    </button>
+                    <button
+                      type="button"
+                      disabled={adjustDurationMin >= 720}
+                      onClick={() => setAdjustDurationMin((m) => Math.min(720, m + 30))}
+                      className="w-6 h-6 rounded-md bg-white border border-purple-200 font-bold text-xs hover:bg-purple-100 disabled:opacity-40 cursor-pointer"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Time Sheet Slots Grid (8:00 AM - 8:00 PM) */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                    <CalendarIcon className="w-3.5 h-3.5 text-[#C02030]" />
+                    <span>{t.backdoorAdjustTimeSheet || "Hoja de Horarios (8:00 AM - 8:00 PM)"}</span>
+                  </label>
+                  {adjustSlotsLoading && (
+                    <span className="text-[10px] font-bold text-slate-400 animate-pulse">
+                      Cargando horarios...
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-56 overflow-y-auto p-1 bg-slate-50/50 rounded-2xl border border-slate-150">
+                  {adjustSlots.map((slot: any) => {
+                    const isSelected = adjustTime === slot.time || adjustTime === slot.time12;
+                    const isBlocked = !slot.available;
+
+                    return (
+                      <button
+                        key={slot.time}
+                        type="button"
+                        onClick={() => setAdjustTime(slot.time12 || slot.time)}
+                        className={`p-2 rounded-xl border text-center transition flex flex-col items-center justify-center relative cursor-pointer ${
+                          isSelected
+                            ? "bg-slate-900 text-white border-slate-900 shadow-md ring-2 ring-slate-900/20"
+                            : isBlocked
+                            ? "bg-rose-50/70 border-rose-200 text-rose-700 hover:border-rose-400"
+                            : "bg-white border-slate-200 text-slate-800 hover:border-slate-900 hover:bg-slate-50 shadow-2xs"
+                        }`}
+                        title={slot.reason || slot.time12}
+                      >
+                        <div className="flex items-center gap-1">
+                          <span className={`text-xs font-bold tracking-tight ${isBlocked && !isSelected ? "line-through text-rose-700" : ""}`}>
+                            {slot.time12}
+                          </span>
+                          {isSelected && <Check className="w-3 h-3 text-emerald-400" />}
+                        </div>
+                        <span className={`text-[8px] font-bold mt-0.5 ${
+                          isSelected
+                            ? "text-slate-300"
+                            : isBlocked
+                            ? "text-rose-600"
+                            : "text-emerald-700"
+                        }`}>
+                          {isBlocked ? "Bloqueado" : "Disponible"}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setAdjustingSchedule(null)}
+                className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={adjustSaving || !adjustTime}
+                onClick={handleSaveAdjustTime}
+                className="px-5 py-2 rounded-xl bg-purple-900 hover:bg-purple-800 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-sm disabled:opacity-50 cursor-pointer"
+              >
+                <Check className="w-3.5 h-3.5" />
+                <span>{adjustSaving ? "Guardando..." : (t.backdoorAdjustSaveBtn || "Guardar Horario & Duración")}</span>
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

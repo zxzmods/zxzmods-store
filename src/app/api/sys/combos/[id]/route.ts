@@ -113,6 +113,10 @@ export async function PATCH(
 
     const calculatedInstallPrice = installLabour + extraPartsSum + installProfit;
 
+    if (body.installationDurationMinutes !== undefined) {
+      updateData.installationDurationMinutes = Math.max(15, Math.round(Number(body.installationDurationMinutes) || 60));
+    }
+
     // Staff and Master can both edit installationPriceCRC
     if (body.installationPriceCRC !== undefined) {
       updateData.installationPriceCRC = Math.round(Number(body.installationPriceCRC));

@@ -164,6 +164,7 @@ export async function GET() {
         })(),
         installExtraPartsJson: p.installExtraPartsJson || "[]",
         installationBreakdownJson: p.installationBreakdownJson || null,
+        installationDurationMinutes: p.installationDurationMinutes ?? 60,
         parameters: (() => {
           if (p.parametersJson) {
             try {

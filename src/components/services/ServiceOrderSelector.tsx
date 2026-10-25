@@ -12,6 +12,7 @@ import {
   ChevronRight,
   ExternalLink,
   ShoppingBag,
+  ShieldAlert,
 } from "lucide-react";
 import { useAuth, UserOrder } from "@/context/AuthContext";
 import { useLanguage } from "@/context/LanguageContext";
@@ -55,7 +56,7 @@ export function ServiceOrderSelector({
   const isMultiOrderAllowed =
     selectedService === "delivery" || selectedService === "shop_installation";
 
-  // Helper to determine if an order cannot be selected due to pending installation, in-progress installation, or already in service payment confirmation
+  // Helper to determine if an order cannot be selected due to pending installation, in-progress installation, already programmed, or in service payment confirmation
   const getOrderServiceBlockReason = (ord: UserOrder): string | null => {
     const s = (ord.status || "").toUpperCase();
     if (s === "CONFIRM_SERVICE_PAYMENT") {
@@ -66,16 +67,41 @@ export function ServiceOrderSelector({
           : "This order is already in service payment confirmation. It cannot be selected for another service.")
       );
     }
-    if (s === "INSTALLING" && (selectedService === "pickup" || selectedService === "delivery")) {
-      return lang === "es"
-        ? "Vehículo en proceso de instalación técnica. La entrega se programará una vez finalizada."
-        : "Vehicle under technical installation. Delivery can be scheduled once completed.";
+
+    if (s === "READY_TO_SET_RETURN_DATE") {
+      if (!ord.isInstallationPaymentConfirmed) {
+        return (
+          lang === "es"
+            ? "Pago de mano de obra de instalación pendiente. Debe cancelar la instalación antes de coordinar la entrega."
+            : "Installation payment pending. Labor fee must be paid before scheduling return delivery."
+        );
+      }
+      return null;
     }
-    if (s === "READY_TO_SET_RETURN_DATE" && !ord.isInstallationPaymentConfirmed) {
-      return lang === "es"
-        ? "Pago de mano de obra de instalación pendiente. Debe cancelar la instalación antes de coordinar la entrega."
-        : "Installation payment pending. Labor fee must be paid before scheduling return delivery.";
+
+    const hasActiveSchedule = Boolean(
+      ord.isServiceScheduled ||
+      [
+        "WAITING_ON_DELIVERY",
+        "PICKUP_DATE_SET",
+        "HOME_INSTALL_SET",
+        "INSTALLING",
+        "INSTALLATION_PAYMENT",
+        "READY_FOR_PICKUP",
+        "READY_TO_PICK_UP",
+        "COMPLETED",
+      ].includes(s)
+    );
+
+    if (hasActiveSchedule) {
+      return (
+        t.serviceOrderAlreadyProgrammed ||
+        (lang === "es"
+          ? "Esta orden ya tiene un servicio programado y no puede ser seleccionada nuevamente."
+          : "This order already has a service scheduled and cannot be selected again.")
+      );
     }
+
     return null;
   };
 
@@ -143,13 +169,9 @@ export function ServiceOrderSelector({
       const res = await fetch(`/api/orders/${encodeURIComponent(query)}`);
       const json = await res.json();
       if (res.ok && json.success && json.order) {
-        if ((json.order.status || "").toUpperCase() === "CONFIRM_SERVICE_PAYMENT") {
-          setSearchError(
-            t.serviceOrderAlreadyInConfirmation ||
-              (lang === "es"
-                ? "Esta orden ya se encuentra en confirmación de pago de servicio. No se puede seleccionar para otro servicio."
-                : "This order is already in service payment confirmation. It cannot be selected for another service.")
-          );
+        const blockReason = getOrderServiceBlockReason(json.order);
+        if (blockReason) {
+          setSearchError(blockReason);
           return;
         }
         if (!isAfterPaymentConfirmation(json.order.status)) {
@@ -326,6 +348,18 @@ export function ServiceOrderSelector({
                         >
                           #{ord.orderNumber}
                         </span>
+                        {ord.orderNumber.startsWith("GAR-") && (
+                          <span
+                            className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border flex items-center gap-1 ${
+                              isSelected
+                                ? "bg-amber-400/20 text-amber-300 border-amber-400/30"
+                                : "bg-amber-50 text-amber-800 border-amber-200"
+                            }`}
+                          >
+                            <ShieldAlert className="w-2.5 h-2.5" />
+                            <span>{lang === "es" ? "Protección Garantía" : "Warranty Protection"}</span>
+                          </span>
+                        )}
                         {isSelected && (
                           <span className="text-[9px] font-mono text-emerald-400 font-bold">
                             ✓ {lang === "es" ? "Lista" : "Ready"}
@@ -351,6 +385,14 @@ export function ServiceOrderSelector({
                                 ? (lang === "es" ? "Pago Servicio en Revisión" : "Service Payment Under Review")
                                 : ord.status === "INSTALLING"
                                 ? (lang === "es" ? "En Instalación" : "Installing")
+                                : ord.isServiceScheduled ||
+                                  [
+                                    "WAITING_ON_DELIVERY",
+                                    "PICKUP_DATE_SET",
+                                    "HOME_INSTALL_SET",
+                                    "COMPLETED",
+                                  ].includes(ord.status)
+                                ? (t.serviceOrderAlreadyProgrammedBadge || (lang === "es" ? "Servicio Ya Programado" : "Service Already Scheduled"))
                                 : (lang === "es" ? "Pago Instalación Pendiente" : "Install Payment Pending")}
                             </span>
                           </span>

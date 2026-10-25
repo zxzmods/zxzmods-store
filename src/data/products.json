@@ -307,9 +307,9 @@
     "supplierLeadDaysMin": 14,
     "supplierLeadDaysMax": 28,
     "supplierLastPriceUSD": 979.95,
-    "supplierStockCheckedAt": "2026-10-22T18:42:50.193Z",
+    "supplierStockCheckedAt": "2026-10-25T19:01:00.098Z",
     "supplierUrl": "https://bikemanperformance.com/products/double-barrel-center-exit-full-exhaust-for-cfmoto-zforce-z10",
-    "voidsWarranty": false,
+    "voidsWarranty": true,
     "relatedProductIds": [
       "EVP-Z10-01",
       "RPM-Z10-01"
@@ -320,6 +320,7 @@
     "ivaPercent": 13,
     "ivaCRC": 85280,
     "suggestedProductIds": [],
-    "suggestedComboIds": []
+    "suggestedComboIds": [],
+    "installationDurationMinutes": 60
   }
 ]

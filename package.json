@@ -5,14 +5,17 @@
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate && next build",
+    "vercel-build": "prisma generate --schema=prisma/schema.postgresql.prisma && prisma db push --schema=prisma/schema.postgresql.prisma --accept-data-loss && node prisma/seed-legal-documents.js && next build",
     "start": "next start",
     "lint": "next lint",
     "prisma:seed": "node prisma/seed.js",
+    "prisma:seed:legal": "node prisma/seed-legal-documents.js",
     "prisma:pg:generate": "prisma generate --schema=prisma/schema.postgresql.prisma",
     "prisma:pg:push": "prisma db push --schema=prisma/schema.postgresql.prisma",
     "db:export": "ts-node scripts/export-data.ts",
     "db:import:pg": "ts-node scripts/import-data.ts",
-    "db:seed:master": "ts-node scripts/seed-master.ts"
+    "db:seed:master": "ts-node scripts/seed-master.ts",
+    "media:migrate:cloud": "node scripts/migrate-uploads-to-gcs.js"
   },
   "dependencies": {
     "@google-cloud/storage": "^8.4.0",

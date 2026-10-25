@@ -621,7 +621,9 @@ export default function StealthConsolePage() {
                 onOrderUpdated={() => fetchAnalytics()}
               />
             )}
-            {activeTab === "services_agenda" && <ServicesAgendaTab />}
+            {activeTab === "services_agenda" && (
+              <ServicesAgendaTab userRole={user.role} />
+            )}
             {activeTab === "create_order" && (
               <CreateOrderTab
                 userRole={user.role}

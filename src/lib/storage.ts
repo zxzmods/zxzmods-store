@@ -137,11 +137,15 @@ export function validateImage(file: { type: string; size: number }) {
 
 // Google Cloud Storage Client Singleton
 let gcsClient: Storage | null = null;
-function getGCSClient(): Storage | null {
+export function getGCSClient(): Storage | null {
   if (gcsClient) return gcsClient;
-  const projectId = process.env.FIREBASE_ADMIN_PROJECT_ID;
-  const clientEmail = process.env.FIREBASE_ADMIN_CLIENT_EMAIL;
-  const privateKey = process.env.FIREBASE_ADMIN_PRIVATE_KEY?.replace(/\\n/g, "\n");
+  const projectId =
+    process.env.GCS_PROJECT_ID || process.env.FIREBASE_ADMIN_PROJECT_ID;
+  const clientEmail =
+    process.env.GCS_CLIENT_EMAIL || process.env.FIREBASE_ADMIN_CLIENT_EMAIL;
+  const rawKey =
+    process.env.GCS_PRIVATE_KEY || process.env.FIREBASE_ADMIN_PRIVATE_KEY;
+  const privateKey = rawKey?.replace(/\\n/g, "\n");
 
   if (!projectId || !clientEmail || !privateKey) {
     return null;
@@ -159,6 +163,71 @@ function getGCSClient(): Storage | null {
   } catch (err) {
     console.error("[GCS_INIT_ERROR]:", err);
     return null;
+  }
+}
+
+/**
+ * Generates a V4 Signed PUT URL for direct browser-to-GCS upload (bypasses Vercel 4.5MB serverless body limit).
+ */
+export async function generateSignedUploadUrl(
+  originalFilename: string,
+  mimeType: string,
+  fileSize: number,
+  folder: "products" | "combos" | "brands" | "payments" | "videos" | "audios" = "products"
+): Promise<{
+  success: boolean;
+  signedUrl?: string;
+  publicUrl?: string;
+  fileName?: string;
+  error?: string;
+}> {
+  const validation = validateMedia({ type: mimeType, size: fileSize }, folder);
+  if (!validation.valid) {
+    return { success: false, error: validation.error };
+  }
+
+  const bucketName = process.env.GCS_BUCKET_NAME || process.env.FIREBASE_STORAGE_BUCKET;
+  const gcs = getGCSClient();
+  if (!bucketName || !gcs) {
+    return {
+      success: false,
+      error: "Google Cloud Storage no está configurado en el servidor.",
+    };
+  }
+
+  const randomSuffix = crypto.randomBytes(8).toString("hex");
+  const cleanBaseName = originalFilename
+    .replace(/[^a-zA-Z0-9_-]/g, "_")
+    .substring(0, 24);
+  const ext =
+    path.extname(originalFilename).toLowerCase() ||
+    (mimeType.startsWith("video/") ? ".mp4" : ".webp");
+  const uniqueFileName = `${folder}_${Date.now()}_${randomSuffix}_${cleanBaseName}${ext}`;
+  const destination = `${folder}/${uniqueFileName}`;
+
+  try {
+    const bucket = gcs.bucket(bucketName);
+    const file = bucket.file(destination);
+    const [signedUrl] = await file.getSignedUrl({
+      version: "v4",
+      action: "write",
+      expires: Date.now() + 15 * 60 * 1000, // 15 minutes
+      contentType: mimeType,
+    });
+
+    const publicUrl = `https://storage.googleapis.com/${bucketName}/${destination}`;
+    return {
+      success: true,
+      signedUrl,
+      publicUrl,
+      fileName: uniqueFileName,
+    };
+  } catch (err: any) {
+    console.error("[GCS_SIGNED_URL_ERROR]:", err);
+    return {
+      success: false,
+      error: err?.message || "No se pudo generar URL firmada de subida.",
+    };
   }
 }
 
@@ -193,10 +262,49 @@ export async function processAndStoreImage(
   const ext = path.extname(originalFilename).toLowerCase() || (mimeType.startsWith("video/") ? ".mp4" : ".webp");
   const uniqueFileName = `${folder}_${Date.now()}_${randomSuffix}_${cleanBaseName}${ext}`;
 
-  const bucketName = process.env.GCS_BUCKET_NAME || process.env.FIREBASE_STORAGE_BUCKET;
+  const bucketName = process.env.GCS_BUCKET_NAME || process.env.FIREBASE_STORAGE_BUCKET || "zxz-mods-media";
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  // 1. If Supabase Storage is configured, upload directly to Supabase Storage Bucket
+  if (supabaseUrl && supabaseServiceKey) {
+    try {
+      const cleanBaseUrl = supabaseUrl.replace(/\/+$/, "");
+      const destination = `${folder}/${uniqueFileName}`;
+      const uploadEndpoint = `${cleanBaseUrl}/storage/v1/object/${bucketName}/${destination}`;
+
+      const res = await fetch(uploadEndpoint, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${supabaseServiceKey}`,
+          apikey: supabaseServiceKey,
+          "Content-Type": mimeType,
+          "x-upsert": "true",
+        },
+        body: new Uint8Array(buffer),
+      });
+
+      if (res.ok) {
+        const publicUrl = `${cleanBaseUrl}/storage/v1/object/public/${bucketName}/${destination}`;
+        return {
+          success: true,
+          url: publicUrl,
+          fileName: uniqueFileName,
+          fileSize: buffer.length,
+          mimeType,
+        };
+      } else {
+        const errText = await res.text().catch(() => "");
+        console.warn("[STORAGE_SUPABASE_WARN] Supabase Storage upload returned non-OK:", res.status, errText);
+      }
+    } catch (sbError) {
+      console.error("[STORAGE_SUPABASE_ERROR] Supabase storage upload failed:", sbError);
+    }
+  }
+
   const gcs = getGCSClient();
 
-  // If Google Cloud Storage is configured, stream buffer to GCP Bucket
+  // 2. If Google Cloud Storage is configured, stream buffer to GCP Bucket
   if (bucketName && gcs) {
     try {
       const bucket = gcs.bucket(bucketName);
@@ -221,12 +329,23 @@ export async function processAndStoreImage(
         fileSize: buffer.length,
         mimeType,
       };
-    } catch (gcpError) {
-      console.error("[STORAGE_GCP_ERROR] Cloud storage upload failed, falling back to local:", gcpError);
+    } catch (gcpError: any) {
+      console.error("[STORAGE_GCP_ERROR] Cloud storage upload failed:", gcpError);
+      if (process.env.VERCEL === "1" || process.env.NODE_ENV === "production") {
+        return {
+          success: false,
+          error: `Error al subir archivo a Google Cloud Storage: ${gcpError?.message || "Fallo de almacenamiento en la nube"}`,
+        };
+      }
     }
+  } else if (process.env.VERCEL === "1" || process.env.NODE_ENV === "production") {
+    return {
+      success: false,
+      error: "Google Cloud Storage (GCS_BUCKET_NAME / credenciales) es requerido en producción.",
+    };
   }
 
-  // Local filesystem storage for development fallback
+  // Local filesystem storage for development fallback only
   try {
     const uploadDir = path.join(process.cwd(), "public", "uploads", folder);
     await fs.mkdir(uploadDir, { recursive: true });

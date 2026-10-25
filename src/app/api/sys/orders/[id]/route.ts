@@ -446,6 +446,85 @@ export async function PATCH(
       currentDocs.purchaseProofsUpdatedBy = auth.session.email || auth.session.role;
       updateData.serviceDocumentsJson = JSON.stringify(currentDocs);
     }
+
+    if (body.installationDurationMinutes !== undefined) {
+      const newDurationMin = Math.max(15, Math.round(Number(body.installationDurationMinutes) || 60));
+      let currentDocs: any = {};
+      try {
+        const baseDoc = updateData.serviceDocumentsJson || existingOrder.serviceDocumentsJson;
+        currentDocs = typeof baseDoc === "string" ? JSON.parse(baseDoc) : (baseDoc || {});
+      } catch {}
+      currentDocs.installationDurationMinutes = newDurationMin;
+      currentDocs.estimatedInstallationHours = Number((newDurationMin / 60).toFixed(1));
+      currentDocs.installationDurationSetBy = auth.session.email || auth.session.role;
+      currentDocs.installationDurationSetAt = new Date().toISOString();
+      updateData.serviceDocumentsJson = JSON.stringify(currentDocs);
+
+      // If there's an existing active ServiceSchedule for this order, recalculate its duration and blocked ranges
+      try {
+        const schedule = await prisma.serviceSchedule.findFirst({
+          where: {
+            OR: [
+              { orderId: existingOrder.id },
+              { orderId: existingOrder.orderNumber },
+            ],
+          },
+        });
+        if (schedule) {
+          const isHomeInstall = schedule.serviceType === "HOME_INSTALL" || existingOrder.serviceType === "HOME_INSTALL";
+          const isPickup = schedule.serviceType === "PICKUP" || existingOrder.serviceType === "PICKUP" || existingOrder.serviceType === "UTV_PICKUP";
+          
+          if (isHomeInstall) {
+            // Home installs block full day: 8:00 AM (480) to 8:00 PM (1200)
+            await prisma.serviceSchedule.update({
+              where: { id: schedule.id },
+              data: {
+                installationDurationMin: newDurationMin,
+                durationMinutes: 720,
+                blockedStartMin: 480,
+                blockedEndMin: 1200,
+                carryoverNextDayMinutes: 0,
+                carryoverDate: null,
+              },
+            });
+          } else {
+            // Workshop installation
+            const startMin = schedule.timeMinutes || 480;
+            const travelMin = schedule.travelDurationMin || 0;
+            const workshopArrivalMin = isPickup ? (startMin + travelMin + 30) : startMin;
+            const finishMin = workshopArrivalMin + newDurationMin + 30; // 30 min buffer
+            
+            let carryoverMin = 0;
+            let carryoverDateStr: string | null = null;
+            let effectiveBlockedEndMin = finishMin;
+            
+            // Closing time is 20:00 (1200 min)
+            if (finishMin > 1200) {
+              carryoverMin = finishMin - 1200;
+              effectiveBlockedEndMin = 1200;
+              const schedDate = new Date(`${schedule.date}T00:00:00`);
+              schedDate.setDate(schedDate.getDate() + 1);
+              carryoverDateStr = schedDate.toISOString().split("T")[0];
+            }
+
+            await prisma.serviceSchedule.update({
+              where: { id: schedule.id },
+              data: {
+                installationDurationMin: newDurationMin,
+                durationMinutes: newDurationMin,
+                workshopArrivalMinutes: workshopArrivalMin,
+                blockedEndMin: effectiveBlockedEndMin,
+                carryoverNextDayMinutes: carryoverMin,
+                carryoverDate: carryoverDateStr,
+              },
+            });
+          }
+        }
+      } catch (schedErr) {
+        console.error("[UPDATE_SERVICE_SCHEDULE_DURATION_ERROR]:", schedErr);
+      }
+    }
+
     if (body.isCertified !== undefined) {
       updateData.isCertified = Boolean(body.isCertified);
     }
@@ -787,9 +866,11 @@ export async function DELETE(
       return NextResponse.json({ success: false, error: "Pedido no encontrado" }, { status: 404 });
     }
 
-    // If order is beyond "COTIZACION", deletion STRICTLY requires Master password verification with brute-force defense
+    // If order is beyond "COTIZACION", regular orders STRICTLY require Master password verification with brute-force defense
+    // Exception: GAR- (Warranty Protection) service orders can be eliminated by authorized staff/master directly from the services agenda
+    const isGARService = existingOrder.orderNumber.startsWith("GAR-");
     const isQuotation = existingOrder.status === "COTIZACION" || existingOrder.status === "cotizacion";
-    if (!isQuotation) {
+    if (!isQuotation && !isGARService) {
       const forwarded = request.headers.get("x-forwarded-for");
       const ip = forwarded ? forwarded.split(",")[0].trim() : "127.0.0.1";
 
@@ -822,9 +903,14 @@ export async function DELETE(
       where: { orderId },
     }).catch(() => {});
 
-    // Delete linked service schedules if any exist
+    // Delete linked service schedules if any exist (by id or orderNumber)
     await prisma.serviceSchedule.deleteMany({
-      where: { orderId },
+      where: {
+        OR: [
+          { orderId },
+          { orderId: existingOrder.orderNumber },
+        ],
+      },
     }).catch(() => {});
 
     // Delete order

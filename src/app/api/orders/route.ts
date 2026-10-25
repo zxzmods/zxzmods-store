@@ -127,6 +127,26 @@ export async function POST(request: Request) {
       isQuotation = false,
     } = body;
 
+    let finalCustomerName = (typeof customerName === "string" && customerName.trim().length > 0) ? customerName.trim() : null;
+    let finalCustomerPhone = (typeof customerPhone === "string" && customerPhone.trim().length > 0) ? customerPhone.trim() : null;
+    let finalCustomerEmail = (typeof guestEmail === "string" && guestEmail.trim().length > 0) ? guestEmail.trim() : null;
+
+    if (userId && (!finalCustomerName || !finalCustomerPhone || !finalCustomerEmail)) {
+      try {
+        const dbUser = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { displayName: true, phoneNumber: true, email: true },
+        });
+        if (dbUser) {
+          if (!finalCustomerName && dbUser.displayName) finalCustomerName = dbUser.displayName;
+          if (!finalCustomerPhone && dbUser.phoneNumber) finalCustomerPhone = dbUser.phoneNumber;
+          if (!finalCustomerEmail && dbUser.email) finalCustomerEmail = dbUser.email;
+        }
+      } catch (err) {
+        console.warn("[RESOLVE_USER_FALLBACK_WARN]:", err);
+      }
+    }
+
     const isBacRequested =
       body.paymentMethod === "BAC_COMPRA_CLICK" ||
       body.requestedBacLink === true;
@@ -151,6 +171,7 @@ export async function POST(request: Request) {
     let calculatedPartsCRC = 0;
     let calculatedLaborCRC = 0;
     let totalProductsInstallationCRC = 0;
+    let totalInstallationMinutes = 0;
     let sanitizedItems: any[] = Array.isArray(items) ? items : [];
 
     if (Array.isArray(items) && items.length > 0) {
@@ -181,9 +202,11 @@ export async function POST(request: Request) {
             priceCRC: true,
             installationPriceCRC: true,
             isInstallationIncluded: true,
+            installationDurationMinutes: true,
             processingPriceD: true,
             supplierLastPriceUSD: true,
             supplierUrl: true,
+            voidsWarranty: true,
           },
         }),
         prisma.combo.findMany({
@@ -193,22 +216,25 @@ export async function POST(request: Request) {
               { slug: { in: identifiers } },
             ],
           },
-          select: { id: true, slug: true, priceCRC: true, installationPriceCRC: true },
+          select: { id: true, slug: true, priceCRC: true, installationPriceCRC: true, installationDurationMinutes: true, category: true },
         }),
       ]);
 
       const priceMap = new Map<
         string,
-        { priceCRC: number; installCRC: number; isFreeInstall: boolean; basePriceUSD?: number; supplierUrl?: string | null }
+        { priceCRC: number; installCRC: number; durationMin: number; isFreeInstall: boolean; basePriceUSD?: number; supplierUrl?: string | null; voidsWarranty?: boolean }
       >();
       dbProducts.forEach((p) => {
         const isFree = Boolean(p.isInstallationIncluded);
+        const durationMin = Number(p.installationDurationMinutes) > 0 ? Number(p.installationDurationMinutes) : 60;
         const entry = {
           priceCRC: p.priceCRC,
           installCRC: isFree ? 0 : p.installationPriceCRC,
+          durationMin,
           isFreeInstall: isFree,
           basePriceUSD: p.processingPriceD || p.supplierLastPriceUSD || 0,
           supplierUrl: p.supplierUrl || null,
+          voidsWarranty: Boolean(p.voidsWarranty),
         };
         priceMap.set(p.id, entry);
         priceMap.set(p.sku, entry);
@@ -216,14 +242,19 @@ export async function POST(request: Request) {
       });
       dbCombos.forEach((c) => {
         const isComboFree = (c.installationPriceCRC || 0) === 0;
+        const durationMin = Number(c.installationDurationMinutes) > 0 ? Number(c.installationDurationMinutes) : 60;
         const entry = {
           priceCRC: c.priceCRC,
           installCRC: isComboFree ? 0 : c.installationPriceCRC,
+          durationMin,
           isFreeInstall: isComboFree,
+          voidsWarranty: c.category === "performance",
         };
         priceMap.set(c.id, entry);
         priceMap.set(c.slug, entry);
       });
+
+      let totalInstallationMinutes = 0;
 
       sanitizedItems = items.map((it: any) => {
         const qty = Math.max(1, parseInt(it.quantity) || 1);
@@ -243,8 +274,15 @@ export async function POST(request: Request) {
           : 0;
         const unitPrice = dbItem ? dbItem.priceCRC + paramDeltaCRC : Math.max(0, Number(it.priceCRC) || 0);
         const installPrice = isFree ? 0 : (dbItem ? dbItem.installCRC : Math.max(0, Number(it.installationPriceCRC) || 0));
+        const itemDuration = dbItem?.durationMin ?? (Number(it.installationDurationMinutes) || 60);
+
         calculatedPartsCRC += unitPrice * qty;
         totalProductsInstallationCRC += installPrice * qty;
+
+        const needsInstall = isFree ? true : Boolean(it.withInstallation);
+        if (needsInstall) {
+          totalInstallationMinutes += itemDuration * qty;
+        }
 
         if (it.withInstallation && !isFree) {
           calculatedLaborCRC += installPrice * qty;
@@ -258,10 +296,12 @@ export async function POST(request: Request) {
           ...it,
           priceCRC: unitPrice,
           installationPriceCRC: installPrice,
+          installationDurationMinutes: itemDuration,
           freeInstallation: isFree,
           withInstallation: isFree ? true : Boolean(it.withInstallation),
           basePriceUSD: it.basePriceUSD ?? dbItem?.basePriceUSD ?? undefined,
           supplierUrl: variantSupplierUrl || it.supplierUrl || dbItem?.supplierUrl || undefined,
+          voidsWarranty: dbItem?.voidsWarranty ?? it.voidsWarranty ?? false,
         };
       });
     }
@@ -314,7 +354,7 @@ export async function POST(request: Request) {
           {
             id: `cmt-${Date.now()}`,
             authorRole: "CUSTOMER",
-            authorName: customerName || "Cliente",
+            authorName: finalCustomerName || "Cliente",
             text: notes,
             createdAt: new Date().toISOString(),
           },
@@ -421,9 +461,9 @@ export async function POST(request: Request) {
       serviceType: serviceType || "STORE_PICKUP",
       shippingAddress: shippingAddress || null,
       notes: notes || null,
-      customerName: customerName || null,
-      customerPhone: customerPhone || null,
-      guestEmail: guestEmail || null,
+      customerName: finalCustomerName,
+      customerPhone: finalCustomerPhone,
+      guestEmail: finalCustomerEmail,
       claimToken,
       paymentProofUrl: body.paymentProofUrl ? String(body.paymentProofUrl) : null,
       paidCurrency: body.paidCurrency
@@ -477,6 +517,11 @@ export async function POST(request: Request) {
 
     const orderLanguage = body.language === "en" ? "en" : "es";
     docObj.language = orderLanguage;
+
+    if (totalInstallationMinutes > 0) {
+      docObj.installationDurationMinutes = totalInstallationMinutes;
+      docObj.estimatedInstallationHours = Number((totalInstallationMinutes / 60).toFixed(1));
+    }
 
     if (Object.keys(docObj).length > 0) {
       orderData.serviceDocumentsJson = JSON.stringify(docObj);

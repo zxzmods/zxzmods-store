@@ -116,10 +116,15 @@ export async function POST(request: Request) {
       data: { used: true },
     });
 
-    // 4. Generate verification code (using temporary test code '616161' for test and access)
-    const TEMPORARY_TEST_CODE = "616161";
-    const code = TEMPORARY_TEST_CODE;
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours expiry for test code
+    // 4. Generate cryptographically secure 6-digit verification code
+    const isTestAuthEnabled =
+      process.env.NODE_ENV === "development" && process.env.ALLOW_TEST_AUTH === "true";
+    const code = isTestAuthEnabled
+      ? "616161"
+      : crypto.randomInt(100000, 1000000).toString();
+    const expiresAt = new Date(
+      Date.now() + (isTestAuthEnabled ? 24 * 60 * 60 * 1000 : 15 * 60 * 1000)
+    );
 
     await prisma.verificationCode.create({
       data: {
@@ -137,11 +142,28 @@ export async function POST(request: Request) {
       lang: lang === "en" ? "en" : "es",
     });
 
+    if (process.env.NODE_ENV === "production" && !emailResult.success) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            lang === "en"
+              ? "Could not send verification email. Please try again in a few moments."
+              : "No se pudo enviar el correo de verificación. Intenta nuevamente en unos momentos.",
+        },
+        { status: 500 }
+      );
+    }
+
     return NextResponse.json({
       success: true,
       message: "Código de verificación generado y enviado",
-      previewUrl: emailResult.previewUrl,
-      devCode: code,
+      ...(process.env.NODE_ENV !== "production"
+        ? {
+            previewUrl: emailResult.previewUrl,
+            ...(isTestAuthEnabled ? { devCode: code } : {}),
+          }
+        : {}),
     });
   } catch (error) {
     console.error("Error in /api/auth/send-code:", error);

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireStealthSession } from "@/lib/stealthAuth";
 import { prisma } from "@/lib/prisma";
+import { parseTimeToMinutes, formatMinutesToTime } from "@/lib/serviceSchedules";
 
 function generateAppointmentCode(isBlocked = false): string {
   const prefix = isBlocked ? "BLK" : "SRV";
@@ -8,11 +9,14 @@ function generateAppointmentCode(isBlocked = false): string {
   return `${prefix}-${num}`;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const auth = await requireStealthSession();
   if (!auth.authorized) return auth.response;
 
   try {
+    const { searchParams } = new URL(request.url);
+    const search = (searchParams.get("search") || "").trim().toLowerCase();
+
     const schedules = await prisma.serviceSchedule.findMany({
       orderBy: [{ date: "asc" }, { timeMinutes: "asc" }],
     });
@@ -50,25 +54,103 @@ export async function GET() {
         status: true,
         customerName: true,
         customerPhone: true,
+        guestEmail: true,
         shippingAddress: true,
         itemsJson: true,
         paymentProofUrl: true,
         totalCRC: true,
+        userId: true,
+        user: {
+          select: {
+            id: true,
+            displayName: true,
+            email: true,
+            phoneNumber: true,
+          },
+        },
       },
     });
 
     const ordersMap = new Map(orders.map((o) => [o.id, o]));
 
-    const enrichedSchedules = schedules.map((item) => {
+    // Fetch users for any schedule or order with a userId
+    const allUserIds = Array.from(
+      new Set(
+        [
+          ...schedules.map((s) => s.userId),
+          ...orders.map((o) => o.userId),
+        ].filter(Boolean) as string[]
+      )
+    );
+
+    const users = allUserIds.length > 0
+      ? await prisma.user.findMany({
+          where: { id: { in: allUserIds } },
+          select: {
+            id: true,
+            displayName: true,
+            email: true,
+            phoneNumber: true,
+          },
+        })
+      : [];
+
+    const usersMap = new Map(users.map((u) => [u.id, u]));
+
+    let enrichedSchedules = schedules.map((item) => {
       const relatedOrder = item.orderId ? ordersMap.get(item.orderId) || null : null;
+      const relatedUser = item.userId
+        ? usersMap.get(item.userId) || null
+        : relatedOrder?.user || (relatedOrder?.userId ? usersMap.get(relatedOrder.userId) || null : null);
+
+      const resolvedClientName =
+        item.clientName ||
+        relatedOrder?.customerName ||
+        relatedUser?.displayName ||
+        null;
+
+      const resolvedClientPhone =
+        item.clientPhone ||
+        relatedOrder?.customerPhone ||
+        relatedUser?.phoneNumber ||
+        null;
+
       return {
         ...item,
-        order: relatedOrder,
+        clientName: resolvedClientName,
+        clientPhone: resolvedClientPhone,
+        order: relatedOrder
+          ? {
+              ...relatedOrder,
+              customerName: relatedOrder.customerName || relatedUser?.displayName || null,
+              customerPhone: relatedOrder.customerPhone || relatedUser?.phoneNumber || null,
+            }
+          : null,
+        user: relatedUser,
       };
     });
 
+    if (search) {
+      enrichedSchedules = enrichedSchedules.filter((s) => {
+        const code = (s.appointmentCode || "").toLowerCase();
+        const ord = (s.order?.orderNumber || "").toLowerCase();
+        const client = (s.clientName || "").toLowerCase();
+        const phone = (s.clientPhone || "").toLowerCase();
+        const userEmail = (s.user?.email || "").toLowerCase();
+        const dest = (s.destinationAddress || "").toLowerCase();
+        return (
+          code.includes(search) ||
+          ord.includes(search) ||
+          client.includes(search) ||
+          phone.includes(search) ||
+          userEmail.includes(search) ||
+          dest.includes(search)
+        );
+      });
+    }
+
     // Orders eligible for scheduling (Rule: ONLY after payment confirmation)
-    const ordersReady = await prisma.order.findMany({
+    const rawOrdersReady = await prisma.order.findMany({
       where: {
         status: {
           in: [
@@ -92,14 +174,70 @@ export async function GET() {
           ],
         },
       },
+      include: {
+        user: {
+          select: {
+            id: true,
+            displayName: true,
+            email: true,
+            phoneNumber: true,
+          },
+        },
+      },
       orderBy: { createdAt: "desc" },
-      take: 50,
+      take: 100,
     });
+
+    const ordersReady = rawOrdersReady.map((o) => ({
+      ...o,
+      customerName: o.customerName || o.user?.displayName || null,
+      customerPhone: o.customerPhone || o.user?.phoneNumber || null,
+      guestEmail: o.guestEmail || o.user?.email || null,
+    }));
+
+    // Warranty Protection Orders (GAR-) tracked specifically inside Services Agenda
+    const rawWarrantyOrders = await prisma.order.findMany({
+      where: {
+        orderNumber: { startsWith: "GAR-" },
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            displayName: true,
+            email: true,
+            phoneNumber: true,
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    const warrantyOrders = rawWarrantyOrders.map((o) => ({
+      ...o,
+      customerName: o.customerName || o.user?.displayName || null,
+      customerPhone: o.customerPhone || o.user?.phoneNumber || null,
+      guestEmail: o.guestEmail || o.user?.email || null,
+    }));
+
+    // Fetch workshop capacity
+    let maxConcurrentInstallations = 1;
+    try {
+      const cfg = await prisma.logisticsRateConfig.findUnique({
+        where: { id: "rates-config" },
+        select: { maxConcurrentInstallations: true },
+      });
+      if (cfg?.maxConcurrentInstallations) {
+        maxConcurrentInstallations = cfg.maxConcurrentInstallations;
+      }
+    } catch {}
 
     return NextResponse.json({
       success: true,
       schedules: enrichedSchedules,
       ordersReady,
+      warrantyOrders,
+      maxConcurrentInstallations,
     });
   } catch (error) {
     console.error("[SYS_SERVICES_GET_ERROR]:", error);
@@ -130,6 +268,8 @@ export async function PATCH(request: Request) {
       clientName,
       clientPhone,
       isFullDay,
+      installationDurationMin,
+      workshopArrivalMinutes,
     } = body;
 
     if (!id) {
@@ -163,6 +303,15 @@ export async function PATCH(request: Request) {
     if (clientPhone !== undefined) updateData.clientPhone = clientPhone;
     if (isFullDay !== undefined) updateData.isFullDay = Boolean(isFullDay);
 
+    if (installationDurationMin !== undefined) {
+      updateData.installationDurationMin = Math.max(15, parseInt(String(installationDurationMin), 10) || 60);
+      updateData.durationMinutes = updateData.installationDurationMin;
+    }
+
+    if (workshopArrivalMinutes !== undefined) {
+      updateData.workshopArrivalMinutes = Math.max(0, parseInt(String(workshopArrivalMinutes), 10) || 0);
+    }
+
     if (time) {
       updateData.time = time;
       if (time.includes(":")) {
@@ -170,8 +319,50 @@ export async function PATCH(request: Request) {
         const timeMin = parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
         updateData.timeMinutes = timeMin;
         const fullDayCheck = isFullDay !== undefined ? isFullDay : existingSchedule.isFullDay;
-        updateData.blockedStartMin = fullDayCheck ? 480 : Math.max(0, timeMin - 30);
-        updateData.blockedEndMin = fullDayCheck ? 1200 : Math.min(1439, timeMin + 30);
+        const travelMin = existingSchedule.travelDurationMin || 0;
+        updateData.blockedStartMin = fullDayCheck ? 480 : Math.max(0, timeMin - travelMin - 15);
+        updateData.blockedEndMin = fullDayCheck ? 1200 : Math.min(1439, timeMin + travelMin + 15);
+      }
+    }
+
+    const effectiveServiceType = serviceType || existingSchedule.serviceType;
+    const effectiveDate = date || existingSchedule.date;
+    const effectiveTimeMin = updateData.timeMinutes ?? existingSchedule.timeMinutes;
+    const effectiveInstallDuration = updateData.installationDurationMin ?? (existingSchedule.installationDurationMin || 60);
+    const effectiveTravelMin = existingSchedule.travelDurationMin || 0;
+
+    if (effectiveServiceType === "pickup" || effectiveServiceType === "UTV_PICKUP") {
+      // For pick-up, workshop arrival can be explicitly adjusted independently from customer pick-up time
+      const arrival = updateData.workshopArrivalMinutes !== undefined
+        ? updateData.workshopArrivalMinutes
+        : (existingSchedule.workshopArrivalMinutes ?? (effectiveTimeMin + effectiveTravelMin + 30));
+      updateData.workshopArrivalMinutes = arrival;
+      const totalFinish = arrival + effectiveInstallDuration + 30;
+      if (totalFinish > 1200) {
+        updateData.carryoverNextDayMinutes = totalFinish - 1200;
+        const [y, m, d] = effectiveDate.split("-").map(Number);
+        const dt = new Date(y, m - 1, d);
+        dt.setDate(dt.getDate() + 1);
+        updateData.carryoverDate = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+      } else {
+        updateData.carryoverNextDayMinutes = 0;
+        updateData.carryoverDate = null;
+      }
+    } else if (effectiveServiceType === "shop_installation") {
+      const arrival = updateData.workshopArrivalMinutes !== undefined
+        ? updateData.workshopArrivalMinutes
+        : effectiveTimeMin;
+      updateData.workshopArrivalMinutes = arrival;
+      const totalFinish = arrival + effectiveInstallDuration + 30;
+      if (totalFinish > 1200) {
+        updateData.carryoverNextDayMinutes = totalFinish - 1200;
+        const [y, m, d] = effectiveDate.split("-").map(Number);
+        const dt = new Date(y, m - 1, d);
+        dt.setDate(dt.getDate() + 1);
+        updateData.carryoverDate = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+      } else {
+        updateData.carryoverNextDayMinutes = 0;
+        updateData.carryoverDate = null;
       }
     }
 
@@ -179,6 +370,27 @@ export async function PATCH(request: Request) {
       where: { id },
       data: updateData,
     });
+
+    if (existingSchedule.orderId) {
+      try {
+        const ord = await prisma.order.findUnique({
+          where: { id: existingSchedule.orderId },
+          select: { serviceDocumentsJson: true },
+        });
+        if (ord?.serviceDocumentsJson) {
+          const doc = typeof ord.serviceDocumentsJson === "string" ? JSON.parse(ord.serviceDocumentsJson) : ord.serviceDocumentsJson;
+          doc.installationDurationMinutes = effectiveInstallDuration;
+          if (updateData.time) doc.timeSlot = updateData.time;
+          if (date) doc.scheduledDate = date;
+          await prisma.order.update({
+            where: { id: existingSchedule.orderId },
+            data: { serviceDocumentsJson: JSON.stringify(doc) },
+          });
+        }
+      } catch (err) {
+        console.warn("[SYS_SERVICES_PATCH_ORDER_SYNC_WARN]:", err);
+      }
+    }
 
     return NextResponse.json({
       success: true,
@@ -223,43 +435,73 @@ export async function POST(request: Request) {
       );
     }
 
-    let targetTimeMinutes = 600;
-    if (timeSlot.includes(":")) {
-      const parts = timeSlot.split(":");
-      targetTimeMinutes = parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+    const isBlocked =
+      serviceType === "ruta_barrial" ||
+      serviceType === "blocked_day" ||
+      serviceType === "blocked_hours" ||
+      status === "BLOCKED";
+
+    const isFullDay =
+      explicitFullDay !== undefined
+        ? Boolean(explicitFullDay)
+        : serviceType === "installation" || (isBlocked && serviceType !== "blocked_hours" && !body.startHour);
+
+    const startHourStr = body.startHour || (timeSlot ? timeSlot.split("-")[0].trim() : "08:00");
+    const endHourStr = body.endHour || (timeSlot && timeSlot.includes("-") ? timeSlot.split("-")[1].trim() : "20:00");
+
+    const startMin = parseTimeToMinutes(startHourStr);
+    let endMin = parseTimeToMinutes(endHourStr);
+    if (!isFullDay && endMin <= startMin) {
+      endMin = Math.min(1200, startMin + 60);
     }
 
-    const isBlockedDay = serviceType === "ruta_barrial" || serviceType === "blocked_day" || status === "BLOCKED";
-    const isFullDay = explicitFullDay !== undefined
-      ? Boolean(explicitFullDay)
-      : serviceType === "installation" || isBlockedDay;
+    const targetTimeMinutes = isFullDay ? 480 : startMin;
+    const blockedStartMin = isFullDay ? 480 : startMin;
+    const blockedEndMin = isFullDay ? 1200 : endMin;
+    const durationMinutes = isFullDay ? 480 : Math.max(30, endMin - startMin);
 
-    const code = generateAppointmentCode(isBlockedDay);
+    const formattedTime = isFullDay
+      ? timeSlot || "08:00"
+      : `${formatMinutesToTime(startMin).time24} - ${formatMinutesToTime(endMin).time24}`;
+
+    const code = generateAppointmentCode(isBlocked);
+
+    const defaultAddress = isBlocked
+      ? serviceType === "ruta_barrial"
+        ? "Ruta BarrialCR"
+        : body.reason || (isFullDay ? "Día Bloqueado por Taller" : "Horas Bloqueadas (Taller)")
+      : null;
+
+    const defaultClient = isBlocked
+      ? serviceType === "ruta_barrial"
+        ? "Ruta BarrialCR"
+        : "Bloqueo Interno Taller"
+      : null;
 
     const newSchedule = await prisma.serviceSchedule.create({
       data: {
         appointmentCode: code,
         orderId: orderId || null,
-        serviceType,
+        serviceType: isBlocked && !isFullDay ? "blocked_hours" : serviceType,
         date: scheduledDate,
-        time: timeSlot,
+        time: formattedTime,
         timeMinutes: targetTimeMinutes,
-        durationMinutes: isFullDay ? 480 : 30,
+        durationMinutes,
         travelDurationMin: 0,
         prepBufferMin: 15,
-        blockedStartMin: isFullDay ? 480 : Math.max(0, targetTimeMinutes - 30),
-        blockedEndMin: isFullDay ? 1200 : Math.min(1439, targetTimeMinutes + 30),
+        blockedStartMin,
+        blockedEndMin,
         isFullDay,
-        destinationAddress: destinationAddress || (isBlockedDay ? (serviceType === "ruta_barrial" ? "Ruta BarrialCR" : "Día Bloqueado") : null),
+        destinationAddress: destinationAddress || defaultAddress,
         distanceKm: Number(distanceKm) || 0,
-        clientName: clientName || (isBlockedDay ? (serviceType === "ruta_barrial" ? "Ruta BarrialCR" : "Bloqueo Taller") : null),
+        clientName: clientName || defaultClient,
         clientPhone: clientPhone || null,
         costCRC: Number(costCRC) || 0,
-        paymentStatus: isBlockedDay
+        paymentStatus: isBlocked
           ? "PAID"
           : paymentStatus || (costCRC > 0 && paymentProofUrl ? "PAID" : costCRC === 0 ? "PAID" : "PENDING"),
         paymentProofUrl: paymentProofUrl || null,
-        status: isBlockedDay ? "BLOCKED" : status || "CONFIRMED",
+        status: isBlocked ? "BLOCKED" : status || "CONFIRMED",
       },
     });
 
@@ -285,7 +527,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-      message: isBlockedDay ? "Día bloqueado exitosamente" : "Servicio programado exitosamente",
+      message: isBlocked ? "Bloqueo registrado exitosamente" : "Servicio programado exitosamente",
       schedule: newSchedule,
     });
   } catch (error) {

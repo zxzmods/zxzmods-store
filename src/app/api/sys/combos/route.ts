@@ -79,6 +79,7 @@ export async function POST(request: Request) {
         priceCRC: Math.round(Number(priceCRC) || 0),
         originalPriceCRC: Math.round(Number(originalPriceCRC) || 0),
         installationPriceCRC: finalInstallPrice,
+        installationDurationMinutes: Math.max(15, Math.round(Number(body.installationDurationMinutes) || 60)),
         installLabourCostCRC: installLabour,
         installProfitCRC: installProfit,
         installExtraPartsJson: extraPartsJson,

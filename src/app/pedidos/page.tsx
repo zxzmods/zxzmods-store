@@ -52,6 +52,7 @@ import {
   Eye,
   X,
   ExternalLink,
+  Search,
 } from "lucide-react";
 import { getOrderPendingInstallationCost } from "@/lib/orderServices";
 
@@ -63,6 +64,7 @@ export default function PedidosPage() {
   const [ordersList, setOrdersList] = useState<UserOrder[]>(orders || []);
   const [fetching, setFetching] = useState(false);
   const [activeTab, setActiveTab] = useState<"ALL" | "ORDERS" | "QUOTES">("ALL");
+  const [searchQuery, setSearchQuery] = useState("");
   const [previewProofUrl, setPreviewProofUrl] = useState<string | null>(null);
 
   // Sync with context orders or re-fetch from dedicated API endpoint
@@ -118,14 +120,35 @@ export default function PedidosPage() {
   );
 
   const displayedOrders = useMemo(() => {
+    let list = ordersList;
     if (activeTab === "QUOTES") {
-      return ordersList.filter((o) => o.status?.toUpperCase() === "COTIZACION");
+      list = ordersList.filter((o) => o.status?.toUpperCase() === "COTIZACION");
+    } else if (activeTab === "ORDERS") {
+      list = ordersList.filter((o) => o.status?.toUpperCase() !== "COTIZACION");
     }
-    if (activeTab === "ORDERS") {
-      return ordersList.filter((o) => o.status?.toUpperCase() !== "COTIZACION");
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      list = list.filter((o) => {
+        const num = (o.orderNumber || "").toLowerCase();
+        const custName = ((o as any).customerName || user?.displayName || "").toLowerCase();
+        const custPhone = ((o as any).customerPhone || user?.phoneNumber || "").toLowerCase();
+        const stat = (o.status || "").toLowerCase();
+        let itemMatch = false;
+        try {
+          const itms = typeof o.itemsJson === "string" ? JSON.parse(o.itemsJson) : o.itemsJson;
+          if (Array.isArray(itms)) {
+            itemMatch = itms.some((it: any) =>
+              (it.name || it.title || it.slug || "").toLowerCase().includes(q)
+            );
+          }
+        } catch {}
+        return num.includes(q) || custName.includes(q) || custPhone.includes(q) || stat.includes(q) || itemMatch;
+      });
     }
-    return ordersList;
-  }, [ordersList, activeTab]);
+
+    return list;
+  }, [ordersList, activeTab, searchQuery, user]);
 
   const getServiceTypeBadge = (serviceType: string) => {
     switch (serviceType) {
@@ -220,62 +243,85 @@ export default function PedidosPage() {
           )}
         </div>
 
-        {/* Filter Navigation Tabs (Differentiating placed orders vs cotizaciones) */}
+        {/* Search Bar & Filter Navigation Tabs (Differentiating placed orders vs cotizaciones) */}
         {user && !isLoading && ordersList.length > 0 && (
-          <div className="flex items-center gap-2 mb-8 overflow-x-auto pb-2 scrollbar-none">
-            <button
-              type="button"
-              onClick={() => setActiveTab("ALL")}
-              className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-                activeTab === "ALL"
-                  ? "bg-[#111827] text-white shadow-xs"
-                  : "bg-white text-gray-600 hover:text-gray-900 border border-gray-200"
-              }`}
-            >
-              <Layers className="w-3.5 h-3.5" />
-              <span>{lang === "es" ? "Todos" : "All"}</span>
-              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
-                activeTab === "ALL" ? "bg-white/20 text-white" : "bg-gray-100 text-gray-600"
-              }`}>
-                {ordersList.length}
-              </span>
-            </button>
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 mb-8">
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+              <button
+                type="button"
+                onClick={() => setActiveTab("ALL")}
+                className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                  activeTab === "ALL"
+                    ? "bg-[#111827] text-white shadow-xs"
+                    : "bg-white text-gray-600 hover:text-gray-900 border border-gray-200"
+                }`}
+              >
+                <Layers className="w-3.5 h-3.5" />
+                <span>{lang === "es" ? "Todos" : "All"}</span>
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                  activeTab === "ALL" ? "bg-white/20 text-white" : "bg-gray-100 text-gray-600"
+                }`}>
+                  {ordersList.length}
+                </span>
+              </button>
 
-            <button
-              type="button"
-              onClick={() => setActiveTab("ORDERS")}
-              className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-                activeTab === "ORDERS"
-                  ? "bg-[#0052CC] text-white shadow-xs"
-                  : "bg-white text-gray-600 hover:text-[#0052CC] border border-gray-200"
-              }`}
-            >
-              <Package className="w-3.5 h-3.5" />
-              <span>{lang === "es" ? "Pedidos en Firme" : "Placed Orders"}</span>
-              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
-                activeTab === "ORDERS" ? "bg-white/20 text-white" : "bg-blue-50 text-[#0052CC]"
-              }`}>
-                {ordersCount}
-              </span>
-            </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("ORDERS")}
+                className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                  activeTab === "ORDERS"
+                    ? "bg-[#0052CC] text-white shadow-xs"
+                    : "bg-white text-gray-600 hover:text-[#0052CC] border border-gray-200"
+                }`}
+              >
+                <Package className="w-3.5 h-3.5" />
+                <span>{lang === "es" ? "Pedidos en Firme" : "Placed Orders"}</span>
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                  activeTab === "ORDERS" ? "bg-white/20 text-white" : "bg-blue-50 text-[#0052CC]"
+                }`}>
+                  {ordersCount}
+                </span>
+              </button>
 
-            <button
-              type="button"
-              onClick={() => setActiveTab("QUOTES")}
-              className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-                activeTab === "QUOTES"
-                  ? "bg-purple-700 text-white shadow-xs"
-                  : "bg-white text-gray-600 hover:text-purple-700 border border-gray-200"
-              }`}
-            >
-              <ClipboardList className="w-3.5 h-3.5" />
-              <span>{lang === "es" ? "Cotizaciones Proforma" : "Proforma Quotations"}</span>
-              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
-                activeTab === "QUOTES" ? "bg-white/20 text-white" : "bg-purple-50 text-purple-700"
-              }`}>
-                {quotesCount}
-              </span>
-            </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("QUOTES")}
+                className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                  activeTab === "QUOTES"
+                    ? "bg-purple-700 text-white shadow-xs"
+                    : "bg-white text-gray-600 hover:text-purple-700 border border-gray-200"
+                }`}
+              >
+                <ClipboardList className="w-3.5 h-3.5" />
+                <span>{lang === "es" ? "Cotizaciones Proforma" : "Proforma Quotations"}</span>
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                  activeTab === "QUOTES" ? "bg-white/20 text-white" : "bg-purple-50 text-purple-700"
+                }`}>
+                  {quotesCount}
+                </span>
+              </button>
+            </div>
+
+            {/* Quick Search Input */}
+            <div className="relative w-full sm:w-72 shrink-0">
+              <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder={t.ordersSearchPlaceholder}
+                className="w-full bg-white border border-gray-200 rounded-xl pl-8 pr-7 py-2 text-xs text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#C02030] transition shadow-2xs"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
           </div>
         )}
 
