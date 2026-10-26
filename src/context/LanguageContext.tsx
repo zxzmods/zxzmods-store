@@ -22,7 +22,7 @@ interface LanguageContextType {
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined);
 
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
-  const [lang, setLangState] = useState<Language>("en");
+  const [lang, setLangState] = useState<Language>("es");
   const [companyPhone, setCompanyPhone] = useState<string>(GLOBAL_MASTER_PHONE);
   const [companyWhatsapp, setCompanyWhatsapp] = useState<string>(GLOBAL_MASTER_WHATSAPP);
 
@@ -31,7 +31,7 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
     if (saved && (saved === "es" || saved === "en")) {
       setLangState(saved);
     } else {
-      setLangState("en"); // General / first time users default to English per user setting
+      setLangState("es"); // Spanish as default main website language per Global Rule #3
     }
   }, []);
 
