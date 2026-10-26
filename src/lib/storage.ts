@@ -262,16 +262,29 @@ export async function processAndStoreImage(
   const ext = path.extname(originalFilename).toLowerCase() || (mimeType.startsWith("video/") ? ".mp4" : ".webp");
   const uniqueFileName = `${folder}_${Date.now()}_${randomSuffix}_${cleanBaseName}${ext}`;
 
-  const bucketName = process.env.GCS_BUCKET_NAME || process.env.FIREBASE_STORAGE_BUCKET || "zxz-mods-media";
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const bucketName = process.env.SUPABASE_STORAGE_BUCKET || process.env.GCS_BUCKET_NAME || process.env.FIREBASE_STORAGE_BUCKET || "zxz-mods-media";
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || `https://${process.env.SUPABASE_PROJECT_REF || "uwfhsolkumynqivaqftz"}.supabase.co`;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  // 1. If Supabase Storage is configured, upload directly to Supabase Storage Bucket
+  // 1. If Supabase Storage is configured (or inferred from Supabase project ref), upload directly to Supabase Storage Bucket
   if (supabaseUrl && supabaseServiceKey) {
     try {
       const cleanBaseUrl = supabaseUrl.replace(/\/+$/, "");
       const destination = `${folder}/${uniqueFileName}`;
       const uploadEndpoint = `${cleanBaseUrl}/storage/v1/object/${bucketName}/${destination}`;
+
+      // Ensure bucket exists in Supabase Storage automatically (public bucket)
+      try {
+        await fetch(`${cleanBaseUrl}/storage/v1/bucket`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${supabaseServiceKey}`,
+            apikey: supabaseServiceKey,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ id: bucketName, name: bucketName, public: true }),
+        });
+      } catch {}
 
       const res = await fetch(uploadEndpoint, {
         method: "POST",
@@ -294,18 +307,30 @@ export async function processAndStoreImage(
           mimeType,
         };
       } else {
-        const errText = await res.text().catch(() => "");
-        console.warn("[STORAGE_SUPABASE_WARN] Supabase Storage upload returned non-OK:", res.status, errText);
+        const errJson = await res.json().catch(() => ({}));
+        console.warn("[STORAGE_SUPABASE_WARN] Supabase Storage upload error:", res.status, errJson);
+        if (!process.env.FIREBASE_ADMIN_PRIVATE_KEY && !process.env.GCS_PRIVATE_KEY) {
+          return {
+            success: false,
+            error: `Error al subir a Supabase Storage (${bucketName}): ${errJson?.message || errJson?.error || "Verifica que el bucket exista y tenga permisos públicos"}`,
+          };
+        }
       }
-    } catch (sbError) {
+    } catch (sbError: any) {
       console.error("[STORAGE_SUPABASE_ERROR] Supabase storage upload failed:", sbError);
+      if (!process.env.FIREBASE_ADMIN_PRIVATE_KEY && !process.env.GCS_PRIVATE_KEY) {
+        return {
+          success: false,
+          error: `Fallo de conexión con Supabase Storage: ${sbError?.message || "Error desconocido"}`,
+        };
+      }
     }
   }
 
   const gcs = getGCSClient();
 
   // 2. If Google Cloud Storage is configured, stream buffer to GCP Bucket
-  if (bucketName && gcs) {
+  if (gcs && process.env.GCS_ENABLED === "true") {
     try {
       const bucket = gcs.bucket(bucketName);
       const destination = `${folder}/${uniqueFileName}`;
