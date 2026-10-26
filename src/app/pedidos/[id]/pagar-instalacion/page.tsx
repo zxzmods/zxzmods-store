@@ -162,8 +162,8 @@ export default function InstallationCheckoutPage() {
         );
         return;
       }
-      if (selected.size > 8 * 1024 * 1024) {
-        setError(lang === "es" ? "El archivo supera el límite de 8MB." : "File exceeds the 8MB limit.");
+      if (selected.size > 100 * 1024 * 1024) {
+        setError(lang === "es" ? "El archivo supera el límite de 100MB." : "File exceeds the 100MB limit.");
         return;
       }
       setFile(selected);
@@ -180,8 +180,8 @@ export default function InstallationCheckoutPage() {
     e.preventDefault();
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       const selected = e.dataTransfer.files[0];
-      if (selected.size > 8 * 1024 * 1024) {
-        setError(lang === "es" ? "El archivo supera el límite de 8MB." : "File exceeds the 8MB limit.");
+      if (selected.size > 100 * 1024 * 1024) {
+        setError(lang === "es" ? "El archivo supera el límite de 100MB." : "File exceeds the 100MB limit.");
         return;
       }
       setFile(selected);
@@ -870,7 +870,7 @@ export default function InstallationCheckoutPage() {
                     <p className="text-xs font-bold text-slate-700">
                       {lang === "es" ? "Haz clic o arrastra tu comprobante aquí" : "Click or drag your receipt here"}
                     </p>
-                    <p className="text-[10px] text-slate-400">JPG, PNG, WEBP o PDF hasta 8MB</p>
+                    <p className="text-[10px] text-slate-400">JPG, PNG, WEBP o PDF hasta 100MB</p>
                   </div>
                 )}
               </label>

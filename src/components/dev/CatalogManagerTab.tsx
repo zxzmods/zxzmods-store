@@ -3099,12 +3099,12 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
     formData.append("folder", folderTarget);
 
     try {
-      const maxDirectBytes = mediaType === "video" ? 30 * 1024 * 1024 : 12 * 1024 * 1024;
+      const maxDirectBytes = 100 * 1024 * 1024;
       if (file.size > maxDirectBytes) {
         alert(
           lang === "es"
-            ? `El archivo pesa ${(file.size / (1024 * 1024)).toFixed(1)}MB. El límite máximo para subida directa es de ${mediaType === "video" ? "30MB" : "12MB"}.`
-            : `File is ${(file.size / (1024 * 1024)).toFixed(1)}MB. Direct upload limit is ${mediaType === "video" ? "30MB" : "12MB"}.`
+            ? `El archivo pesa ${(file.size / (1024 * 1024)).toFixed(1)}MB. El límite máximo para subida directa es de 100MB.`
+            : `File is ${(file.size / (1024 * 1024)).toFixed(1)}MB. Direct upload limit is 100MB.`
         );
         return;
       }

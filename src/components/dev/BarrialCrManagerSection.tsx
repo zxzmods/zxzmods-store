@@ -238,13 +238,13 @@ export function BarrialCrManagerSection({ userRole }: BarrialCrManagerSectionPro
     else setUploadingLogo(true);
 
     try {
-      // Client-side file size guard
-      const maxDirectBytes = type === "VIDEO" ? 30 * 1024 * 1024 : 12 * 1024 * 1024;
+      // Client-side file size guard (max 100MB)
+      const maxDirectBytes = 100 * 1024 * 1024;
       if (file.size > maxDirectBytes) {
         throw new Error(
           lang === "es"
-            ? `El archivo pesa ${(file.size / (1024 * 1024)).toFixed(1)}MB. El límite máximo para subida directa es de ${type === "VIDEO" ? "30MB" : "12MB"}.`
-            : `File is ${(file.size / (1024 * 1024)).toFixed(1)}MB. Direct upload limit is ${type === "VIDEO" ? "30MB" : "12MB"}.`
+            ? `El archivo pesa ${(file.size / (1024 * 1024)).toFixed(1)}MB. El límite máximo para subida directa es de 100MB.`
+            : `File is ${(file.size / (1024 * 1024)).toFixed(1)}MB. Direct upload limit is 100MB.`
         );
       }
 

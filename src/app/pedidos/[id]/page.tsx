@@ -2545,7 +2545,12 @@ export default function OrderDetailPage() {
                       className="hidden"
                       onChange={(e) => {
                         if (e.target.files && e.target.files[0]) {
-                          setPayReceiptFile(e.target.files[0]);
+                          const f = e.target.files[0];
+                          if (f.size > 100 * 1024 * 1024) {
+                            alert(lang === "es" ? "El archivo supera el límite de 100MB." : "File exceeds the 100MB limit.");
+                            return;
+                          }
+                          setPayReceiptFile(f);
                         }
                       }}
                     />
@@ -2559,7 +2564,7 @@ export default function OrderDetailPage() {
                       <p className="text-[11px] text-gray-400 mt-0.5">
                         {payReceiptFile
                           ? `${(payReceiptFile.size / 1024).toFixed(1)} KB • Listo para enviar`
-                          : (lang === "es" ? "Formatos aceptados: JPG, PNG, WEBP, PDF (Máx 15MB)" : "Accepted formats: JPG, PNG, WEBP, PDF (Max 15MB)")}
+                          : (lang === "es" ? "Formatos aceptados: JPG, PNG, WEBP, PDF (Máx 100MB)" : "Accepted formats: JPG, PNG, WEBP, PDF (Max 100MB)")}
                       </p>
                     </div>
                   </label>
@@ -2819,7 +2824,12 @@ export default function OrderDetailPage() {
                       className="hidden"
                       onChange={(e) => {
                         if (e.target.files && e.target.files[0]) {
-                          setDirectProofFile(e.target.files[0]);
+                          const f = e.target.files[0];
+                          if (f.size > 100 * 1024 * 1024) {
+                            alert(lang === "es" ? "El archivo supera el límite de 100MB." : "File exceeds the 100MB limit.");
+                            return;
+                          }
+                          setDirectProofFile(f);
                         }
                       }}
                     />
@@ -2833,7 +2843,7 @@ export default function OrderDetailPage() {
                       <p className="text-[11px] text-gray-400 mt-0.5">
                         {directProofFile
                           ? `${(directProofFile.size / 1024).toFixed(1)} KB • Listo para enviar`
-                          : (lang === "es" ? "Formatos: JPG, PNG, WEBP, PDF (Máx 15MB)" : "Formats: JPG, PNG, WEBP, PDF (Max 15MB)")}
+                          : (lang === "es" ? "Formatos: JPG, PNG, WEBP, PDF (Máx 100MB)" : "Formats: JPG, PNG, WEBP, PDF (Max 100MB)")}
                       </p>
                     </div>
                   </label>

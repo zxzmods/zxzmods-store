@@ -133,22 +133,22 @@ export function HomePageManagerTab({ userRole }: HomePageManagerTabProps) {
     }
 
     try {
-      // Client-side file size guard before attempting network request
-      const maxDirectBytes = type === "VIDEO" ? 30 * 1024 * 1024 : 12 * 1024 * 1024;
+      // Client-side file size guard before attempting network request (max 100MB)
+      const maxDirectBytes = 100 * 1024 * 1024;
       if (file.size > maxDirectBytes) {
         if (type === "VIDEO") {
           setShowManualVideoUrl(true);
           throw new Error(
             lang === "es"
-              ? `El video pesa ${(file.size / (1024 * 1024)).toFixed(1)}MB. El límite para subida directa al servidor es de 30MB. Te recomendamos ingresar la URL directa del video en la casilla inferior o comprimir el archivo.`
-              : `The video is ${(file.size / (1024 * 1024)).toFixed(1)}MB. The direct upload limit is 30MB. Please paste the direct video URL in the field below or compress the file.`
+              ? `El video pesa ${(file.size / (1024 * 1024)).toFixed(1)}MB. El límite para subida directa es de 100MB.`
+              : `The video is ${(file.size / (1024 * 1024)).toFixed(1)}MB. Direct upload limit is 100MB.`
           );
         } else {
           setShowManualMediaUrl(true);
           throw new Error(
             lang === "es"
-              ? `La imagen pesa ${(file.size / (1024 * 1024)).toFixed(1)}MB. El límite máximo para subida directa es de 12MB.`
-              : `The image is ${(file.size / (1024 * 1024)).toFixed(1)}MB. The direct upload limit is 12MB.`
+              ? `La imagen pesa ${(file.size / (1024 * 1024)).toFixed(1)}MB. El límite máximo para subida directa es de 100MB.`
+              : `The image is ${(file.size / (1024 * 1024)).toFixed(1)}MB. The direct upload limit is 100MB.`
           );
         }
       }
@@ -1276,7 +1276,9 @@ export function HomePageManagerTab({ userRole }: HomePageManagerTabProps) {
                               : t.backdoorHomeUploadImageBtn}
                           </p>
                           <p className="text-[10px] text-slate-500">
-                            Formatos soportados: JPEG, PNG, WebP, AVIF, GIF (hasta 12MB)
+                            {lang === "es"
+                              ? "Formatos soportados: JPEG, PNG, WebP, AVIF, GIF (hasta 100MB)"
+                              : "Supported formats: JPEG, PNG, WebP, AVIF, GIF (up to 100MB)"}
                           </p>
                         </div>
                       </div>
@@ -1415,8 +1417,8 @@ export function HomePageManagerTab({ userRole }: HomePageManagerTabProps) {
                             </p>
                             <p className="text-[10px] text-slate-500">
                               {lang === "es"
-                                ? "Formatos: MP4, WebM, MOV (hasta 30MB directo, o mediante URL para videos de mayor tamaño)"
-                                : "Formats: MP4, WebM, MOV (up to 30MB direct, or via URL for larger files)"}
+                                ? "Formatos: MP4, WebM, MOV (hasta 100MB directo)"
+                                : "Formats: MP4, WebM, MOV (up to 100MB direct)"}
                             </p>
                           </div>
                         </div>

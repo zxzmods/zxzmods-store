@@ -3,6 +3,9 @@ import { processAndStoreImage } from "@/lib/storage";
 import { checkRateLimit, createRateLimitResponse, getClientIp } from "@/lib/rateLimit";
 import { isValidStorageUrl } from "@/lib/security/inputSanitizer";
 
+export const dynamic = "force-dynamic";
+export const maxDuration = 60;
+
 export async function POST(request: Request) {
   // 1. Rate limiting defense against storage flooding / DoS (max 10 uploads per 15 minutes per IP)
   const ip = getClientIp(request);
@@ -26,11 +29,11 @@ export async function POST(request: Request) {
       );
     }
 
-    // 2. Strict file size enforcement (max 10MB)
-    const MAX_SIZE = 10 * 1024 * 1024;
+    // 2. Strict file size enforcement (max 100MB)
+    const MAX_SIZE = 100 * 1024 * 1024;
     if (file.size > MAX_SIZE) {
       return NextResponse.json(
-        { success: false, error: "El archivo excede el tamaño máximo permitido de 10 MB" },
+        { success: false, error: "El archivo excede el tamaño máximo permitido de 100 MB" },
         { status: 400 }
       );
     }

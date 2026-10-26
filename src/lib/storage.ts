@@ -16,10 +16,12 @@ export interface UploadImageResult {
 const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/avif", "image/gif"];
 const ALLOWED_VIDEO_TYPES = ["video/mp4", "video/webm", "video/quicktime", "video/ogg", "video/x-matroska"];
 const ALLOWED_AUDIO_TYPES = ["audio/wav", "audio/x-wav", "audio/mpeg", "audio/mp3", "audio/ogg", "audio/aac", "audio/m4a", "audio/x-m4a", "audio/flac"];
+const ALLOWED_DOC_TYPES = ["application/pdf"];
 
-const MAX_IMAGE_SIZE = 12 * 1024 * 1024; // 12MB
+const MAX_IMAGE_SIZE = 100 * 1024 * 1024; // 100MB
 const MAX_VIDEO_SIZE = 100 * 1024 * 1024; // 100MB
-const MAX_AUDIO_SIZE = 25 * 1024 * 1024; // 25MB
+const MAX_AUDIO_SIZE = 100 * 1024 * 1024; // 100MB
+const MAX_DOC_SIZE = 100 * 1024 * 1024; // 100MB
 
 /**
  * Validates file magic bytes (file signature) against expected content.
@@ -85,12 +87,17 @@ function verifyMagicBytes(buffer: Buffer, mimeType: string): boolean {
     );
   }
 
+  // PDF: %PDF
+  if (mimeType === "application/pdf") {
+    return buffer.subarray(0, 4).toString("ascii") === "%PDF";
+  }
+
   // Allow general formats if not explicitly matched
   return true;
 }
 
 /**
- * Validates uploaded media buffer and MIME type (Image, Video, Audio).
+ * Validates uploaded media buffer and MIME type (Image, Video, Audio, PDF).
  */
 export function validateMedia(
   file: { type: string; size: number },
@@ -107,27 +114,31 @@ export function validateMedia(
   const isImage = ALLOWED_IMAGE_TYPES.includes(file.type) || file.type.startsWith("image/");
   const isVideo = ALLOWED_VIDEO_TYPES.includes(file.type) || file.type.startsWith("video/");
   const isAudio = ALLOWED_AUDIO_TYPES.includes(file.type) || file.type.startsWith("audio/");
+  const isDoc = ALLOWED_DOC_TYPES.includes(file.type) || file.type === "application/pdf";
 
-  if (!isImage && !isVideo && !isAudio) {
+  if (!isImage && !isVideo && !isAudio && !isDoc) {
     return {
       valid: false,
-      error: `Formato de archivo no soportado (${file.type}). Se permiten imágenes (JPEG, PNG, WebP), videos (MP4, WebM) y audios (MP3, WAV).`,
+      error: `Formato de archivo no soportado (${file.type}). Se permiten imágenes (JPEG, PNG, WebP), videos (MP4, WebM), audios (MP3, WAV) y documentos PDF (hasta 100MB).`,
     };
   }
 
   if (isImage && file.size > MAX_IMAGE_SIZE) {
-    return { valid: false, error: `La imagen excede el límite de 12MB. Tamaño: ${(file.size / (1024 * 1024)).toFixed(2)}MB.` };
+    return { valid: false, error: `La imagen excede el límite de 100MB. Tamaño: ${(file.size / (1024 * 1024)).toFixed(2)}MB.` };
   }
   if (isVideo && file.size > MAX_VIDEO_SIZE) {
     return { valid: false, error: `El video excede el límite de 100MB. Tamaño: ${(file.size / (1024 * 1024)).toFixed(2)}MB.` };
   }
   if (isAudio && file.size > MAX_AUDIO_SIZE) {
-    return { valid: false, error: `El audio excede el límite de 25MB. Tamaño: ${(file.size / (1024 * 1024)).toFixed(2)}MB.` };
+    return { valid: false, error: `El audio excede el límite de 100MB. Tamaño: ${(file.size / (1024 * 1024)).toFixed(2)}MB.` };
+  }
+  if (isDoc && file.size > MAX_DOC_SIZE) {
+    return { valid: false, error: `El documento PDF excede el límite de 100MB. Tamaño: ${(file.size / (1024 * 1024)).toFixed(2)}MB.` };
   }
 
   return {
     valid: true,
-    mediaCategory: isImage ? "image" : isVideo ? "video" : "audio",
+    mediaCategory: isImage ? "image" : isVideo ? "video" : isAudio ? "audio" : "image",
   };
 }
 
@@ -259,7 +270,15 @@ export async function processAndStoreImage(
   const cleanBaseName = originalFilename
     .replace(/[^a-zA-Z0-9_-]/g, "_")
     .substring(0, 24);
-  const ext = path.extname(originalFilename).toLowerCase() || (mimeType.startsWith("video/") ? ".mp4" : ".webp");
+  const ext =
+    path.extname(originalFilename).toLowerCase() ||
+    (mimeType === "application/pdf"
+      ? ".pdf"
+      : mimeType.startsWith("video/")
+      ? ".mp4"
+      : mimeType.startsWith("audio/")
+      ? ".mp3"
+      : ".webp");
   const uniqueFileName = `${folder}_${Date.now()}_${randomSuffix}_${cleanBaseName}${ext}`;
 
   const bucketName = process.env.SUPABASE_STORAGE_BUCKET || process.env.GCS_BUCKET_NAME || process.env.FIREBASE_STORAGE_BUCKET || "zxz-mods-media";

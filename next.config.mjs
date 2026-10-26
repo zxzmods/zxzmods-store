@@ -6,6 +6,9 @@ const nextConfig = {
     unoptimized: true,
   },
   experimental: {
+    serverActions: {
+      bodySizeLimit: "100mb",
+    },
     serverComponentsExternalPackages: [
       "@opentelemetry/api",
       "@prisma/client",

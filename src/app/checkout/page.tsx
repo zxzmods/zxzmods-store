@@ -256,24 +256,28 @@ export default function CheckoutPage() {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const selected = e.target.files[0];
-      if (!selected.type.startsWith("image/")) {
+      if (!selected.type.startsWith("image/") && selected.type !== "application/pdf") {
         setError(
           lang === "es"
-            ? "Por favor sube un archivo de imagen (JPG, PNG, WEBP)."
-            : "Please upload an image file (JPG, PNG, WEBP)."
+            ? "Por favor sube un archivo de imagen (JPG, PNG, WEBP) o PDF."
+            : "Please upload an image file (JPG, PNG, WEBP) or PDF."
         );
         return;
       }
-      if (selected.size > 6 * 1024 * 1024) {
+      if (selected.size > 100 * 1024 * 1024) {
         setError(
           lang === "es"
-            ? "El archivo supera el límite de 6MB."
-            : "File exceeds the 6MB limit."
+            ? "El archivo supera el límite de 100MB."
+            : "File exceeds the 100MB limit."
         );
         return;
       }
       setFile(selected);
-      setPreview(URL.createObjectURL(selected));
+      if (selected.type.startsWith("image/")) {
+        setPreview(URL.createObjectURL(selected));
+      } else {
+        setPreview(null);
+      }
       setError(null);
     }
   };
@@ -282,18 +286,28 @@ export default function CheckoutPage() {
     e.preventDefault();
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       const selected = e.dataTransfer.files[0];
-      if (selected.type.startsWith("image/")) {
-        if (selected.size > 6 * 1024 * 1024) {
+      if (selected.type.startsWith("image/") || selected.type === "application/pdf") {
+        if (selected.size > 100 * 1024 * 1024) {
           setError(
             lang === "es"
-              ? "El archivo supera el límite de 6MB."
-              : "File exceeds the 6MB limit."
+              ? "El archivo supera el límite de 100MB."
+              : "File exceeds the 100MB limit."
           );
           return;
         }
         setFile(selected);
-        setPreview(URL.createObjectURL(selected));
+        if (selected.type.startsWith("image/")) {
+          setPreview(URL.createObjectURL(selected));
+        } else {
+          setPreview(null);
+        }
         setError(null);
+      } else {
+        setError(
+          lang === "es"
+            ? "Por favor sube un archivo de imagen (JPG, PNG, WEBP) o PDF."
+            : "Please upload an image file (JPG, PNG, WEBP) or PDF."
+        );
       }
     }
   };
@@ -1329,29 +1343,44 @@ export default function CheckoutPage() {
               >
                 <input
                   type="file"
-                  accept="image/jpeg, image/png, image/webp"
+                  accept="image/jpeg, image/png, image/webp, image/avif, application/pdf"
                   className="hidden"
                   onChange={handleFileChange}
                 />
 
-                {preview ? (
+                {file ? (
                   <div className="w-full flex flex-col items-center space-y-3">
-                    <div className="relative w-36 h-48 rounded-xl overflow-hidden border border-slate-200 shadow-md bg-white">
-                      <Image
-                        src={preview}
-                        alt="Preview"
-                        fill
-                        className="object-cover"
-                      />
-                      <button
-                        type="button"
-                        onClick={removeSelectedFile}
-                        className="absolute top-2 right-2 p-1.5 rounded-full bg-slate-900/80 text-white hover:bg-red-600 transition-colors shadow-sm cursor-pointer"
-                        title={lang === "es" ? "Quitar imagen" : "Remove image"}
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
+                    {preview ? (
+                      <div className="relative w-36 h-48 rounded-xl overflow-hidden border border-slate-200 shadow-md bg-white">
+                        <Image
+                          src={preview}
+                          alt="Preview"
+                          fill
+                          className="object-cover"
+                        />
+                        <button
+                          type="button"
+                          onClick={removeSelectedFile}
+                          className="absolute top-2 right-2 p-1.5 rounded-full bg-slate-900/80 text-white hover:bg-red-600 transition-colors shadow-sm cursor-pointer"
+                          title={lang === "es" ? "Quitar archivo" : "Remove file"}
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="relative w-36 h-36 rounded-xl border border-slate-200 shadow-md bg-white flex flex-col items-center justify-center p-3">
+                        <FileText className="w-10 h-10 text-rose-600" />
+                        <span className="text-[10px] font-bold text-slate-700 mt-1 uppercase">PDF</span>
+                        <button
+                          type="button"
+                          onClick={removeSelectedFile}
+                          className="absolute top-2 right-2 p-1.5 rounded-full bg-slate-900/80 text-white hover:bg-red-600 transition-colors shadow-sm cursor-pointer"
+                          title={lang === "es" ? "Quitar archivo" : "Remove file"}
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    )}
 
                     <div className="text-center">
                       <div className="flex items-center justify-center gap-1.5 text-xs font-bold text-slate-800">
@@ -1360,8 +1389,8 @@ export default function CheckoutPage() {
                       </div>
                       <span className="text-[11px] text-[#0052CC] font-semibold hover:underline block mt-1">
                         {lang === "es"
-                          ? "Haz clic para cambiar imagen"
-                          : "Click to change image"}
+                          ? "Haz clic para cambiar archivo"
+                          : "Click to change file"}
                       </span>
                     </div>
                   </div>
@@ -1377,7 +1406,7 @@ export default function CheckoutPage() {
                           : "Drag and drop your receipt here or click")}
                     </p>
                     <p className="text-[11px] text-slate-400">
-                      JPG, PNG, WEBP ({lang === "es" ? "Máx 6MB" : "Max 6MB"})
+                      JPG, PNG, WEBP, PDF ({lang === "es" ? "Máx 100MB" : "Max 100MB"})
                     </p>
                   </div>
                 )}
