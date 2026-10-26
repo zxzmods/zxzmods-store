@@ -13,6 +13,7 @@ import { TermsModal } from "@/components/terms/TermsModal";
 import { GlobalDocumentModal } from "@/components/documents/GlobalDocumentModal";
 import { OrderNotificationAlerts } from "@/components/orders/OrderNotificationAlerts";
 import { AddToCartModal } from "@/components/cart/AddToCartModal";
+import { Analytics } from "@vercel/analytics/next";
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -92,6 +93,7 @@ export default function RootLayout({
             </AuthProvider>
           </LanguageProvider>
         </ThemeProvider>
+        <Analytics />
       </body>
     </html>
   );
