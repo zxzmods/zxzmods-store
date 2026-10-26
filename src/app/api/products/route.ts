@@ -33,21 +33,52 @@ function dbProductToProductItem(dbProd: any, jsonProd?: ProductItem | null, isSt
   }
 
   // Image list
-  let imgs = jsonProd?.imgs ? [...jsonProd.imgs] : [];
-  if (dbProd.imageUrl) {
-    if (!imgs.includes(dbProd.imageUrl)) {
-      imgs = [dbProd.imageUrl, ...imgs.filter((i) => i !== dbProd.imageUrl)];
-    }
+  let imgs: string[] = [];
+  if (dbProd.imageUrl && typeof dbProd.imageUrl === "string" && dbProd.imageUrl.trim()) {
+    imgs.push(dbProd.imageUrl.trim());
+  }
+  if (dbProd.imagesJson) {
+    try {
+      const parsed = JSON.parse(dbProd.imagesJson);
+      if (Array.isArray(parsed)) {
+        parsed.forEach((img: any) => {
+          const s = typeof img === "string" ? img.trim() : "";
+          if (s && !imgs.includes(s)) imgs.push(s);
+        });
+      }
+    } catch (e) {}
   }
   if (dbProd.additionalImagesJson) {
     try {
       const addImgs = JSON.parse(dbProd.additionalImagesJson);
       if (Array.isArray(addImgs)) {
-        addImgs.forEach((img: string) => {
-          if (!imgs.includes(img)) imgs.push(img);
+        addImgs.forEach((img: any) => {
+          const s = typeof img === "string" ? img.trim() : "";
+          if (s && !imgs.includes(s)) imgs.push(s);
         });
       }
     } catch (e) {}
+  }
+  if (dbProd.parametersJson) {
+    try {
+      const params = JSON.parse(dbProd.parametersJson);
+      if (Array.isArray(params)) {
+        params.forEach((param: any) => {
+          if (Array.isArray(param.options)) {
+            param.options.forEach((opt: any) => {
+              const optImg = typeof opt.imageUrl === "string" ? opt.imageUrl.trim() : "";
+              if (optImg && !imgs.includes(optImg)) imgs.push(optImg);
+            });
+          }
+        });
+      }
+    } catch (e) {}
+  }
+  if (jsonProd?.imgs && Array.isArray(jsonProd.imgs)) {
+    jsonProd.imgs.forEach((img: string) => {
+      const s = typeof img === "string" ? img.trim() : "";
+      if (s && !imgs.includes(s)) imgs.push(s);
+    });
   }
   if (imgs.length === 0) imgs = ["/images/logo.png"];
 
@@ -117,6 +148,7 @@ function dbProductToProductItem(dbProd: any, jsonProd?: ProductItem | null, isSt
   return {
     id,
     slug,
+    sku: dbProd.sku || jsonProd?.sku || id,
     p_title: dbProd.nameEs || jsonProd?.p_title || dbProd.nameEn,
     nameEs: dbProd.nameEs || jsonProd?.p_title || "",
     nameEn: dbProd.nameEn || jsonProd?.p_title || dbProd.nameEs || "",
@@ -151,6 +183,7 @@ function dbProductToProductItem(dbProd: any, jsonProd?: ProductItem | null, isSt
     discountPercent: (dbProd as any).discountPercent || 0,
     originalPriceCRC: (dbProd as any).originalPriceCRC || dbProd.priceCRC,
     imgs,
+    imageUrl: dbProd.imageUrl || imgs[0],
     vids,
     audios,
     description: jsonProd?.description || {
@@ -266,14 +299,22 @@ export async function GET(request: Request) {
 
     // Fast-path: Single product fetch by slug or ID with direct indexed lookup
     if (slug || id) {
-      const targetQuery = (slug || id!).toLowerCase();
+      const targetQuery = (slug || id!).trim();
+      const targetLower = targetQuery.toLowerCase();
+      const targetUpper = targetQuery.toUpperCase();
 
       const dbProd = await prisma.product.findFirst({
         where: {
           OR: [
             { slug: targetQuery },
+            { slug: targetLower },
+            { slug: targetUpper },
             { sku: targetQuery },
+            { sku: targetLower },
+            { sku: targetUpper },
             { id: targetQuery },
+            { id: targetLower },
+            { id: targetUpper },
           ],
         },
         include: {

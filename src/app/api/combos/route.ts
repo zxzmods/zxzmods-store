@@ -2,6 +2,96 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { calculateComboAvailability } from "@/lib/comboAvailability";
 
+function extractComboImages(combo: any, catalogProducts: any[]) {
+  const imgs: string[] = [];
+  if (combo.imageUrl && typeof combo.imageUrl === "string" && combo.imageUrl.trim()) {
+    imgs.push(combo.imageUrl.trim());
+  }
+
+  // Parse combo's own imagesJson
+  if (combo.imagesJson) {
+    try {
+      const parsed = JSON.parse(combo.imagesJson);
+      if (Array.isArray(parsed)) {
+        parsed.forEach((img: any) => {
+          const s = typeof img === "string" ? img.trim() : "";
+          if (s && !imgs.includes(s)) imgs.push(s);
+        });
+      }
+    } catch {}
+  }
+
+  // Parse combo parameters for option images
+  if (combo.parametersJson) {
+    try {
+      const params = JSON.parse(combo.parametersJson);
+      if (Array.isArray(params)) {
+        params.forEach((param: any) => {
+          if (Array.isArray(param.options)) {
+            param.options.forEach((opt: any) => {
+              const optImg = typeof opt.imageUrl === "string" ? opt.imageUrl.trim() : "";
+              if (optImg && !imgs.includes(optImg)) imgs.push(optImg);
+            });
+          }
+        });
+      }
+    } catch {}
+  }
+
+  // Parse combo included items and find matching products to inherit their images
+  if (combo.itemsJson) {
+    try {
+      const items = JSON.parse(combo.itemsJson);
+      if (Array.isArray(items)) {
+        items.forEach((rawItem: any) => {
+          if (typeof rawItem !== "string") return;
+          const match = rawItem.match(/\[([A-Za-z0-9\-_]+)\]/);
+          const sku = match ? match[1].toLowerCase() : null;
+          const matchedProd = catalogProducts.find((p) => {
+            if (sku && (p.sku?.toLowerCase() === sku || p.slug?.toLowerCase() === sku || p.id.toLowerCase() === sku)) return true;
+            const rawLower = rawItem.toLowerCase();
+            if (p.nameEs && rawLower.includes(p.nameEs.toLowerCase())) return true;
+            if (p.nameEn && rawLower.includes(p.nameEn.toLowerCase())) return true;
+            return false;
+          });
+
+          if (matchedProd) {
+            if (matchedProd.imageUrl && typeof matchedProd.imageUrl === "string") {
+              const s = matchedProd.imageUrl.trim();
+              if (s && !imgs.includes(s)) imgs.push(s);
+            }
+            if (matchedProd.imagesJson) {
+              try {
+                const parsed = JSON.parse(matchedProd.imagesJson);
+                if (Array.isArray(parsed)) {
+                  parsed.forEach((img: any) => {
+                    const s = typeof img === "string" ? img.trim() : "";
+                    if (s && !imgs.includes(s)) imgs.push(s);
+                  });
+                }
+              } catch {}
+            }
+            if (matchedProd.additionalImagesJson) {
+              try {
+                const parsed = JSON.parse(matchedProd.additionalImagesJson);
+                if (Array.isArray(parsed)) {
+                  parsed.forEach((img: any) => {
+                    const s = typeof img === "string" ? img.trim() : "";
+                    if (s && !imgs.includes(s)) imgs.push(s);
+                  });
+                }
+              } catch {}
+            }
+          }
+        });
+      }
+    } catch {}
+  }
+
+  if (imgs.length === 0) imgs.push("/images/sxs/z10_front.png");
+  return imgs;
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -9,7 +99,7 @@ export async function GET(request: NextRequest) {
     const category = searchParams.get("category");
     const search = searchParams.get("search");
 
-    // Fetch all catalog products for live stock calculations
+    // Fetch all catalog products for live stock calculations and image resolution
     const catalogProducts = await prisma.product.findMany({
       select: {
         id: true,
@@ -18,6 +108,9 @@ export async function GET(request: NextRequest) {
         nameEs: true,
         nameEn: true,
         priceCRC: true,
+        imageUrl: true,
+        imagesJson: true,
+        additionalImagesJson: true,
         supplierStockStatus: true,
         stockStatus: true,
         isArchived: true,
@@ -100,11 +193,15 @@ export async function GET(request: NextRequest) {
           }));
       }
 
+      const comboImgs = extractComboImages(combo, catalogProducts);
+
       return NextResponse.json({
         success: true,
         data: {
           combo: {
             ...combo,
+            imgs: comboImgs,
+            images: comboImgs,
             items: JSON.parse(combo.itemsJson || "[]") as string[],
             suggestedProductIds: sugProdIds,
             suggestedComboIds: sugComboIds,
@@ -168,8 +265,11 @@ export async function GET(request: NextRequest) {
 
     const formattedCombos = combos.map((c) => {
       const availability = calculateComboAvailability(c.itemsJson, catalogProducts);
+      const cImgs = extractComboImages(c, catalogProducts);
       return {
         ...c,
+        imgs: cImgs,
+        images: cImgs,
         items: JSON.parse(c.itemsJson || "[]") as string[],
         suggestedProductIds: (() => {
           if ((c as any).suggestedProductIdsJson) {

@@ -26,6 +26,7 @@ import {
   ZoomIn,
   X,
   ChevronRight,
+  ChevronLeft,
   CheckCircle2,
   Check,
   ShieldCheck,
@@ -57,6 +58,8 @@ interface ComboItem {
   discountPercent: number;
   items: string[];
   imageUrl: string;
+  imgs?: string[];
+  images?: string[];
   homeInstallationAvailable?: boolean;
   availability?: any;
   stockStatus?: string;
@@ -116,12 +119,15 @@ export default function ComboDetailPage() {
   const [combo, setCombo] = useState<ComboItem | null>(null);
   const [loading, setLoading] = useState(true);
   const [withInstallation, setWithInstallation] = useState(false);
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [selectedImageOverride, setSelectedImageOverride] = useState<string | null>(null);
 
   // Selected Configurable Parameters State (parameterId -> optionId)
   const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>({});
 
   // Lightbox Modal state
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
+  const [lightboxImageIndex, setLightboxImageIndex] = useState(0);
 
   // Related combos state
   const [relatedCombos, setRelatedCombos] = useState<ComboItem[]>([]);
@@ -135,6 +141,8 @@ export default function ComboDetailPage() {
       .then((data) => {
         if (data.success && data.data?.combo) {
           setCombo(data.data.combo);
+          setActiveImageIndex(0);
+          setSelectedImageOverride(null);
           if (data.data.combo.parameters && Array.isArray(data.data.combo.parameters)) {
             const initialOpts: Record<string, string> = {};
             data.data.combo.parameters.forEach((param: any) => {
@@ -198,11 +206,58 @@ export default function ComboDetailPage() {
           optionId: option.id,
           optionLabel: lang === "es" ? option.labelEs : (option.labelEn || option.labelEs),
           priceDeltaCRC: option.priceDeltaCRC || 0,
+          colorHex: option.colorHex,
+          imageUrl: option.imageUrl,
         });
       }
     });
     return list;
   }, [combo, selectedOptions, lang]);
+
+  // Complete combo image gallery
+  const allImages = useMemo(() => {
+    const list: string[] = [];
+    if (combo?.imgs && Array.isArray(combo.imgs)) {
+      combo.imgs.forEach((img) => {
+        const s = typeof img === "string" ? img.trim() : "";
+        if (s && !list.includes(s)) list.push(s);
+      });
+    }
+    if (combo?.images && Array.isArray(combo.images)) {
+      combo.images.forEach((img) => {
+        const s = typeof img === "string" ? img.trim() : "";
+        if (s && !list.includes(s)) list.push(s);
+      });
+    }
+    if (combo?.imageUrl && typeof combo.imageUrl === "string") {
+      const s = combo.imageUrl.trim();
+      if (s && !list.includes(s)) list.unshift(s);
+    }
+    if (combo?.parameters && Array.isArray(combo.parameters)) {
+      combo.parameters.forEach((param: any) => {
+        if (Array.isArray(param.options)) {
+          param.options.forEach((opt: any) => {
+            const optImg = typeof opt.imageUrl === "string" ? opt.imageUrl.trim() : "";
+            if (optImg && !list.includes(optImg)) list.push(optImg);
+          });
+        }
+      });
+    }
+    return list.length > 0 ? list : ["/images/sxs/z10_front.png"];
+  }, [combo]);
+
+  const activeOptionImage = useMemo(() => {
+    for (const item of selectedParametersList) {
+      if ((item as any).imageUrl) return (item as any).imageUrl;
+    }
+    return null;
+  }, [selectedParametersList]);
+
+  const displayImageUrl = useMemo(() => {
+    if (selectedImageOverride) return selectedImageOverride;
+    if (activeOptionImage && allImages.includes(activeOptionImage)) return activeOptionImage;
+    return allImages[activeImageIndex] || allImages[0] || "/images/sxs/z10_front.png";
+  }, [selectedImageOverride, activeOptionImage, allImages, activeImageIndex]);
 
   const totalDeltaCRC = useMemo(() => {
     return selectedParametersList.reduce((acc, p) => acc + (p.priceDeltaCRC || 0), 0);
@@ -350,11 +405,19 @@ export default function ComboDetailPage() {
               <div className="space-y-5">
                 {/* Main Hero Image with Zoom Lightbox Trigger */}
                 <div
-                  onClick={() => setIsLightboxOpen(true)}
+                  onClick={() => {
+                    const currentIdx = selectedImageOverride
+                      ? allImages.indexOf(selectedImageOverride) !== -1
+                        ? allImages.indexOf(selectedImageOverride)
+                        : 0
+                      : activeImageIndex;
+                    setLightboxImageIndex(currentIdx >= 0 ? currentIdx : 0);
+                    setIsLightboxOpen(true);
+                  }}
                   className="group relative h-80 sm:h-[460px] w-full rounded-3xl bg-gradient-to-b from-[#FBFBFC] to-[#F1F3F5] border border-gray-200 overflow-hidden flex items-center justify-center p-6 shadow-sm cursor-zoom-in"
                 >
                   <Image
-                    src={combo.imageUrl}
+                    src={displayImageUrl}
                     alt={lang === "es" ? combo.titleEs : combo.titleEn}
                     fill
                     priority
@@ -369,6 +432,39 @@ export default function ComboDetailPage() {
                     </span>
                   </div>
                 </div>
+
+                {/* Thumbnails */}
+                {allImages.length > 1 && (
+                  <div className="flex items-center gap-3 overflow-x-auto p-2 py-3 no-scrollbar -mx-2 sm:mx-0">
+                    {allImages.map((imgUrl, i) => {
+                      const isActive =
+                        (!selectedImageOverride && activeImageIndex === i) ||
+                        selectedImageOverride === imgUrl;
+                      return (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={() => {
+                            setActiveImageIndex(i);
+                            setSelectedImageOverride(null);
+                          }}
+                          className={`relative w-20 h-20 rounded-2xl border-2 overflow-hidden flex-shrink-0 transition-all cursor-pointer ${
+                            isActive
+                              ? "border-[#C02030] ring-2 ring-[#C02030]/25 shadow-md scale-105"
+                              : "border-gray-200 opacity-70 hover:opacity-100 hover:border-gray-300"
+                          }`}
+                        >
+                          <Image
+                            src={imgUrl}
+                            alt=""
+                            fill
+                            className="object-cover"
+                          />
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
 
                 {/* Technical Assurance / Guarantee Badges */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -558,6 +654,9 @@ export default function ComboDetailPage() {
                                         ...prev,
                                         [param.id]: opt.id,
                                       }));
+                                      if (opt.imageUrl) {
+                                        setSelectedImageOverride(opt.imageUrl);
+                                      }
                                     }}
                                     className={`px-3.5 py-2.5 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer border shadow-2xs ${
                                       isSelected
@@ -927,29 +1026,102 @@ export default function ComboDetailPage() {
       {/* Lightbox Modal for Full Image Zoom Preview */}
       {isLightboxOpen && combo && (
         <div
-          className="fixed inset-0 z-50 bg-black/95 backdrop-blur-md flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-black/95 backdrop-blur-md flex flex-col justify-between p-4 sm:p-6"
           onClick={() => setIsLightboxOpen(false)}
         >
-          <button
-            onClick={() => setIsLightboxOpen(false)}
-            className="absolute top-6 right-6 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
-            aria-label="Cerrar imagen ampliada"
-          >
-            <X className="w-6 h-6" />
-          </button>
-
+          {/* Header */}
           <div
-            className="relative w-full max-w-4xl h-[70vh] flex items-center justify-center"
+            className="flex items-center justify-between w-full max-w-6xl mx-auto z-10"
             onClick={(e) => e.stopPropagation()}
           >
-            <Image
-              src={combo.imageUrl}
-              alt={lang === "es" ? combo.titleEs : combo.titleEn}
-              fill
-              className="object-contain"
-              sizes="100vw"
-            />
+            <div className="flex items-center gap-3">
+              <span className="text-white font-extrabold text-sm sm:text-base line-clamp-1">
+                {lang === "es" ? combo.titleEs : combo.titleEn}
+              </span>
+              {allImages.length > 1 && (
+                <span className="px-2.5 py-0.5 rounded-full bg-white/10 text-white/80 text-[11px] font-mono">
+                  {lightboxImageIndex + 1} / {allImages.length}
+                </span>
+              )}
+            </div>
+            <button
+              onClick={() => setIsLightboxOpen(false)}
+              className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
+              aria-label="Cerrar imagen ampliada"
+            >
+              <X className="w-5 h-5" />
+            </button>
           </div>
+
+          {/* Center Image with Previous / Next */}
+          <div
+            className="flex-1 relative flex items-center justify-center max-w-6xl mx-auto w-full p-2 sm:p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {allImages.length > 1 && (
+              <button
+                onClick={() =>
+                  setLightboxImageIndex((prev) =>
+                    prev === 0 ? allImages.length - 1 : prev - 1
+                  )
+                }
+                className="absolute left-2 sm:left-4 z-10 p-3 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
+                aria-label="Imagen anterior"
+              >
+                <ChevronLeft className="w-6 h-6" />
+              </button>
+            )}
+
+            <div className="relative w-full h-full max-h-[75vh] flex items-center justify-center">
+              <Image
+                src={
+                  allImages[lightboxImageIndex] ||
+                  allImages[0] ||
+                  "/images/sxs/z10_front.png"
+                }
+                alt={lang === "es" ? combo.titleEs : combo.titleEn}
+                fill
+                className="object-contain"
+                priority
+              />
+            </div>
+
+            {allImages.length > 1 && (
+              <button
+                onClick={() =>
+                  setLightboxImageIndex((prev) =>
+                    prev === allImages.length - 1 ? 0 : prev + 1
+                  )
+                }
+                className="absolute right-2 sm:right-4 z-10 p-3 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
+                aria-label="Siguiente imagen"
+              >
+                <ChevronRight className="w-6 h-6" />
+              </button>
+            )}
+          </div>
+
+          {/* Lightbox Footer Thumbnails */}
+          {allImages.length > 1 && (
+            <div
+              className="flex items-center justify-center gap-2 p-2 py-3 max-w-md mx-auto w-full overflow-x-auto no-scrollbar"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {allImages.map((imgUrl, i) => (
+                <button
+                  key={i}
+                  onClick={() => setLightboxImageIndex(i)}
+                  className={`relative w-14 h-14 rounded-xl border-2 overflow-hidden flex-shrink-0 transition-all cursor-pointer ${
+                    lightboxImageIndex === i
+                      ? "border-[#C02030] ring-2 ring-[#C02030]/25 scale-105"
+                      : "border-white/20 opacity-60 hover:opacity-100"
+                  }`}
+                >
+                  <Image src={imgUrl} alt="" fill className="object-cover" />
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

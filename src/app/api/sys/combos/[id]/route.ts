@@ -51,6 +51,13 @@ export async function PATCH(
     if (body.originalPriceCRC !== undefined) updateData.originalPriceCRC = Math.round(Number(body.originalPriceCRC));
     if (body.discountPercent !== undefined) updateData.discountPercent = Math.round(Number(body.discountPercent));
     if (body.imageUrl !== undefined) updateData.imageUrl = body.imageUrl;
+    if (body.imagesJson !== undefined) {
+      updateData.imagesJson = typeof body.imagesJson === "string" ? body.imagesJson : JSON.stringify(body.imagesJson);
+    } else if (body.imgs !== undefined) {
+      updateData.imagesJson = JSON.stringify(Array.isArray(body.imgs) ? body.imgs : [body.imgs]);
+    } else if (body.images !== undefined) {
+      updateData.imagesJson = JSON.stringify(Array.isArray(body.images) ? body.images : [body.images]);
+    }
     if (body.itemsJson !== undefined) {
       updateData.itemsJson = typeof body.itemsJson === "string" ? body.itemsJson : JSON.stringify(body.itemsJson);
     }

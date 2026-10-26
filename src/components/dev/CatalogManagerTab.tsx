@@ -1627,6 +1627,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
     discountPercent: 10,
     itemsText: "",
     imageUrl: "/images/sxs/z10_front.png",
+    imgsText: "",
     featured: true,
     homeInstallationAvailable: true,
     parameters: [] as ConfigurableParameter[],
@@ -2847,6 +2848,25 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       discountPercent: combo.discountPercent,
       itemsText: manualItemsList.join("\n"),
       imageUrl: combo.imageUrl || "/images/sxs/z10_front.png",
+      imgsText: (() => {
+        const list: string[] = [];
+        if (combo.imageUrl) list.push(combo.imageUrl);
+        if ((combo as any).imagesJson) {
+          try {
+            const parsed = JSON.parse((combo as any).imagesJson);
+            if (Array.isArray(parsed)) {
+              parsed.forEach((img: any) => {
+                if (typeof img === "string" && img.trim() && !list.includes(img.trim())) list.push(img.trim());
+              });
+            }
+          } catch {}
+        } else if (Array.isArray((combo as any).imgs)) {
+          (combo as any).imgs.forEach((img: any) => {
+            if (typeof img === "string" && img.trim() && !list.includes(img.trim())) list.push(img.trim());
+          });
+        }
+        return list.join("\n");
+      })(),
       featured: combo.featured ?? true,
       homeInstallationAvailable: combo.homeInstallationAvailable ?? true,
       parameters: comboParams,
@@ -2899,6 +2919,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       discountPercent: 10,
       itemsText: "",
       imageUrl: "/images/sxs/z10_front.png",
+    imgsText: "",
       featured: true,
       homeInstallationAvailable: true,
       parameters: [] as ConfigurableParameter[],
@@ -2931,6 +2952,15 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
 
     const items = [...productItems, ...manualItems];
 
+    const comboImgs = comboForm.imgsText
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (comboForm.imageUrl && !comboImgs.includes(comboForm.imageUrl)) {
+      comboImgs.unshift(comboForm.imageUrl);
+    }
+    const finalImageUrl = comboImgs[0] || comboForm.imageUrl;
+
     try {
       const res = await fetch(url, {
         method,
@@ -2954,7 +2984,9 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
           installExtraPartsJson: JSON.stringify(comboForm.installExtraParts || []),
           discountPercent: comboForm.discountPercent,
           itemsJson: JSON.stringify(items),
-          imageUrl: comboForm.imageUrl,
+          imageUrl: finalImageUrl,
+          imagesJson: JSON.stringify(comboImgs),
+          imgs: comboImgs,
           featured: comboForm.featured,
           homeInstallationAvailable: comboForm.homeInstallationAvailable,
           parameters: comboForm.parameters,
@@ -3144,7 +3176,15 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
             });
           }
         } else {
-          setComboForm((prev) => ({ ...prev, imageUrl: data.url }));
+          setComboForm((prev) => {
+            const list = prev.imgsText ? prev.imgsText.split("\n").map((s) => s.trim()).filter(Boolean) : [];
+            if (!list.includes(data.url)) list.push(data.url);
+            return {
+              ...prev,
+              imageUrl: prev.imageUrl || data.url,
+              imgsText: list.join("\n"),
+            };
+          });
         }
         setFeedback({
           type: "success",
@@ -5888,47 +5928,122 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
               </div>
             </div>
 
-            {/* Card 5: Main Combo Image */}
+            {/* Card 5: Combo Media Gallery (imgs) */}
             <div className="p-6 bg-white rounded-3xl border border-slate-200 shadow-xs space-y-4">
-              <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-900 flex items-center gap-2 border-b border-slate-100 pb-2">
-                <ImageIcon className="w-4 h-4 text-purple-600" />
-                <span>Imagen Principal del Combo</span>
-              </h3>
-
-              <div className="space-y-3">
-                <div className="relative rounded-2xl bg-slate-950 p-2 border border-slate-800 flex items-center justify-center max-h-56 overflow-hidden">
-                  <img
-                    src={comboForm.imageUrl || "/images/sxs/z10_front.png"}
-                    alt="Combo"
-                    className="max-h-48 w-auto object-contain rounded-xl"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                    URL de la Imagen:
-                  </label>
-                  <input
-                    type="text"
-                    value={comboForm.imageUrl}
-                    onChange={(e) => setComboForm({ ...comboForm, imageUrl: e.target.value })}
-                    placeholder="/images/sxs/z10_front.png"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:outline-none focus:border-slate-900"
-                  />
-                </div>
-
-                <label className="cursor-pointer w-full py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs transition flex items-center justify-center gap-2 border border-slate-200 shadow-2xs">
-                  <Upload className="w-3.5 h-3.5" />
-                  <span>{uploadingImage ? t.devSaving : "Subir Imagen de Combo"}</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    disabled={uploadingImage}
-                    onChange={(e) => handleMediaUpload(e, "image")}
-                    className="hidden"
-                  />
-                </label>
+              <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-900 flex items-center gap-2">
+                  <ImageIcon className="w-4 h-4 text-purple-600" />
+                  <span>Galería Multimedia del Combo</span>
+                </h3>
+                {(() => {
+                  const list = comboForm.imgsText ? comboForm.imgsText.split("\n").map((s) => s.trim()).filter(Boolean) : [];
+                  if (comboForm.imageUrl && !list.includes(comboForm.imageUrl)) list.unshift(comboForm.imageUrl);
+                  return (
+                    <span className="text-[10px] font-mono text-slate-500">
+                      {list.length} {list.length === 1 ? "imagen" : "imágenes"}
+                    </span>
+                  );
+                })()}
               </div>
+
+              {(() => {
+                const list = comboForm.imgsText ? comboForm.imgsText.split("\n").map((s) => s.trim()).filter(Boolean) : [];
+                if (comboForm.imageUrl && !list.includes(comboForm.imageUrl)) list.unshift(comboForm.imageUrl);
+
+                return (
+                  <div className="space-y-4">
+                    {/* Primary Preview */}
+                    <div className="relative rounded-2xl bg-slate-950 p-2 border border-slate-800 flex items-center justify-center max-h-56 overflow-hidden">
+                      <img
+                        src={comboForm.imageUrl || list[0] || "/images/sxs/z10_front.png"}
+                        alt="Combo"
+                        className="max-h-48 w-auto object-contain rounded-xl"
+                      />
+                    </div>
+
+                    {/* Thumbnail strip with Delete buttons */}
+                    {list.length > 0 && (
+                      <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                        {list.map((imgUrl, idx) => {
+                          const isPrimary = comboForm.imageUrl === imgUrl;
+                          return (
+                            <div
+                              key={idx}
+                              className={`group relative rounded-xl border-2 p-1 bg-slate-50 overflow-hidden flex flex-col items-center justify-center transition-all ${
+                                isPrimary
+                                  ? "border-purple-600 ring-2 ring-purple-500/20 shadow-xs"
+                                  : "border-slate-200 hover:border-slate-300"
+                              }`}
+                            >
+                              <img
+                                src={imgUrl}
+                                alt={`Combo media ${idx + 1}`}
+                                className="w-full h-16 object-contain rounded-lg cursor-pointer"
+                                onClick={() => setComboForm((prev) => ({ ...prev, imageUrl: imgUrl }))}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const updated = list.filter((_, i) => i !== idx);
+                                  setComboForm((prev) => ({
+                                    ...prev,
+                                    imageUrl: isPrimary ? (updated[0] || "/images/sxs/z10_front.png") : prev.imageUrl,
+                                    imgsText: updated.join("\n"),
+                                  }));
+                                }}
+                                className="absolute top-1 right-1 w-5 h-5 bg-red-600 hover:bg-red-700 text-white rounded-full flex items-center justify-center opacity-80 group-hover:opacity-100 transition shadow-xs"
+                                title="Eliminar imagen"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                              {isPrimary && (
+                                <span className="absolute bottom-1 left-1 bg-purple-600 text-[8px] font-bold text-white px-1.5 py-0.5 rounded-full uppercase">
+                                  Principal
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Direct Upload Button */}
+                    <label className="cursor-pointer w-full py-2.5 px-4 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold text-xs transition flex items-center justify-center gap-2 border border-purple-200 shadow-2xs">
+                      <Upload className="w-3.5 h-3.5 text-purple-600" />
+                      <span>{uploadingImage ? t.devSaving : "Subir Imagen Adicional al Combo"}</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        disabled={uploadingImage}
+                        onChange={(e) => handleMediaUpload(e, "image")}
+                        className="hidden"
+                      />
+                    </label>
+
+                    {/* Manual URLs textarea */}
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                        URLs de Imágenes (una por línea):
+                      </label>
+                      <textarea
+                        rows={3}
+                        value={comboForm.imgsText}
+                        onChange={(e) => {
+                          const text = e.target.value;
+                          const lines = text.split("\n").map((s) => s.trim()).filter(Boolean);
+                          setComboForm((prev) => ({
+                            ...prev,
+                            imgsText: text,
+                            imageUrl: lines[0] || prev.imageUrl,
+                          }));
+                        }}
+                        placeholder="/images/sxs/z10_front.png&#10;https://..."
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-mono text-slate-900 focus:outline-none focus:border-slate-900"
+                      />
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Card 6: Configurable Parameters & Variants */}

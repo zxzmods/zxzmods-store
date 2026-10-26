@@ -53,6 +53,7 @@ export interface ProductItem {
   ivaPercent?: number; // IVA percentage (default 13%)
   ivaCRC?: number; // Calculated IVA amount in CRC included in price
   imgs: string[];       // images array
+  imageUrl?: string;    // primary image URL
   vids: string[];       // videos array
   audios: string[];     // audio samples array
   p_title: string;      // product title
@@ -545,11 +546,44 @@ export async function getAllProducts(): Promise<ProductItem[]> {
             if (cat.length === 0) cat = ["performance"];
 
             let imgs: string[] = [];
-            if (p.imageUrl) imgs.push(p.imageUrl);
+            if (p.imageUrl && typeof p.imageUrl === "string" && p.imageUrl.trim()) {
+              imgs.push(p.imageUrl.trim());
+            }
+            if (p.imagesJson) {
+              try {
+                const parsed = JSON.parse(p.imagesJson);
+                if (Array.isArray(parsed)) {
+                  parsed.forEach((img: any) => {
+                    const s = typeof img === "string" ? img.trim() : "";
+                    if (s && !imgs.includes(s)) imgs.push(s);
+                  });
+                }
+              } catch {}
+            }
             if (p.additionalImagesJson) {
               try {
                 const parsed = JSON.parse(p.additionalImagesJson);
-                if (Array.isArray(parsed)) imgs.push(...parsed);
+                if (Array.isArray(parsed)) {
+                  parsed.forEach((img: any) => {
+                    const s = typeof img === "string" ? img.trim() : "";
+                    if (s && !imgs.includes(s)) imgs.push(s);
+                  });
+                }
+              } catch {}
+            }
+            if (p.parametersJson) {
+              try {
+                const params = JSON.parse(p.parametersJson);
+                if (Array.isArray(params)) {
+                  params.forEach((param: any) => {
+                    if (Array.isArray(param.options)) {
+                      param.options.forEach((opt: any) => {
+                        const optImg = typeof opt.imageUrl === "string" ? opt.imageUrl.trim() : "";
+                        if (optImg && !imgs.includes(optImg)) imgs.push(optImg);
+                      });
+                    }
+                  });
+                }
               } catch {}
             }
             if (imgs.length === 0) imgs = ["/images/logo.png"];
@@ -594,6 +628,7 @@ export async function getAllProducts(): Promise<ProductItem[]> {
               category: cat,
               brand: [p.brandName || "ZxZ Performance"],
               imgs,
+              imageUrl: p.imageUrl || imgs[0],
               vids: [],
               audios: [],
               requirements: p.requirements,

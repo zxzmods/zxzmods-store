@@ -333,6 +333,7 @@ export default function ProductDetailPage() {
   const [product, setProduct] = useState<ProductItem | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [selectedImageOverride, setSelectedImageOverride] = useState<string | null>(null);
   const [activeAudioIndex, setActiveAudioIndex] = useState(0);
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const [audioError, setAudioError] = useState(false);
@@ -444,6 +445,9 @@ export default function ProductDetailPage() {
       ...prev,
       [param.id]: opt.id,
     }));
+    if (opt.imageUrl) {
+      setSelectedImageOverride(opt.imageUrl);
+    }
   };
 
   useEffect(() => {
@@ -456,6 +460,7 @@ export default function ProductDetailPage() {
         if (data.success && data.product) {
           setProduct(data.product);
           setActiveImageIndex(0);
+          setSelectedImageOverride(null);
           setActiveAudioIndex(0);
           setIsPlayingAudio(false);
           setAudioError(false);
@@ -681,6 +686,22 @@ export default function ProductDetailPage() {
     return list;
   }, [product, selectedOptions, lang]);
 
+  // Complete image gallery (primary, imagesJson, additionalImages, and option images)
+  const allImages = useMemo(() => {
+    const list: string[] = [];
+    if (product?.imgs && Array.isArray(product.imgs)) {
+      product.imgs.forEach((img) => {
+        const s = typeof img === "string" ? img.trim() : "";
+        if (s && !list.includes(s)) list.push(s);
+      });
+    }
+    if (product?.imageUrl && typeof product.imageUrl === "string") {
+      const s = product.imageUrl.trim();
+      if (s && !list.includes(s)) list.unshift(s);
+    }
+    return list.length > 0 ? list : ["/images/logo.png"];
+  }, [product]);
+
   // Option-specific image for visualization (e.g. orange, black, blue charge tube)
   const activeOptionImage = useMemo(() => {
     for (const item of selectedParametersList) {
@@ -690,9 +711,10 @@ export default function ProductDetailPage() {
   }, [selectedParametersList]);
 
   const displayImageUrl = useMemo(() => {
-    if (activeOptionImage) return activeOptionImage;
-    return product?.imgs?.[activeImageIndex] || product?.imgs?.[0] || "/images/logo.png";
-  }, [activeOptionImage, product, activeImageIndex]);
+    if (selectedImageOverride) return selectedImageOverride;
+    if (activeOptionImage && allImages.includes(activeOptionImage)) return activeOptionImage;
+    return allImages[activeImageIndex] || allImages[0] || "/images/logo.png";
+  }, [selectedImageOverride, activeOptionImage, allImages, activeImageIndex]);
 
   const totalDeltaCRC = useMemo(() => {
     return selectedParametersList.reduce((acc, p) => acc + (p.priceDeltaCRC || 0), 0);
@@ -930,7 +952,12 @@ export default function ProductDetailPage() {
                 {/* Main Image with Zoom Lightbox Trigger */}
                 <div
                   onClick={() => {
-                    setLightboxImageIndex(activeImageIndex);
+                    const currentIdx = selectedImageOverride
+                      ? allImages.indexOf(selectedImageOverride) !== -1
+                        ? allImages.indexOf(selectedImageOverride)
+                        : 0
+                      : activeImageIndex;
+                    setLightboxImageIndex(currentIdx >= 0 ? currentIdx : 0);
                     setIsLightboxOpen(true);
                   }}
                   className="group relative h-80 sm:h-[460px] w-full rounded-3xl bg-gradient-to-b from-[#FBFBFC] to-[#F1F3F5] border border-gray-200 overflow-hidden flex items-center justify-center p-6 shadow-sm cursor-zoom-in"
@@ -958,26 +985,35 @@ export default function ProductDetailPage() {
                 </div>
 
                 {/* Thumbnails */}
-                {product.imgs && product.imgs.length > 1 && (
+                {allImages.length > 1 && (
                   <div className="flex items-center gap-3 overflow-x-auto p-2 py-3 no-scrollbar -mx-2 sm:mx-0">
-                    {product.imgs.map((imgUrl, i) => (
-                      <button
-                        key={i}
-                        onClick={() => setActiveImageIndex(i)}
-                        className={`relative w-20 h-20 rounded-2xl border-2 overflow-hidden flex-shrink-0 transition-all ${
-                          activeImageIndex === i
-                            ? "border-[#C02030] ring-2 ring-[#C02030]/25 shadow-md scale-105"
-                            : "border-gray-200 opacity-70 hover:opacity-100 hover:border-gray-300"
-                        }`}
-                      >
-                        <Image
-                          src={imgUrl}
-                          alt=""
-                          fill
-                          className="object-cover"
-                        />
-                      </button>
-                    ))}
+                    {allImages.map((imgUrl, i) => {
+                      const isActive =
+                        (!selectedImageOverride && activeImageIndex === i) ||
+                        selectedImageOverride === imgUrl;
+                      return (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={() => {
+                            setActiveImageIndex(i);
+                            setSelectedImageOverride(null);
+                          }}
+                          className={`relative w-20 h-20 rounded-2xl border-2 overflow-hidden flex-shrink-0 transition-all cursor-pointer ${
+                            isActive
+                              ? "border-[#C02030] ring-2 ring-[#C02030]/25 shadow-md scale-105"
+                              : "border-gray-200 opacity-70 hover:opacity-100 hover:border-gray-300"
+                          }`}
+                        >
+                          <Image
+                            src={imgUrl}
+                            alt=""
+                            fill
+                            className="object-cover"
+                          />
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
 
@@ -1969,11 +2005,11 @@ export default function ProductDetailPage() {
             className="flex-1 relative flex items-center justify-center max-w-6xl mx-auto w-full p-2 sm:p-6"
             onClick={(e) => e.stopPropagation()}
           >
-            {product.imgs && product.imgs.length > 1 && (
+            {allImages.length > 1 && (
               <button
                 onClick={() =>
                   setLightboxImageIndex((prev) =>
-                    prev === 0 ? product.imgs.length - 1 : prev - 1
+                    prev === 0 ? allImages.length - 1 : prev - 1
                   )
                 }
                 className="absolute left-2 sm:left-4 z-10 p-3 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
@@ -1986,8 +2022,8 @@ export default function ProductDetailPage() {
             <div className="relative w-full h-full max-h-[75vh] flex items-center justify-center">
               <Image
                 src={
-                  product.imgs?.[lightboxImageIndex] ||
-                  product.imgs?.[0] ||
+                  allImages[lightboxImageIndex] ||
+                  allImages[0] ||
                   "/images/logo.png"
                 }
                 alt={product.p_title}
@@ -1997,11 +2033,11 @@ export default function ProductDetailPage() {
               />
             </div>
 
-            {product.imgs && product.imgs.length > 1 && (
+            {allImages.length > 1 && (
               <button
                 onClick={() =>
                   setLightboxImageIndex((prev) =>
-                    prev === product.imgs.length - 1 ? 0 : prev + 1
+                    prev === allImages.length - 1 ? 0 : prev + 1
                   )
                 }
                 className="absolute right-2 sm:right-4 z-10 p-3 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
@@ -2013,12 +2049,12 @@ export default function ProductDetailPage() {
           </div>
 
           {/* Lightbox Footer Thumbnails */}
-          {product.imgs && product.imgs.length > 1 && (
+          {allImages.length > 1 && (
             <div
               className="flex items-center justify-center gap-2 p-2 py-3 max-w-md mx-auto w-full overflow-x-auto no-scrollbar"
               onClick={(e) => e.stopPropagation()}
             >
-              {product.imgs.map((imgUrl, i) => (
+              {allImages.map((imgUrl, i) => (
                 <button
                   key={i}
                   onClick={() => setLightboxImageIndex(i)}
