@@ -12,7 +12,17 @@ export async function GET() {
 
     const allYearsSet = new Set<number>();
 
-    const structuredBrands = brands.map((b) => ({
+    // Filter brands with registered models and ensure CFMOTO is always first
+    const activeBrands = brands.filter((b) => b.models && b.models.length > 0);
+    activeBrands.sort((a, b) => {
+      const aIsCfmoto = a.slug.toLowerCase() === "cfmoto";
+      const bIsCfmoto = b.slug.toLowerCase() === "cfmoto";
+      if (aIsCfmoto) return -1;
+      if (bIsCfmoto) return 1;
+      return a.name.localeCompare(b.name);
+    });
+
+    const structuredBrands = activeBrands.map((b) => ({
       slug: b.slug,
       name: b.name,
       logoUrl: b.logoUrl,

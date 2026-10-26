@@ -238,6 +238,16 @@ export function BarrialCrManagerSection({ userRole }: BarrialCrManagerSectionPro
     else setUploadingLogo(true);
 
     try {
+      // Client-side file size guard
+      const maxDirectBytes = type === "VIDEO" ? 30 * 1024 * 1024 : 12 * 1024 * 1024;
+      if (file.size > maxDirectBytes) {
+        throw new Error(
+          lang === "es"
+            ? `El archivo pesa ${(file.size / (1024 * 1024)).toFixed(1)}MB. El límite máximo para subida directa es de ${type === "VIDEO" ? "30MB" : "12MB"}.`
+            : `File is ${(file.size / (1024 * 1024)).toFixed(1)}MB. Direct upload limit is ${type === "VIDEO" ? "30MB" : "12MB"}.`
+        );
+      }
+
       const formData = new FormData();
       formData.append("file", file);
       formData.append(
@@ -250,9 +260,29 @@ export function BarrialCrManagerSection({ userRole }: BarrialCrManagerSectionPro
         body: formData,
       });
 
-      const data = await res.json();
-      if (!res.ok || !data.success || !data.url) {
-        throw new Error(data.error || (lang === "es" ? "Error al subir archivo" : "Upload failed"));
+      let data: any = null;
+      let rawText = "";
+
+      try {
+        rawText = await res.text();
+        data = JSON.parse(rawText);
+      } catch {
+        if (res.status === 413) {
+          throw new Error(
+            lang === "es"
+              ? "El servidor rechazó el archivo por exceso de tamaño (HTTP 413: Request Entity Too Large)."
+              : "Server rejected file due to size (HTTP 413: Request Entity Too Large)."
+          );
+        }
+        throw new Error(
+          lang === "es"
+            ? `Error del servidor (${res.status}): No se pudo procesar el archivo.`
+            : `Server error (${res.status}): Could not process file.`
+        );
+      }
+
+      if (!res.ok || !data?.success || !data?.url) {
+        throw new Error(data?.error || (lang === "es" ? "Error al subir archivo" : "Upload failed"));
       }
 
       if (type === "VIDEO") {

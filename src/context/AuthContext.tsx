@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
-import { auth, googleProvider } from "@/lib/firebase";
+import { auth, googleProvider, isFirebaseConfigured } from "@/lib/firebase";
 import { signInWithPopup, signOut as firebaseSignOut } from "firebase/auth";
 
 export interface UserProfile {
@@ -57,7 +57,7 @@ interface AuthContextType {
   closeDocumentModal: () => void;
   requireAuth: (action: () => void, promptReason?: string) => boolean;
   loginWithGoogle: () => Promise<{ success: boolean; error?: string }>;
-  sendEmailCode: (email: string) => Promise<{ success: boolean; devCode?: string; error?: string }>;
+  sendEmailCode: (email: string) => Promise<{ success: boolean; error?: string }>;
   verifyEmailCode: (email: string, code: string, name?: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
@@ -167,15 +167,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Google Sign-In with Firebase Auth
   const loginWithGoogle = async (): Promise<{ success: boolean; error?: string }> => {
     try {
-      if (!auth || !googleProvider) {
-        return { success: false, error: "Firebase no está inicializado en este cliente" };
+      if (!isFirebaseConfigured || !auth || !googleProvider) {
+        return {
+          success: false,
+          error:
+            "El acceso con Google requiere credenciales de Firebase en producción. Por favor utiliza el acceso con Código por Correo (100% operativo).",
+        };
       }
 
       const result = await signInWithPopup(auth, googleProvider);
       const firebaseUser = result.user;
       const idToken = await firebaseUser.getIdToken();
 
-      // Sync with backend Prisma database with verified ID Token
+      // Sync with backend Prisma database with verified ID Token (preserving default profile image)
       const syncRes = await fetch("/api/auth/social-sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -185,7 +189,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           uid: firebaseUser.uid,
           email: firebaseUser.email,
           displayName: firebaseUser.displayName,
-          photoUrl: firebaseUser.photoURL,
+          photoUrl: null, // User preference: profile image stays the default branded avatar
           phoneNumber: firebaseUser.phoneNumber,
         }),
       });
@@ -200,23 +204,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     } catch (error: any) {
       console.error("Error en Google Sign-In:", error);
-      if (error?.code === "auth/popup-closed-by-user") {
+      const errCode = String(error?.code || "").toLowerCase();
+      const errMsg = String(error?.message || "").toLowerCase();
+
+      if (errCode.includes("popup-closed-by-user") || errMsg.includes("popup-closed-by-user") || errMsg.includes("closed by user")) {
         return { success: false, error: "Inicio de sesión con Google cancelado por el usuario." };
       }
-      if (error?.code === "auth/configuration-not-found" || error?.code === "auth/invalid-api-key") {
+
+      if (
+        !isFirebaseConfigured ||
+        errCode.includes("api-key") ||
+        errMsg.includes("api-key") ||
+        errCode.includes("configuration-not-found") ||
+        errMsg.includes("configuration-not-found") ||
+        errCode.includes("invalid-api-key") ||
+        errMsg.includes("invalid-api-key") ||
+        errCode.includes("unauthorized-domain") ||
+        errMsg.includes("unauthorized-domain")
+      ) {
         return {
           success: false,
-          error: "Google Sign-In requiere credenciales de Firebase en producción. Utiliza la opción de Código por Correo.",
+          error:
+            "El acceso con Google no está disponible temporalmente. Por favor utiliza el acceso con Código por Correo (100% operativo).",
         };
       }
-      return { success: false, error: error?.message || "Error al autenticar con Google" };
+
+      return {
+        success: false,
+        error: "Error al autenticar con Google. Por favor ingresa mediante Código por Correo.",
+      };
     }
   };
 
   // Send 6-digit verification code to email
   const sendEmailCode = async (
     email: string
-  ): Promise<{ success: boolean; devCode?: string; error?: string }> => {
+  ): Promise<{ success: boolean; error?: string }> => {
     try {
       const res = await fetch("/api/auth/send-code", {
         method: "POST",
@@ -225,7 +248,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
       const data = await res.json();
       if (data.success) {
-        return { success: true, devCode: data.devCode };
+        return { success: true };
       }
       return { success: false, error: data.error };
     } catch (err: any) {

@@ -5,6 +5,7 @@ import {
   normalizeBrandName,
   extractDescriptionText,
   isPlatformOrVehicleMatch,
+  detectVehiclePlatform,
   isUniversalFit,
   normalizeAudioUrl,
   normalizeVideoUrl,
@@ -451,7 +452,22 @@ export async function GET(request: Request) {
     const queryMatchedProducts = unifiedProducts.filter((product) => {
       // 1. Text Search (q)
       if (q && q.trim()) {
-        const searchTerms = q
+        const qClean = q.trim();
+        const searchPlat = detectVehiclePlatform(qClean);
+
+        // If the search query explicitly targets a specific vehicle platform (e.g. Z1000 vs Z10):
+        if (searchPlat) {
+          const isUniversal = isUniversalFit(product.comp);
+          if (!isUniversal) {
+            // Check if this product has defined compatibility
+            if (product.comp && product.comp.length > 0) {
+              const matchesPlat = product.comp.some((c) => isPlatformOrVehicleMatch(c, qClean));
+              if (!matchesPlat) return false;
+            }
+          }
+        }
+
+        const searchTerms = qClean
           .toLowerCase()
           .normalize("NFD")
           .replace(/[\u0300-\u036f]/g, "")
@@ -473,10 +489,17 @@ export async function GET(request: Request) {
           .normalize("NFD")
           .replace(/[\u0300-\u036f]/g, "");
 
-        const matchesAllTerms = searchTerms.every((term) =>
-          searchableText.includes(term) ||
-          product.comp.some((c) => isPlatformOrVehicleMatch(c, term))
-        );
+        const escapeRegex = (s: string) => s.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
+
+        const matchesAllTerms = searchTerms.every((term) => {
+          if (term.length === 1) {
+            return new RegExp(`(^|[\\s\\-_/])${escapeRegex(term)}($|[\\s\\-_/])`, "i").test(searchableText);
+          }
+          return (
+            searchableText.includes(term) ||
+            product.comp.some((c) => isPlatformOrVehicleMatch(c, term))
+          );
+        });
         if (!matchesAllTerms) return false;
       }
 

@@ -75,6 +75,16 @@ export const SXS_BRANDS: SxsBrand[] = [
     descriptionEs: "Villain SX10 y Fugleman UT10. Mejoras deportivas, iluminación y piezas especializadas.",
     descriptionEn: "Villain SX10 and Fugleman UT10. Sport performance upgrades, lighting, and specialized parts.",
   },
+  {
+    id: "kawasaki",
+    slug: "kawasaki",
+    title: "KAWASAKI",
+    exploreLink: "/productos?sxs=kawasaki",
+    sxsImageUrl: "/images/sxs/kawasaki_sxs.png",
+    models: [],
+    descriptionEs: "Gama Teryx KRX 1000 y KRX4 1000. Suspensión reforzada, escapes deportivos y accesorios de alto desempeño.",
+    descriptionEn: "Teryx KRX 1000 and KRX4 1000 lineup. Heavy-duty suspension, sport exhausts, and high-performance upgrades.",
+  },
 ];
 
 export const SXS_BRAND_PLATFORMS: Record<string, string[]> = {
@@ -84,6 +94,7 @@ export const SXS_BRAND_PLATFORMS: Record<string, string[]> = {
   honda: ["honda", "talon", "pioneer"],
   yamaha: ["yamaha", "yxz", "yxz1000r", "wolverine", "rmax"],
   segway: ["segway", "villain", "fugleman"],
+  kawasaki: ["kawasaki", "krx", "krx 1000", "krx4", "teryx", "mule", "brute force"],
 };
 
 export const BRAND_LOGOS: Record<string, string> = {
@@ -93,6 +104,7 @@ export const BRAND_LOGOS: Record<string, string> = {
   honda: "/images/logos/honda.png",
   yamaha: "/images/logos/yamaha.png",
   cfmoto: "/images/logos/cfmoto.png",
+  kawasaki: "/images/logos/kawasaki.svg",
 };
 
 export function getBrandLogo(slug?: string | null): string {

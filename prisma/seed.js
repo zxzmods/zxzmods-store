@@ -264,6 +264,35 @@ async function main() {
     }
   });
 
+  const kawasaki = await prisma.brand.create({
+    data: {
+      slug: "kawasaki",
+      name: "Kawasaki",
+      logoUrl: "/images/logos/kawasaki.svg",
+      descriptionEs: "Ingeniería japonesa de alta exigencia para la línea Teryx KRX 1000 y KRX4 1000.",
+      descriptionEn: "High-demand Japanese engineering for the Teryx KRX 1000 and KRX4 1000 lineup.",
+      featured: true,
+      models: {
+        create: [
+          {
+            slug: "teryx-krx-1000",
+            name: "Teryx KRX 1000",
+            category: "Sport UTV",
+            yearsJson: JSON.stringify([2020, 2021, 2022, 2023, 2024, 2025, 2026, 2027]),
+            imageUrl: "/images/sxs/kawasaki_sxs.png"
+          },
+          {
+            slug: "teryx-krx4-1000",
+            name: "Teryx KRX4 1000",
+            category: "Sport UTV",
+            yearsJson: JSON.stringify([2021, 2022, 2023, 2024, 2025, 2026, 2027]),
+            imageUrl: "/images/sxs/kawasaki_sxs.png"
+          }
+        ]
+      }
+    }
+  });
+
   // Categories
   const catSuspension = await prisma.category.create({
     data: { slug: "suspension-brakes", nameEs: "Suspensión & Brazos", nameEn: "Suspension & Control Arms" }

@@ -121,9 +121,20 @@ export function DealerBrandsManagerSection({ userRole }: DealerBrandsManagerSect
         body: formData,
       });
 
-      const data = await res.json();
-      if (!res.ok || !data.success || !data.url) {
-        throw new Error(data.error || (lang === "es" ? "Error al subir el logo" : "Upload failed"));
+      let data: any = null;
+      let rawText = "";
+      try {
+        rawText = await res.text();
+        data = JSON.parse(rawText);
+      } catch {
+        if (res.status === 413) {
+          throw new Error(lang === "es" ? "El archivo supera el tamaño máximo permitido por el servidor (413)." : "File exceeds maximum server limit (413).");
+        }
+        throw new Error(lang === "es" ? `Error del servidor (${res.status})` : `Server error (${res.status})`);
+      }
+
+      if (!res.ok || !data?.success || !data?.url) {
+        throw new Error(data?.error || (lang === "es" ? "Error al subir el logo" : "Upload failed"));
       }
 
       setFormLogoUrl(data.url);

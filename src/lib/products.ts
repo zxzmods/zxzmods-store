@@ -289,9 +289,86 @@ export function isUniversalFit(comp?: string[] | null): boolean {
 }
 
 /**
+ * Detects the canonical vehicle platform family from a vehicle name, code, or compatibility token.
+ * Strictly separates CFMOTO Z10 (2026+ Turbo) from ZForce 1000 Sport R (z1000), ZForce 950 (z950), and Can-Am X3.
+ */
+export function detectVehiclePlatform(token: string): string | null {
+  const t = token.toLowerCase().trim();
+  if (!t || t === "all" || t.includes("universal")) return null;
+
+  // 1. Z1000 / ZForce 1000 Sport R (Check 1000 first so "1000" is never mistaken for "10"!)
+  if (
+    t === "z1000" ||
+    t === "zforce-1000" ||
+    t === "zforce 1000" ||
+    t === "zforce 1000 sport r" ||
+    t.includes("1000 sport r") ||
+    t.includes("zforce 1000") ||
+    /\bz1000\b/i.test(t)
+  ) {
+    return "z1000";
+  }
+
+  // 2. Z950 / ZForce 950 Sport
+  if (
+    t === "z950" ||
+    t === "zforce-950-sport" ||
+    t === "zforce 950" ||
+    t === "zforce 950 sport" ||
+    t === "zforce 950 sport-4" ||
+    t.includes("zforce 950") ||
+    /\bz950\b/i.test(t)
+  ) {
+    return "z950";
+  }
+
+  // 3. Z10 / ZForce Z10 / Z10-4
+  if (
+    t === "z10" ||
+    t === "z10-4" ||
+    t === "zforce-z10" ||
+    t === "zforce-z10-4" ||
+    t === "zforce z10" ||
+    t === "zforce z10-4" ||
+    t.includes("zforce z10") ||
+    t.includes("z10-4") ||
+    t.includes("zforce-z10") ||
+    /\b(zforce\s+)?z10(-4)?\b/i.test(t) ||
+    /\bcfmoto\s+z10\b/i.test(t)
+  ) {
+    return "z10";
+  }
+
+  // 4. Can-Am Maverick X3
+  if (
+    t === "can-amx3" ||
+    t === "x3" ||
+    t === "maverick x3" ||
+    t === "maverick-x3" ||
+    t.includes("maverick x3") ||
+    /\b(can-am\s+)?(maverick\s+)?x3\b/i.test(t)
+  ) {
+    return "x3";
+  }
+
+  // 5. Segway Villain
+  if (
+    t === "villain-sx10" ||
+    t === "villain sx10" ||
+    t === "sx10" ||
+    t === "segway villain" ||
+    /\bvillain(\s*sx10)?\b/i.test(t)
+  ) {
+    return "villain";
+  }
+
+  return null;
+}
+
+/**
  * Standardized vehicle and platform compatibility matcher.
  * Uses canonical platform aliases and whole-token matching to strictly prevent false
- * cross-brand or cross-model collisions (e.g. Can-Am Maverick X3 must NEVER match CFMOTO Z10).
+ * cross-brand or cross-model collisions (e.g. CFMOTO Z10 must NEVER match CFMOTO ZForce 1000 Sport R).
  */
 export function isPlatformOrVehicleMatch(compItem: string, targetToken: string): boolean {
   const c = compItem.toLowerCase().trim();
@@ -301,31 +378,36 @@ export function isPlatformOrVehicleMatch(compItem: string, targetToken: string):
   if (c.includes("universal") || target.includes("universal")) return true;
   if (c === target) return true;
 
-  // Canonical vehicle platform alias groups
-  const ALIAS_MAP: Record<string, string[]> = {
-    x3: ["can-amx3", "x3", "maverick x3", "can-am meverick x3", "can-am maverick x3", "maverick-x3", "meverick x3"],
-    z10: ["zforce-z10", "zforce z10", "z10", "cfmoto z10", "cfmoto zforce z10", "zforce-z10-4", "zforce z10-4", "z10-4", "cfmoto z10-4", "cfmoto zforce z10-4"],
-    z950: ["zforce-950-sport", "zforce 950", "z950", "zforce 950 sport", "zforce 950 sport-4"],
-    z1000: ["zforce-1000", "zforce 1000", "z1000", "zforce 1000 sport r"],
-    villain: ["villain-sx10", "villain sx10", "sx10", "segway villain"],
-  };
+  const platC = detectVehiclePlatform(c);
+  const platTarget = detectVehiclePlatform(target);
 
-  // Cross-platform negative check: if one is explicitly X3 and other is explicitly Z10, they can never match
-  const cIsX3 = ALIAS_MAP.x3.some((a) => c === a || c.includes(a));
-  const targetIsX3 = ALIAS_MAP.x3.some((a) => target === a || target.includes(a));
-  const cIsZ10 = ALIAS_MAP.z10.some((a) => c === a || c.includes(a));
-  const targetIsZ10 = ALIAS_MAP.z10.some((a) => target === a || target.includes(a));
-
-  if ((cIsX3 && targetIsZ10) || (cIsZ10 && targetIsX3)) {
-    return false;
+  // If both have recognized platform families:
+  if (platC && platTarget) {
+    return platC === platTarget;
   }
 
-  // Check alias groups for positive match
-  for (const group of Object.values(ALIAS_MAP)) {
-    const cInGroup = group.some((a) => c === a || c.replace(/[-_]+/g, " ") === a || c.includes(a));
-    const targetInGroup = group.some((a) => target === a || target.replace(/[-_]+/g, " ") === a || target.includes(a));
-    if (cInGroup && targetInGroup) {
-      return true;
+  // Cross-platform negative check: if one is explicitly one platform and other explicitly mentions an incompatible one
+  if (platC && !platTarget) {
+    if (platC === "z10" && (target.includes("1000") || target.includes("z1000") || target.includes("950") || target.includes("x3"))) {
+      return false;
+    }
+    if (platC === "z1000" && (/\bz10(-4)?\b/i.test(target) || target.includes("950") || target.includes("x3"))) {
+      return false;
+    }
+    if (platC === "z950" && (target.includes("1000") || target.includes("z1000") || /\bz10(-4)?\b/i.test(target) || target.includes("x3"))) {
+      return false;
+    }
+  }
+
+  if (platTarget && !platC) {
+    if (platTarget === "z10" && (c.includes("1000") || c.includes("z1000") || c.includes("950") || c.includes("x3"))) {
+      return false;
+    }
+    if (platTarget === "z1000" && (/\bz10(-4)?\b/i.test(c) || c.includes("950") || c.includes("x3"))) {
+      return false;
+    }
+    if (platTarget === "z950" && (c.includes("1000") || c.includes("z1000") || /\bz10(-4)?\b/i.test(c) || c.includes("x3"))) {
+      return false;
     }
   }
 
@@ -334,10 +416,10 @@ export function isPlatformOrVehicleMatch(compItem: string, targetToken: string):
   if (cNorm === targetNorm) return true;
 
   const escapeRegex = (s: string) => s.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
-  const targetInComp = new RegExp(`(^|[\\s\\-_])${escapeRegex(targetNorm)}($|[\\s\\-_])`, "i").test(cNorm);
+  const targetInComp = new RegExp(`(^|[\\s\\-_/])${escapeRegex(targetNorm)}($|[\\s\\-_/])`, "i").test(cNorm);
   if (targetInComp) return true;
 
-  const compInTarget = new RegExp(`(^|[\\s\\-_])${escapeRegex(cNorm)}($|[\\s\\-_])`, "i").test(targetNorm);
+  const compInTarget = new RegExp(`(^|[\\s\\-_/])${escapeRegex(cNorm)}($|[\\s\\-_/])`, "i").test(targetNorm);
   if (compInTarget) return true;
 
   return false;

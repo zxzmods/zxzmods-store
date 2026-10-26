@@ -44,78 +44,66 @@ export async function POST(request: Request) {
     const cleanName = typeof name === "string" && name.trim().length > 0 ? name.trim() : null;
     const now = Date.now();
 
-    // Master test code bypass - STRICTLY prohibited unless explicitly enabled in local development
-    const allowTestAuth =
-      process.env.NODE_ENV === "development" &&
-      process.env.ALLOW_TEST_AUTH === "true";
-    const TEMPORARY_TEST_CODE = "616161";
-    const isMasterTestCode = allowTestAuth && cleanCode === TEMPORARY_TEST_CODE;
+    // 1. Check brute force lockout
+    const failedRecord = failedVerificationMap.get(cleanEmail);
+    if (failedRecord && failedRecord.lockedUntil > now) {
+      const waitMinutes = Math.ceil((failedRecord.lockedUntil - now) / 60000);
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Cuenta temporalmente bloqueada por múltiples intentos fallidos. Intenta en ${waitMinutes} minutos.`,
+        },
+        { status: 429 }
+      );
+    }
 
-    let validCode: any = null;
+    // 2. Verify code in database
+    const validCode = await prisma.verificationCode.findFirst({
+      where: {
+        email: cleanEmail,
+        code: cleanCode,
+        used: false,
+        expiresAt: { gt: new Date() },
+      },
+      orderBy: { createdAt: "desc" },
+    });
 
-    if (!isMasterTestCode) {
-      // 1. Check brute force lockout
-      const failedRecord = failedVerificationMap.get(cleanEmail);
-      if (failedRecord && failedRecord.lockedUntil > now) {
-        const waitMinutes = Math.ceil((failedRecord.lockedUntil - now) / 60000);
+    if (!validCode) {
+      // Record failed attempt
+      const attempts = (failedRecord?.attempts || 0) + 1;
+      if (attempts >= MAX_VERIFY_ATTEMPTS) {
+        failedVerificationMap.set(cleanEmail, {
+          attempts,
+          lockedUntil: now + LOCKOUT_MS,
+        });
+
+        // Invalidate active codes on max attempts
+        await prisma.verificationCode.updateMany({
+          where: { email: cleanEmail, used: false },
+          data: { used: true },
+        });
+
         return NextResponse.json(
           {
             success: false,
-            error: `Cuenta temporalmente bloqueada por múltiples intentos fallidos. Intenta en ${waitMinutes} minutos.`,
+            error: "Has excedido el número máximo de intentos. Solicita un nuevo código.",
           },
           { status: 429 }
         );
+      } else {
+        failedVerificationMap.set(cleanEmail, {
+          attempts,
+          lockedUntil: 0,
+        });
+        const remaining = MAX_VERIFY_ATTEMPTS - attempts;
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Código incorrecto o expirado. ${remaining} intento(s) restante(s).`,
+          },
+          { status: 401 }
+        );
       }
-
-      // 2. Verify code in database
-      validCode = await prisma.verificationCode.findFirst({
-        where: {
-          email: cleanEmail,
-          code: cleanCode,
-          used: false,
-          expiresAt: { gt: new Date() },
-        },
-        orderBy: { createdAt: "desc" },
-      });
-
-      if (!validCode) {
-        // Record failed attempt
-        const attempts = (failedRecord?.attempts || 0) + 1;
-        if (attempts >= MAX_VERIFY_ATTEMPTS) {
-          failedVerificationMap.set(cleanEmail, {
-            attempts,
-            lockedUntil: now + LOCKOUT_MS,
-          });
-
-          // Invalidate active codes on max attempts
-          await prisma.verificationCode.updateMany({
-            where: { email: cleanEmail, used: false },
-            data: { used: true },
-          });
-
-          return NextResponse.json(
-            {
-              success: false,
-              error: "Has excedido el número máximo de intentos. Solicita un nuevo código.",
-            },
-            { status: 429 }
-          );
-        } else {
-          failedVerificationMap.set(cleanEmail, {
-            attempts,
-            lockedUntil: 0,
-          });
-          const remaining = MAX_VERIFY_ATTEMPTS - attempts;
-          return NextResponse.json(
-            {
-              success: false,
-              error: `Código incorrecto o expirado. ${remaining} intento(s) restante(s).`,
-            },
-            { status: 401 }
-          );
-        }
-      }
-
     }
 
     // Success: Clear failed attempts memory

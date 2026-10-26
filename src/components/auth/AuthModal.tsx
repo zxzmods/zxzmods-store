@@ -40,7 +40,6 @@ export function AuthModal() {
   const [step, setStep] = useState<"email" | "code">("email");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [devCodeHint, setDevCodeHint] = useState<string | null>(null);
   const [termsAccepted, setTermsAccepted] = useState(false);
 
   if (!isAuthModalOpen) return null;
@@ -64,7 +63,13 @@ export function AuthModal() {
     const result = await loginWithGoogle();
     setLoading(false);
     if (!result.success && result.error) {
-      setError(result.error);
+      const sanitizedError =
+        result.error.startsWith("Firebase:") || result.error.includes("auth/")
+          ? (lang === "es"
+              ? "El acceso con Google no está disponible temporalmente. Por favor utiliza el acceso con Código por Correo (100% operativo)."
+              : "Google Sign-In is temporarily unavailable. Please use Email Verification Code (100% operational).")
+          : result.error;
+      setError(sanitizedError);
     }
   };
 
@@ -87,10 +92,6 @@ export function AuthModal() {
 
     if (result.success) {
       setStep("code");
-      if (result.devCode) {
-        setDevCodeHint(result.devCode);
-        setCode(result.devCode); // Pre-fill for instant frictionless testing
-      }
     } else {
       setError(result.error || "No se pudo enviar el código");
     }
@@ -118,7 +119,6 @@ export function AuthModal() {
     setStep("email");
     setCode("");
     setError(null);
-    setDevCodeHint(null);
   };
 
   return (
@@ -177,7 +177,13 @@ export function AuthModal() {
             {error && (
               <div className="flex items-start gap-2.5 p-3.5 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700">
                 <AlertCircle className="w-4 h-4 flex-shrink-0 text-red-500 mt-0.5" />
-                <span>{error}</span>
+                <span>
+                  {error.startsWith("Firebase:") || error.includes("auth/")
+                    ? (lang === "es"
+                        ? "El acceso con Google no está disponible temporalmente. Por favor utiliza el acceso con Código por Correo (100% operativo)."
+                        : "Google Sign-In is temporarily unavailable. Please use Email Verification Code (100% operational).")
+                    : error}
+                </span>
               </div>
             )}
 
@@ -289,29 +295,12 @@ export function AuthModal() {
                     </button>
                   </div>
 
-                  <div className="mb-2 p-2 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-800 text-[11px] flex items-center justify-between gap-1.5">
-                    <div className="flex items-center gap-1.5">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
-                      <span>
-                        {lang === "es" ? "Código de prueba y acceso:" : "Test & access code:"}{" "}
-                        <strong className="font-mono text-xs text-emerald-950 font-bold">{devCodeHint || "616161"}</strong>
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setCode(devCodeHint || "616161")}
-                      className="text-[10px] uppercase font-bold text-emerald-700 hover:text-emerald-900 bg-emerald-100 hover:bg-emerald-200 px-2 py-0.5 rounded transition"
-                    >
-                      {lang === "es" ? "Aplicar" : "Apply"}
-                    </button>
-                  </div>
-
                   <input
                     type="text"
                     maxLength={6}
                     value={code}
                     onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
-                    placeholder="616161"
+                    placeholder="000000"
                     required
                     className="w-full text-center tracking-[0.4em] font-mono text-xl py-3 rounded-xl border border-gray-300 focus:border-[#C02030] focus:ring-2 focus:ring-[#C02030]/20 outline-none transition-all"
                     autoFocus

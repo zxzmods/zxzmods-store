@@ -40,19 +40,33 @@ export default function MarcasPage() {
         if (!isMounted) return;
         const brandList = data.data?.brands || data.brands;
         if (Array.isArray(brandList)) {
-          const cards: BrandCardItem[] = brandList.map((b: any) => {
+          // Zero Mock Data: only include brands with registered vehicle models
+          const activeBrands = brandList.filter(
+            (b: any) => Array.isArray(b.models) && b.models.length > 0
+          );
+
+          // CFMOTO is always first
+          activeBrands.sort((a: any, b: any) => {
+            const aIsCfmoto = (a.slug || "").toLowerCase() === "cfmoto";
+            const bIsCfmoto = (b.slug || "").toLowerCase() === "cfmoto";
+            if (aIsCfmoto) return -1;
+            if (bIsCfmoto) return 1;
+            return (a.name || a.slug).localeCompare(b.name || b.slug);
+          });
+
+          const cards: BrandCardItem[] = activeBrands.map((b: any) => {
             const known = SXS_BRANDS.find((s) => s.slug.toLowerCase() === b.slug.toLowerCase());
             const modelsList = (b.models || []).map((m: any) => m.name || m.slug);
             return {
               id: b.slug,
               slug: b.slug,
               title: b.name || known?.title || b.slug.toUpperCase(),
-              exploreLink: `/productos?sxs=${b.slug}&intro=true`,
+              exploreLink: known?.exploreLink || `/productos?sxs=${b.slug}`,
               sxsImageUrl: known?.sxsImageUrl || b.logoUrl || "/images/sxs/cfmoto_sxs.png",
               models: modelsList,
               descriptionEs: b.descriptionEs || known?.descriptionEs || `Especialistas en ${b.name}.`,
               descriptionEn: b.descriptionEn || known?.descriptionEn || `Specialists in ${b.name}.`,
-              isPaused: (b.models || []).length === 0,
+              isPaused: false,
             };
           });
           setBrands(cards);
@@ -113,7 +127,17 @@ export default function MarcasPage() {
         {/* Loading Animated Skeleton (Rule 7) */}
         {loading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5 lg:gap-6 w-full">
-            {[1, 2, 3, 4].map((i) => (
+            <div className="md:col-span-2 relative rounded-3xl overflow-hidden bg-slate-50 border border-slate-200 p-6 sm:p-8 min-h-[350px] sm:min-h-[440px] flex flex-col justify-between">
+              <div className="flex flex-col items-center space-y-3">
+                <Skeleton className="h-10 w-56 rounded-xl" />
+                <Skeleton className="h-8 w-36 rounded-full" />
+              </div>
+              <div className="h-52 sm:h-64 w-full flex items-center justify-center">
+                <Skeleton className="h-44 w-2/3 rounded-2xl" />
+              </div>
+              <div className="h-2" />
+            </div>
+            {[1, 2].map((i) => (
               <div
                 key={i}
                 className="relative rounded-3xl overflow-hidden bg-slate-50 border border-slate-200 p-6 sm:p-8 min-h-[350px] sm:min-h-[390px] flex flex-col justify-between"
@@ -132,48 +156,51 @@ export default function MarcasPage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5 lg:gap-6 w-full">
             {brands.map((card) => {
-              const isPaused = Boolean(card.isPaused);
+              const isOdd = brands.length % 2 !== 0;
+              const isHeroTop = isOdd && card.slug.toLowerCase() === "cfmoto";
 
               const cardInner = (
                 <>
                   {/* TOP: Brand Name & Action Pill */}
                   <div className="relative z-10 flex flex-col items-center text-center space-y-2.5 pt-1">
                     <div className="flex items-center gap-2">
-                      <h3 className="text-2xl sm:text-4xl font-black text-[#111827] tracking-tight">
+                      <h3
+                        className={`font-black text-[#111827] tracking-tight ${
+                          isHeroTop ? "text-3xl sm:text-5xl md:text-6xl" : "text-2xl sm:text-4xl"
+                        }`}
+                      >
                         {card.title}
                       </h3>
-                      {isPaused && (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-700 text-[10px] font-bold uppercase tracking-wider">
-                          <Clock className="w-3 h-3" />
-                          <span>{t.btnComingSoon}</span>
-                        </span>
-                      )}
                     </div>
 
-                    {isPaused ? (
-                      <div className="inline-flex items-center gap-1.5 px-5 py-2 rounded-full bg-gray-100 text-gray-500 border border-gray-200 text-xs sm:text-sm font-semibold transition-all">
-                        <span>{t.btnComingSoon}</span>
-                      </div>
-                    ) : (
-                      <div className="inline-flex items-center gap-1.5 px-5 py-2 rounded-full bg-[#111827] text-white group-hover:bg-[#C02030] text-xs sm:text-sm font-semibold transition-all duration-300 shadow-sm group-hover:shadow group-hover:scale-105">
-                        <span>{t.btnExploreProducts}</span>
-                        <ChevronRight className="w-3.5 h-3.5" />
-                      </div>
-                    )}
+                    <div className="inline-flex items-center gap-1.5 px-5 py-2 rounded-full bg-[#111827] text-white group-hover:bg-[#C02030] text-xs sm:text-sm font-semibold transition-all duration-300 shadow-sm group-hover:shadow group-hover:scale-105">
+                      <span>{t.btnExploreProducts}</span>
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </div>
                   </div>
 
                   {/* CENTER: Isolated SxS vehicle PNG with studio floor shadow */}
-                  <div className="relative z-0 my-3 sm:my-4 w-full flex items-center justify-center h-44 sm:h-52">
-                    <div className="relative w-full h-full max-w-xl">
+                  <div
+                    className={`relative z-0 my-3 sm:my-4 w-full flex items-center justify-center ${
+                      isHeroTop ? "h-52 sm:h-64 md:h-80" : "h-44 sm:h-52"
+                    }`}
+                  >
+                    <div
+                      className={`relative w-full h-full ${
+                        isHeroTop ? "max-w-2xl" : "max-w-xl"
+                      }`}
+                    >
                       <Image
                         src={card.sxsImageUrl}
                         alt={`${card.title} SxS`}
                         fill
-                        className={`object-contain transition-transform duration-700 ease-out group-hover:scale-105 drop-shadow-md ${
-                          isPaused ? "opacity-75 filter grayscale-[25%]" : ""
-                        }`}
+                        className="object-contain transition-transform duration-700 ease-out group-hover:scale-105 drop-shadow-md"
                         priority={card.id === "cfmoto"}
-                        sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                        sizes={
+                          isHeroTop
+                            ? "(max-width: 768px) 100vw, 100vw"
+                            : "(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                        }
                       />
                     </div>
 
@@ -186,23 +213,13 @@ export default function MarcasPage() {
                 </>
               );
 
-              if (isPaused) {
-                return (
-                  <div
-                    key={card.id}
-                    onClick={(e) => handlePausedClick(e, card)}
-                    className="relative rounded-3xl overflow-hidden bg-gradient-to-b from-[#F7F8FA] via-[#FFFFFF] to-[#EDEFF2] border border-gray-200/90 transition-all duration-300 flex flex-col justify-between p-6 sm:p-8 group shadow-sm cursor-pointer select-none min-h-[350px] sm:min-h-[390px] opacity-90 hover:opacity-100"
-                  >
-                    {cardInner}
-                  </div>
-                );
-              }
-
               return (
                 <Link
                   key={card.id}
                   href={card.exploreLink}
-                  className="relative rounded-3xl overflow-hidden bg-gradient-to-b from-[#F7F8FA] via-[#FFFFFF] to-[#EDEFF2] border border-gray-200/90 hover:border-gray-300 transition-all duration-300 flex flex-col justify-between p-6 sm:p-8 group shadow-sm hover:shadow-md cursor-pointer select-none min-h-[350px] sm:min-h-[390px]"
+                  className={`relative rounded-3xl overflow-hidden bg-gradient-to-b from-[#F7F8FA] via-[#FFFFFF] to-[#EDEFF2] border border-gray-200/90 hover:border-gray-300 transition-all duration-300 flex flex-col justify-between p-6 sm:p-8 group shadow-sm hover:shadow-md cursor-pointer select-none min-h-[350px] sm:min-h-[390px] ${
+                    isHeroTop ? "md:col-span-2 md:min-h-[460px] lg:min-h-[480px]" : ""
+                  }`}
                 >
                   {cardInner}
                 </Link>

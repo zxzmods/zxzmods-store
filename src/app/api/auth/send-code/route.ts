@@ -117,14 +117,8 @@ export async function POST(request: Request) {
     });
 
     // 4. Generate cryptographically secure 6-digit verification code
-    const isTestAuthEnabled =
-      process.env.NODE_ENV === "development" && process.env.ALLOW_TEST_AUTH === "true";
-    const code = isTestAuthEnabled
-      ? "616161"
-      : crypto.randomInt(100000, 1000000).toString();
-    const expiresAt = new Date(
-      Date.now() + (isTestAuthEnabled ? 24 * 60 * 60 * 1000 : 15 * 60 * 1000)
-    );
+    const code = crypto.randomInt(100000, 1000000).toString();
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes validity
 
     await prisma.verificationCode.create({
       data: {
@@ -158,12 +152,6 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       message: "Código de verificación generado y enviado",
-      ...(process.env.NODE_ENV !== "production"
-        ? {
-            previewUrl: emailResult.previewUrl,
-            ...(isTestAuthEnabled ? { devCode: code } : {}),
-          }
-        : {}),
     });
   } catch (error) {
     console.error("Error in /api/auth/send-code:", error);

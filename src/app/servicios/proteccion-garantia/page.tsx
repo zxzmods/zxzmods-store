@@ -443,7 +443,7 @@ export default function WarrantyProtectionPage() {
                     <div
                       key={part.id}
                       onClick={() => toggleSelectPart(part)}
-                      className={`p-4 sm:p-5 flex items-center justify-between gap-4 cursor-pointer transition ${
+                      className={`p-3.5 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 cursor-pointer transition ${
                         isBlockedInGAR
                           ? "bg-slate-50/70 dark:bg-slate-800/30 opacity-75 cursor-not-allowed"
                           : isSelected
@@ -451,7 +451,7 @@ export default function WarrantyProtectionPage() {
                           : "hover:bg-slate-50 dark:hover:bg-slate-800/40"
                       }`}
                     >
-                      <div className="flex items-center gap-4 min-w-0">
+                      <div className="flex items-center gap-3 sm:gap-4 min-w-0">
                         {/* Checkbox */}
                         <div
                           className={`w-5 h-5 rounded-lg border flex items-center justify-center shrink-0 transition-colors ${
@@ -466,7 +466,7 @@ export default function WarrantyProtectionPage() {
                         </div>
 
                         {/* Image Preview */}
-                        <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700/80 overflow-hidden shrink-0 flex items-center justify-center">
+                        <div className="w-14 h-14 sm:w-20 sm:h-20 rounded-2xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700/80 overflow-hidden shrink-0 flex items-center justify-center">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
                             src={part.imageUrl}
@@ -503,16 +503,18 @@ export default function WarrantyProtectionPage() {
                       </div>
 
                       {/* Install & De-install Cost [installation * 2] */}
-                      <div className="text-right shrink-0 space-y-0.5">
-                        <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block">
+                      <div className="pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100 dark:border-slate-800/80 flex sm:block items-center justify-between sm:justify-center text-left sm:text-right shrink-0 space-y-0 sm:space-y-0.5">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
                           {t.warrantyProtectionDeinstallReinstallLabel}
                         </span>
-                        <span className="text-sm sm:text-lg font-black font-mono text-[#C02030] dark:text-[#FF3B47] block">
-                          ₡{part.deinstallReinstallCostCRC.toLocaleString("es-CR")}
-                        </span>
-                        <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500 block">
-                          ({t.warrantyProtectionInstallCostLabel} ₡{part.installationPriceCRC.toLocaleString("es-CR")} × 2)
-                        </span>
+                        <div className="text-right sm:text-inherit">
+                          <span className="text-sm sm:text-lg font-black font-mono text-[#C02030] dark:text-[#FF3B47] block">
+                            ₡{part.deinstallReinstallCostCRC.toLocaleString("es-CR")}
+                          </span>
+                          <span className="text-[9px] sm:text-[10px] font-mono text-slate-400 dark:text-slate-500 block">
+                            ({t.warrantyProtectionInstallCostLabel} ₡{part.installationPriceCRC.toLocaleString("es-CR")} × 2)
+                          </span>
+                        </div>
                       </div>
                     </div>
                   );

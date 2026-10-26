@@ -60,10 +60,10 @@ function verifyMagicBytes(buffer: Buffer, mimeType: string): boolean {
     return header === "GIF87a" || header === "GIF89a";
   }
 
-  // MP4 / QuickTime: ftyp
+  // MP4 / QuickTime: ftyp, moov, mdat, or wide box in container header
   if (mimeType === "video/mp4" || mimeType === "video/quicktime") {
-    const ftyp = buffer.subarray(4, 8).toString("ascii");
-    return ftyp === "ftyp" || buffer.subarray(4, 12).toString("ascii").includes("moov");
+    const headerStr = buffer.subarray(0, Math.min(buffer.length, 64)).toString("ascii");
+    return headerStr.includes("ftyp") || headerStr.includes("moov") || headerStr.includes("mdat") || headerStr.includes("wide");
   }
 
   // WebM / Matroska: 1A 45 DF A3
@@ -330,22 +330,17 @@ export async function processAndStoreImage(
         mimeType,
       };
     } catch (gcpError: any) {
-      console.error("[STORAGE_GCP_ERROR] Cloud storage upload failed:", gcpError);
-      if (process.env.VERCEL === "1" || process.env.NODE_ENV === "production") {
+      console.warn("[STORAGE_GCP_WARN] Cloud storage upload failed, attempting fallback:", gcpError?.message);
+      if (process.env.VERCEL === "1") {
         return {
           success: false,
           error: `Error al subir archivo a Google Cloud Storage: ${gcpError?.message || "Fallo de almacenamiento en la nube"}`,
         };
       }
     }
-  } else if (process.env.VERCEL === "1" || process.env.NODE_ENV === "production") {
-    return {
-      success: false,
-      error: "Google Cloud Storage (GCS_BUCKET_NAME / credenciales) es requerido en producción.",
-    };
   }
 
-  // Local filesystem storage for development fallback only
+  // Local filesystem storage fallback (standalone / docker / dev)
   try {
     const uploadDir = path.join(process.cwd(), "public", "uploads", folder);
     await fs.mkdir(uploadDir, { recursive: true });

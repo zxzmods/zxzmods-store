@@ -133,6 +133,26 @@ export function HomePageManagerTab({ userRole }: HomePageManagerTabProps) {
     }
 
     try {
+      // Client-side file size guard before attempting network request
+      const maxDirectBytes = type === "VIDEO" ? 30 * 1024 * 1024 : 12 * 1024 * 1024;
+      if (file.size > maxDirectBytes) {
+        if (type === "VIDEO") {
+          setShowManualVideoUrl(true);
+          throw new Error(
+            lang === "es"
+              ? `El video pesa ${(file.size / (1024 * 1024)).toFixed(1)}MB. El límite para subida directa al servidor es de 30MB. Te recomendamos ingresar la URL directa del video en la casilla inferior o comprimir el archivo.`
+              : `The video is ${(file.size / (1024 * 1024)).toFixed(1)}MB. The direct upload limit is 30MB. Please paste the direct video URL in the field below or compress the file.`
+          );
+        } else {
+          setShowManualMediaUrl(true);
+          throw new Error(
+            lang === "es"
+              ? `La imagen pesa ${(file.size / (1024 * 1024)).toFixed(1)}MB. El límite máximo para subida directa es de 12MB.`
+              : `The image is ${(file.size / (1024 * 1024)).toFixed(1)}MB. The direct upload limit is 12MB.`
+          );
+        }
+      }
+
       const formData = new FormData();
       formData.append("file", file);
       formData.append("folder", type === "VIDEO" ? "videos" : "products");
@@ -142,9 +162,31 @@ export function HomePageManagerTab({ userRole }: HomePageManagerTabProps) {
         body: formData,
       });
 
-      const data = await res.json();
-      if (!res.ok || !data.success || !data.url) {
-        throw new Error(data.error || (lang === "es" ? "Error al subir archivo" : "Upload failed"));
+      // Resilient response handling (safely catches 413 Request Entity Too Large HTML / non-JSON responses)
+      let data: any = null;
+      let rawText = "";
+
+      try {
+        rawText = await res.text();
+        data = JSON.parse(rawText);
+      } catch {
+        if (res.status === 413) {
+          if (type === "VIDEO") setShowManualVideoUrl(true);
+          throw new Error(
+            lang === "es"
+              ? "El servidor rechazó el archivo por exceso de tamaño (HTTP 413: Request Entity Too Large). El video supera el límite de carga directa del servidor web. Por favor ingresa la URL directa del video en la casilla inferior."
+              : "Server rejected file due to size (HTTP 413: Request Entity Too Large). The video exceeds proxy upload limits. Please enter the direct video URL in the field below."
+          );
+        }
+        throw new Error(
+          lang === "es"
+            ? `Error del servidor (${res.status}): No se pudo procesar la subida del archivo.`
+            : `Server error (${res.status}): Could not process file upload.`
+        );
+      }
+
+      if (!res.ok || !data?.success || !data?.url) {
+        throw new Error(data?.error || (lang === "es" ? "Error al subir archivo" : "Upload failed"));
       }
 
       if (type === "MEDIA") {
@@ -1372,7 +1414,9 @@ export function HomePageManagerTab({ userRole }: HomePageManagerTabProps) {
                                 : t.backdoorHomeUploadVideoBtn}
                             </p>
                             <p className="text-[10px] text-slate-500">
-                              Formatos: MP4, WebM, MOV (hasta 100MB con loop optimizado)
+                              {lang === "es"
+                                ? "Formatos: MP4, WebM, MOV (hasta 30MB directo, o mediante URL para videos de mayor tamaño)"
+                                : "Formats: MP4, WebM, MOV (up to 30MB direct, or via URL for larger files)"}
                             </p>
                           </div>
                         </div>

@@ -370,8 +370,14 @@ function ParametersEditorSection({
         method: "POST",
         body: formData,
       });
-      const data = await res.json();
-      if (res.ok && data.success && data.url) {
+      let data: any = null;
+      try {
+        const rawText = await res.text();
+        data = JSON.parse(rawText);
+      } catch {
+        data = null;
+      }
+      if (res.ok && data?.success && data?.url) {
         handleUpdateOption(pIndex, oIndex, "imageUrl", data.url);
       }
     } catch (e) {
@@ -3093,12 +3099,34 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
     formData.append("folder", folderTarget);
 
     try {
+      const maxDirectBytes = mediaType === "video" ? 30 * 1024 * 1024 : 12 * 1024 * 1024;
+      if (file.size > maxDirectBytes) {
+        alert(
+          lang === "es"
+            ? `El archivo pesa ${(file.size / (1024 * 1024)).toFixed(1)}MB. El límite máximo para subida directa es de ${mediaType === "video" ? "30MB" : "12MB"}.`
+            : `File is ${(file.size / (1024 * 1024)).toFixed(1)}MB. Direct upload limit is ${mediaType === "video" ? "30MB" : "12MB"}.`
+        );
+        return;
+      }
+
       const res = await fetch("/api/sys/upload", {
         method: "POST",
         body: formData,
       });
-      const data = await res.json();
-      if (res.ok && data.success) {
+      let data: any = null;
+      try {
+        const rawText = await res.text();
+        data = JSON.parse(rawText);
+      } catch {
+        if (res.status === 413) {
+          alert(lang === "es" ? "El archivo supera el tamaño máximo permitido por el servidor (413)." : "File exceeds maximum server limit (413).");
+        } else {
+          alert(lang === "es" ? `Error del servidor (${res.status})` : `Server error (${res.status})`);
+        }
+        return;
+      }
+
+      if (res.ok && data?.success) {
         if (isEditingProductView) {
           if (mediaType === "image") {
             setProductForm((prev) => {

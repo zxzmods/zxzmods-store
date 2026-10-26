@@ -15,7 +15,7 @@ import { useGarage } from "@/context/GarageContext";
 import { getWhatsAppUrl } from "@/config/company";
 import { formatCRC, getCategoryLabel } from "@/lib/i18n";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { ProductItem, normalizeBrandList, isPlatformOrVehicleMatch, isUniversalFit, SelectedParameterItem } from "@/lib/products";
+import { ProductItem, normalizeBrandList, isPlatformOrVehicleMatch, detectVehiclePlatform, isUniversalFit, SelectedParameterItem } from "@/lib/products";
 import { getSxsBrandBySlug } from "@/lib/sxsBrands";
 import { SxsBrandIntro } from "@/components/intro/SxsBrandIntro";
 import {
@@ -674,20 +674,36 @@ function ProductsContent() {
                       {lang === "es" ? "Modelos:" : "Models:"}
                     </span>
                     {currentModels.map((mod) => {
-                      const searchTerm = mod.code || mod.name;
-                      const isSelected =
-                        Boolean(searchQuery.trim()) &&
-                        ((mod.code && searchQuery.toLowerCase().trim() === mod.code.toLowerCase().trim()) ||
-                          searchQuery.toLowerCase().trim() === mod.name.toLowerCase().trim() ||
-                          (mod.code && searchQuery.toLowerCase().includes(mod.code.toLowerCase())) ||
-                          searchQuery.toLowerCase().includes(mod.name.toLowerCase()));
+                      const qNorm = searchQuery.toLowerCase().trim();
+                      const modNameNorm = mod.name.toLowerCase().trim();
+                      const modCodeNorm = (mod.code || "").toLowerCase().trim();
+                      const modSlugNorm = mod.slug.toLowerCase().trim();
+                      const escapeRegex = (s: string) => s.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
+
+                      // Strict model chip selection: NEVER allow Z1000 to highlight Z10 or vice versa
+                      const isSelected = Boolean(qNorm) && (() => {
+                        if (qNorm === modNameNorm || (Boolean(modCodeNorm) && qNorm === modCodeNorm) || qNorm === modSlugNorm) {
+                          return true;
+                        }
+                        const qPlat = detectVehiclePlatform(qNorm);
+                        const modPlat = detectVehiclePlatform(mod.code || mod.name || mod.slug);
+                        if (qPlat && modPlat) {
+                          return qPlat === modPlat;
+                        }
+                        if (modCodeNorm) {
+                          const codeRegex = new RegExp(`(^|[\\s\\-_/])${escapeRegex(modCodeNorm)}($|[\\s\\-_/])`, "i");
+                          if (codeRegex.test(qNorm)) return true;
+                        }
+                        return qNorm.includes(modNameNorm);
+                      })();
 
                       return (
                         <button
                           key={mod.id || mod.slug}
                           type="button"
                           onClick={() => {
-                            const newQuery = isSelected ? "" : searchTerm;
+                            // Use mod.name for clear human-readable search, e.g. "ZForce 1000 Sport R"
+                            const newQuery = isSelected ? "" : mod.name;
                             setSearchQuery(newQuery);
                             const params = new URLSearchParams(searchParams.toString());
                             if (newQuery) {
@@ -817,8 +833,8 @@ function ProductsContent() {
           <div className="flex flex-wrap items-center justify-between gap-3 pt-1 text-xs">
             <div className="flex flex-wrap items-center gap-2">
               {/* Dynamic Brand Selector - shows brands present in matching search results */}
-              <div className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-xl px-3 py-1.5 shadow-xs">
-                <span className="text-gray-500 font-medium">{t.productsFilterBrand}:</span>
+              <div className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-xl px-3 py-1.5 shadow-xs max-w-full">
+                <span className="text-gray-500 font-medium shrink-0">{t.productsFilterBrand}:</span>
                 <select
                   value={selectedBrand}
                   onChange={(e) => {
@@ -838,7 +854,7 @@ function ProductsContent() {
                     }
                     router.replace(`/productos?${params.toString()}`);
                   }}
-                  className="bg-transparent text-gray-900 font-bold outline-none cursor-pointer text-xs"
+                  className="bg-transparent text-gray-900 font-bold outline-none cursor-pointer text-xs max-w-[140px] sm:max-w-none truncate"
                 >
                   <option value="all">
                     {availableBrands.length === 0
@@ -905,35 +921,37 @@ function ProductsContent() {
               )}
             </div>
 
-            {/* Sort Selector & Results Count */}
-            <div className="flex items-center justify-between sm:justify-end gap-3 w-full sm:w-auto sm:ml-auto">
-              <span className="text-gray-500 font-medium">
+            {/* Sort Selector & Results Count (Responsive: No mobile edge cutoff) */}
+            <div className="flex flex-wrap items-center justify-between sm:justify-end gap-2.5 w-full sm:w-auto sm:ml-auto">
+              <span className="text-gray-500 font-medium text-xs whitespace-nowrap">
                 {products.length} {t.productsCount}
               </span>
 
-              <div className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-xl px-3 py-1.5 shadow-xs">
-                <SlidersHorizontal className="w-3 h-3 text-gray-400" />
-                <select
-                  value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value as any)}
-                  className="bg-transparent text-gray-900 font-bold outline-none cursor-pointer text-xs"
-                >
-                  <option value="relevant">{t.productsSortRelevant}</option>
-                  <option value="price-asc">{t.productsSortPriceAsc}</option>
-                  <option value="price-desc">{t.productsSortPriceDesc}</option>
-                  <option value="stars">{t.productsSortRating}</option>
-                </select>
-              </div>
+              <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                <div className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-xl px-3 py-1.5 shadow-xs">
+                  <SlidersHorizontal className="w-3 h-3 text-gray-400 shrink-0" />
+                  <select
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value as any)}
+                    className="bg-transparent text-gray-900 font-bold outline-none cursor-pointer text-xs"
+                  >
+                    <option value="relevant">{t.productsSortRelevant}</option>
+                    <option value="price-asc">{t.productsSortPriceAsc}</option>
+                    <option value="price-desc">{t.productsSortPriceDesc}</option>
+                    <option value="stars">{t.productsSortRating}</option>
+                  </select>
+                </div>
 
-              {hasActiveFilters && (
-                <button
-                  onClick={handleClearFilters}
-                  className="text-xs text-[#C02030] hover:underline font-semibold flex items-center gap-1"
-                >
-                  <X className="w-3 h-3" />
-                  <span>{t.productsClearFilters}</span>
-                </button>
-              )}
+                {hasActiveFilters && (
+                  <button
+                    onClick={handleClearFilters}
+                    className="text-xs text-[#C02030] hover:underline font-semibold flex items-center gap-1 shrink-0 px-1 py-0.5 whitespace-nowrap cursor-pointer"
+                  >
+                    <X className="w-3 h-3 shrink-0" />
+                    <span>{t.productsClearFilters}</span>
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>

@@ -30,8 +30,18 @@ export async function GET() {
         }),
       ]);
 
+    // Only include brands with registered models and ensure CFMOTO is always first
+    const activeBrands = brands.filter((b) => b.models && b.models.length > 0);
+    activeBrands.sort((a, b) => {
+      const aIsCfmoto = a.slug.toLowerCase() === "cfmoto";
+      const bIsCfmoto = b.slug.toLowerCase() === "cfmoto";
+      if (aIsCfmoto) return -1;
+      if (bIsCfmoto) return 1;
+      return a.name.localeCompare(b.name);
+    });
+
     // Parse JSON fields safely
-    const formattedBrands = brands.map((b) => ({
+    const formattedBrands = activeBrands.map((b) => ({
       ...b,
       models: b.models.map((m) => ({
         ...m,

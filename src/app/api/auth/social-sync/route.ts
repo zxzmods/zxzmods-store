@@ -65,20 +65,19 @@ export async function POST(request: Request) {
       );
     }
 
-    // Upsert user in database
+    // Upsert user in database (preserving default avatar)
     const user = await prisma.user.upsert({
       where: { email: cleanEmail },
       update: {
         firebaseUid: verifiedUid,
         displayName: displayName || undefined,
-        photoUrl: photoUrl || undefined,
         phoneNumber: phoneNumber || undefined,
       },
       create: {
         firebaseUid: verifiedUid,
         email: cleanEmail,
         displayName: displayName || null,
-        photoUrl: photoUrl || null,
+        photoUrl: null,
         phoneNumber: phoneNumber || null,
         role: "CUSTOMER",
       },

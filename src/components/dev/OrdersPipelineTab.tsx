@@ -1848,9 +1848,18 @@ export function OrdersPipelineTab({ onOrderDeleted, onOrderUpdated }: OrdersPipe
         method: "POST",
         body: formData,
       });
-      const upData = await upRes.json();
-      if (!upRes.ok || !upData.success || !upData.url) {
-        throw new Error(upData.error || "Error al subir comprobante");
+      let upData: any = null;
+      try {
+        const rawText = await upRes.text();
+        upData = JSON.parse(rawText);
+      } catch {
+        if (upRes.status === 413) {
+          throw new Error("El archivo supera el tamaño máximo permitido por el servidor (413).");
+        }
+        throw new Error(`Error del servidor (${upRes.status})`);
+      }
+      if (!upRes.ok || !upData?.success || !upData?.url) {
+        throw new Error(upData?.error || "Error al subir comprobante");
       }
 
       const uploadedUrl = upData.url;
@@ -1945,9 +1954,18 @@ export function OrdersPipelineTab({ onOrderDeleted, onOrderUpdated }: OrdersPipe
           method: "POST",
           body: formData,
         });
-        const upData = await upRes.json();
-        if (!upRes.ok || !upData.success || !upData.url) {
-          throw new Error(upData.error || "Error al subir comprobante de compra");
+        let upData: any = null;
+        try {
+          const rawText = await upRes.text();
+          upData = JSON.parse(rawText);
+        } catch {
+          if (upRes.status === 413) {
+            throw new Error("El archivo supera el tamaño máximo permitido por el servidor (413).");
+          }
+          throw new Error(`Error del servidor (${upRes.status})`);
+        }
+        if (!upRes.ok || !upData?.success || !upData?.url) {
+          throw new Error(upData?.error || "Error al subir comprobante de compra");
         }
         uploadedUrls.push(upData.url);
       }

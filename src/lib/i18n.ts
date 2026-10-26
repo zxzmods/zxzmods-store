@@ -243,7 +243,9 @@ export interface Translations {
 
   // Notification Banner
   bannerTitle: string;
+  bannerTitleShort: string;
   bannerAction: string;
+  bannerActionShort: string;
   bannerDismiss: string;
 
   // Hero Section (DJI RS 5 Style)
@@ -2131,7 +2133,9 @@ export const translations: Record<Language, Translations> = {
     orderAlertProgramServiceBtn: "Programar Servicio",
 
     bannerTitle: "¿Buscas piezas para un vehículo específico? Configura tu modelo para verificar compatibilidad exacta.",
+    bannerTitleShort: "¿Buscas piezas para tu modelo?",
     bannerAction: "Configurar Vehículo",
+    bannerActionShort: "Configurar",
     bannerDismiss: "Cerrar",
 
     heroCategory: "Centro Técnico Especializado en Costa Rica",
@@ -4002,7 +4006,9 @@ export const translations: Record<Language, Translations> = {
     orderAlertProgramServiceBtn: "Schedule Service",
 
     bannerTitle: "Looking for parts for a specific ride? Select your vehicle to check exact fitment.",
+    bannerTitleShort: "Looking for parts for your ride?",
     bannerAction: "Set Vehicle",
+    bannerActionShort: "Set Up",
     bannerDismiss: "Dismiss",
 
     heroCategory: "Specialized Performance Center in Costa Rica",

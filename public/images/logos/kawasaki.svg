@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 120" width="100%" height="100%">
+  <!-- Background transparent -->
+  <rect width="100%" height="100%" fill="none"/>
+  
+  <g>
+    <!-- Kawasaki Iconic Flag / Flying K Symbol -->
+    <path d="M28,26 L52,26 L36,60 L58,94 L34,94 L18,60 Z" fill="#69BE28"/>
+    <path d="M48,26 L64,26 L78,60 L62,60 Z" fill="#111827"/>
+    <path d="M60,60 L76,60 L92,94 L76,94 Z" fill="#111827"/>
+    
+    <!-- Wordmark Typography: KAWASAKI -->
+    <text x="108" y="72" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="44" font-weight="900" font-style="italic" letter-spacing="3" fill="#111827">KAWASAKI</text>
+  </g>
+</svg>
