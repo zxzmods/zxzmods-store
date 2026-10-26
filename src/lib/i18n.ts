@@ -49,6 +49,7 @@ export interface Translations {
   authPromptReasonTitle: string;
   authGatingGarageReason: string;
   authGatingCartReason: string;
+  authGatingServiceReason: string;
   authTermsAgreementPrefix: string;
   authTermsAgreementLink: string;
   authTermsModalTitle: string;
@@ -1943,6 +1944,7 @@ export const translations: Record<Language, Translations> = {
     authPromptReasonTitle: "Inicio de Sesión Requerido",
     authGatingGarageReason: "Inicia sesión para guardar y sincronizar tu vehículo en tu Garaje.",
     authGatingCartReason: "Inicia sesión para agregar repuestos y combos a tu carrito de compras.",
+    authGatingServiceReason: "Inicia sesión para programar tu servicio técnico, traslado o instalación.",
     authTermsAgreementPrefix: "Al continuar, aceptas nuestros",
     authTermsAgreementLink: "Términos y Condiciones de Servicio",
     authTermsModalTitle: "Términos y Condiciones de Servicio",
@@ -3816,6 +3818,7 @@ export const translations: Record<Language, Translations> = {
     authPromptReasonTitle: "Sign In Required",
     authGatingGarageReason: "Please sign in to save and sync your vehicle to your Garage.",
     authGatingCartReason: "Please sign in to add parts and combos to your shopping cart.",
+    authGatingServiceReason: "Please sign in to schedule your technical service, pickup, or home installation.",
     authTermsAgreementPrefix: "By continuing, you accept our",
     authTermsAgreementLink: "Terms and Conditions of Service",
     authTermsModalTitle: "Terms and Conditions of Service",

@@ -514,9 +514,102 @@ export function normalizeVideoUrl(url: string | null | undefined): string {
 
 export async function getAllProducts(): Promise<ProductItem[]> {
   try {
-    const products: any[] = rawProductsData as any[];
+    if (typeof window === "undefined") {
+      try {
+        const { prisma } = await import("@/lib/prisma");
+        const rows = await prisma.product.findMany({
+          where: { isArchived: false },
+          include: { category: true },
+        });
+
+        if (Array.isArray(rows) && rows.length > 0) {
+          return rows.map((p) => {
+            let comp: string[] = [];
+            if (p.compJson) {
+              try {
+                comp = JSON.parse(p.compJson);
+              } catch {}
+            }
+            if (comp.length === 0) comp = ["z10", "z10-4"];
+
+            let cat: string[] = [];
+            if (p.categoryJson) {
+              try {
+                cat = JSON.parse(p.categoryJson);
+              } catch {}
+            } else if (p.category?.slug) {
+              cat = [p.category.slug];
+            } else if (p.category?.nameEs) {
+              cat = [p.category.nameEs];
+            }
+            if (cat.length === 0) cat = ["performance"];
+
+            let imgs: string[] = [];
+            if (p.imageUrl) imgs.push(p.imageUrl);
+            if (p.additionalImagesJson) {
+              try {
+                const parsed = JSON.parse(p.additionalImagesJson);
+                if (Array.isArray(parsed)) imgs.push(...parsed);
+              } catch {}
+            }
+            if (imgs.length === 0) imgs = ["/images/logo.png"];
+
+            let modelYearCompatibility: ModelYearFitment[] = [];
+            if (p.modelYearCompatibilityJson) {
+              try {
+                modelYearCompatibility = JSON.parse(p.modelYearCompatibilityJson);
+              } catch {}
+            }
+
+            const includesInstall = p.isInstallationIncluded ?? true;
+            return {
+              id: p.sku || p.slug || p.id,
+              slug: p.slug || p.sku,
+              sku: p.sku,
+              p_title: p.nameEs || p.nameEn,
+              nameEs: p.nameEs,
+              nameEn: p.nameEn,
+              description: {
+                es: [{ title: "Descripción", content: p.descriptionEs || "" }],
+                en: [{ title: "Description", content: p.descriptionEn || "" }],
+              },
+              price: {
+                P_price_D: Number(p.processingPriceD) || 0,
+                P_price: Number(p.processingPriceCRC) || 0,
+                S_price: Number(p.shippingPriceCRC) || 0,
+                I_price: {
+                  includes: includesInstall,
+                  I_price: includesInstall ? 0 : (Number(p.installationPriceCRC) || 0),
+                },
+                profit: Number(p.profitCRC) || 0,
+                T_price: Number(p.priceCRC) || 0,
+                T_price_D: p.totalPriceD || "calculate in checkout",
+                iva: {
+                  rate: Number(p.ivaPercent) || 13,
+                  amount: Number(p.ivaCRC) || 0,
+                },
+              },
+              priceCRC: Number(p.priceCRC) || 0,
+              comp,
+              category: cat,
+              brand: [p.brandName || "ZxZ Performance"],
+              imgs,
+              vids: [],
+              audios: [],
+              requirements: p.requirements,
+              homeInstallation: p.homeInstallationAvailable !== false,
+              modelYearCompatibility,
+            } as ProductItem;
+          });
+        }
+      } catch (dbErr) {
+        console.error("Error querying products from Prisma in getAllProducts:", dbErr);
+      }
+    }
+
+    const products: any[] = (rawProductsData || []) as any[];
     
-    if (!Array.isArray(products)) return [];
+    if (!Array.isArray(products) || products.length === 0) return [];
 
     return products.map((item, idx) => {
       const id = item.id || `prod-${idx + 1}`;

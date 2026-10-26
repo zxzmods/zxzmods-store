@@ -695,7 +695,7 @@ export function generateReceiptHtml(
     <div class="receipt-header">
       <div>
         <h1 class="brand-title">ZXZ <span>MODS</span> COSTA RICA</h1>
-        <p class="brand-subtitle">${COMPANY_CONFIG.legalName}${COMPANY_CONFIG.cedulaJuridica ? ` • Cédula: ${COMPANY_CONFIG.cedulaJuridica}` : ""} • ${isEs ? "Centro Técnico Especializado" : "Specialized Performance Center"}</p>
+        <p class="brand-subtitle">ZxZ Mods${COMPANY_CONFIG.cedulaJuridica ? ` • Cédula: ${COMPANY_CONFIG.cedulaJuridica}` : ""} <span style="font-size: 8.5px; opacity: 0.85;">(${COMPANY_CONFIG.legalName})</span> • ${isEs ? "Centro Técnico Especializado" : "Specialized Performance Center"}</p>
         <p class="brand-subtitle">${isEs ? COMPANY_CONFIG.location.addressEs : COMPANY_CONFIG.location.addressEn}</p>
         <p class="brand-subtitle">${isEs ? "Email Oficial:" : "Official Email:"} ventas@zxzmods.com • ${isEs ? "Tel / WhatsApp:" : "Phone / WhatsApp:"} ${COMPANY_CONFIG.contact.phone}</p>
       </div>

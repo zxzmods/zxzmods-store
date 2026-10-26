@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export async function GET() {
   try {
     const brands = await prisma.brand.findMany({
@@ -42,13 +45,20 @@ export async function GET() {
 
     const sortedYears = Array.from(allYearsSet).sort((a, b) => b - a);
 
-    return NextResponse.json({
-      success: true,
-      data: {
-        years: sortedYears,
-        brands: structuredBrands,
+    return NextResponse.json(
+      {
+        success: true,
+        data: {
+          years: sortedYears,
+          brands: structuredBrands,
+        },
       },
-    });
+      {
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate",
+        },
+      }
+    );
   } catch (error) {
     console.error("Error fetching YMM data:", error);
     return NextResponse.json(

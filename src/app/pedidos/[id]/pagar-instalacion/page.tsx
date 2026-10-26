@@ -730,8 +730,8 @@ export default function InstallationCheckoutPage() {
                     </h3>
                     <p className="text-xs text-slate-500">
                       {lang === "es"
-                        ? `Transfiere a nombre de ${COMPANY_CONFIG.legalName} (Cédula Jurídica ${COMPANY_CONFIG.cedulaJuridica || "3-101-436132"})`
-                        : `Transfer to ${COMPANY_CONFIG.legalName} (Corporate Tax ID ${COMPANY_CONFIG.cedulaJuridica || "3-101-436132"})`}
+                        ? `Transfiere a nombre de ZxZ Mods (Cédula Jurídica ${COMPANY_CONFIG.cedulaJuridica || "3-101-436132"} · ${COMPANY_CONFIG.legalName})`
+                        : `Transfer to ZxZ Mods (Corporate Tax ID ${COMPANY_CONFIG.cedulaJuridica || "3-101-436132"} · ${COMPANY_CONFIG.legalName})`}
                     </p>
                   </div>
                 </div>

@@ -482,47 +482,28 @@ export function ServiceOrderSelector({
         )
       ) : (
         /* Guest & Unauthenticated View */
-        <div className="p-4 rounded-2xl bg-gray-50 border border-gray-200 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
+        <div className="p-5 rounded-2xl bg-gradient-to-r from-red-50 to-neutral-50 border border-red-200/70 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
           <div className="space-y-1">
-            <p className="text-xs font-bold text-gray-800">
-              {t.serviceOrdersLoginPrompt}
+            <p className="text-xs font-bold text-gray-900 flex items-center gap-1.5">
+              <LogIn className="w-4 h-4 text-[#C02030]" />
+              <span>{t.authGatingServiceReason}</span>
             </p>
-            <p className="text-[11px] text-gray-500">
-              {t.serviceOrdersRequiredNotice}
+            <p className="text-[11px] text-gray-600">
+              {lang === "es"
+                ? "Para programar servicios de taller, traslados o instalaciones a domicilio, es necesario ingresar con tu cuenta."
+                : "To schedule shop services, pickups, or home installations, you must sign in with your account."}
             </p>
           </div>
 
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-            {/* Search by Order Number Form */}
-            <form onSubmit={handleSearchOrder} className="flex items-center gap-1.5">
-              <input
-                type="text"
-                value={searchOrderNumber}
-                onChange={(e) => setSearchOrderNumber(e.target.value)}
-                placeholder={t.serviceOrdersSearchPlaceholder}
-                className="px-3 py-2 rounded-xl border border-gray-200 text-xs font-mono uppercase text-gray-900 focus:outline-none focus:border-black w-36 sm:w-40"
-              />
-              <button
-                type="submit"
-                disabled={isSearching}
-                className="px-3 py-2 rounded-xl bg-black hover:bg-gray-800 text-white text-xs font-bold transition disabled:opacity-50"
-              >
-                {isSearching ? "..." : t.serviceOrdersSearchBtn}
-              </button>
-            </form>
-
-            <span className="text-xs text-gray-400 text-center sm:text-left">{lang === "es" ? "o" : "or"}</span>
-
-            {/* Login Modal Button */}
-            <button
-              type="button"
-              onClick={() => openAuthModal("Inicia sesión para vincular tu orden")}
-              className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl border border-gray-200 bg-white hover:bg-gray-100 text-xs font-bold text-gray-800 transition shadow-xs"
-            >
-              <LogIn className="w-3.5 h-3.5 text-[#C02030]" />
-              <span>{lang === "es" ? "Iniciar Sesión" : "Sign In"}</span>
-            </button>
-          </div>
+          {/* Login Modal Button */}
+          <button
+            type="button"
+            onClick={() => openAuthModal(t.authGatingServiceReason)}
+            className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-black hover:bg-neutral-800 text-white text-xs font-bold transition shadow-md shrink-0 cursor-pointer"
+          >
+            <LogIn className="w-4 h-4 text-white" />
+            <span>{lang === "es" ? "Iniciar Sesión Requerido" : "Sign In Required"}</span>
+          </button>
         </div>
       )}
 

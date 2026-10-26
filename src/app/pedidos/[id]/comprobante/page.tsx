@@ -355,8 +355,8 @@ export default function OrderReceiptPage() {
               ZXZ <span className="text-[#C02030]">MODS</span> COSTA RICA
             </h1>
             <p className="text-[11px] text-neutral-500 font-medium mt-0.5">
-              {COMPANY_CONFIG.legalName}
-              {COMPANY_CONFIG.cedulaJuridica ? ` • Cédula: ${COMPANY_CONFIG.cedulaJuridica}` : ""} • {isEs ? "Centro Técnico Especializado" : "Specialized Performance Center"}
+              ZxZ Mods
+              {COMPANY_CONFIG.cedulaJuridica ? ` • Cédula: ${COMPANY_CONFIG.cedulaJuridica}` : ""} <span className="text-[9.5px] text-neutral-400">({COMPANY_CONFIG.legalName})</span> • {isEs ? "Centro Técnico Especializado" : "Specialized Performance Center"}
             </p>
             <p className="text-[10px] text-neutral-500">
               {isEs ? COMPANY_CONFIG.location.addressEs : COMPANY_CONFIG.location.addressEn}

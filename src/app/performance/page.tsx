@@ -88,8 +88,7 @@ export default function PerformancePage() {
       withInstallation,
       homeInstallation: false,
       type: "PACKAGE",
-      imageUrl:
-        "https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=800&q=80",
+      imageUrl: "/images/sxs/z10_front.png",
     });
   };
 

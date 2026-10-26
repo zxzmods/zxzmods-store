@@ -1043,10 +1043,10 @@ export function ServiceDocumentModal({
             <div className="border-b-2 border-slate-900 pb-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 shrink-0">
               <div>
                 <span className="text-base sm:text-lg font-black tracking-tighter text-slate-950 uppercase font-mono block">
-                  {COMPANY_CONFIG.legalName}
+                  ZxZ Mods
                 </span>
                 <p className="text-[9.5px] font-bold text-slate-700 leading-tight">
-                  Cédula Jurídica: {COMPANY_CONFIG.cedulaJuridica || "3-101-436132"} • Taller Especializado SxS, UTV & ATV
+                  Cédula Jurídica: {COMPANY_CONFIG.cedulaJuridica || "3-101-436132"} <span className="text-[8px] font-normal text-slate-500">({COMPANY_CONFIG.legalName})</span> • Taller Especializado SxS, UTV & ATV
                 </p>
                 <p className="text-[8.5px] text-slate-600 leading-tight">
                   {COMPANY_CONFIG.location.address} • Tel: {COMPANY_CONFIG.contact.phone} • WhatsApp: {COMPANY_CONFIG.contact.whatsappDisplay}
@@ -1793,7 +1793,7 @@ export function ServiceDocumentModal({
                         {formData.receiverStaffName || formData.installerStaffName || formData.driverStaffName || "Personal Autorizado ZxZ Mods"}
                       </p>
                       <p className="text-[8px] text-slate-600 font-mono">
-                        {COMPANY_CONFIG.legalName} • Céd. Jur. {COMPANY_CONFIG.cedulaJuridica || "3-101-436132"}
+                        ZxZ Mods • Céd. Jur. {COMPANY_CONFIG.cedulaJuridica || "3-101-436132"} <span className="text-[7.5px] text-slate-500">({COMPANY_CONFIG.legalName})</span>
                       </p>
                       <p className="text-[8px] text-slate-500 font-mono">
                         Fecha: _____ / _____ / 2026 &nbsp;&nbsp; Hora: _________
@@ -1806,7 +1806,7 @@ export function ServiceDocumentModal({
 
             {/* DOCUMENT FOOTER */}
             <div className="pt-2 border-t border-slate-300 text-center text-[8.5px] text-slate-500 font-mono flex items-center justify-between shrink-0">
-              <span>{COMPANY_CONFIG.legalName} • Comprobante Físico Oficial A4</span>
+              <span>ZxZ Mods • Céd. Jur. {COMPANY_CONFIG.cedulaJuridica || "3-101-436132"} <span className="text-[7.5px] text-slate-400">({COMPANY_CONFIG.legalName})</span> • Comprobante Físico Oficial A4</span>
               <span>Orden #{order.orderNumber}</span>
               <span>Tel: {COMPANY_CONFIG.contact.phone} • WhatsApp: {COMPANY_CONFIG.contact.whatsappDisplay}</span>
             </div>

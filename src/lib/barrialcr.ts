@@ -28,8 +28,7 @@ export const DEFAULT_BARRIALCR_CONFIG = {
   descriptionEn:
     "BarrialCR is a passionate community that organizes off-road trail rides and expeditions across Costa Rica's scenic mountains, rivers, and rugged trails. We bring UTV and 4x4 enthusiasts together for unforgettable adventures driven by camaraderie, adrenaline, and environmental respect.",
   videoUrl: "/uploads/videos/videos_1791875095735_loading_screen_ZXZ_mp4.mp4",
-  posterImageUrl:
-    "https://images.unsplash.com/photo-1558981403-c5f9899a28bc?auto=format&fit=crop&w=1920&q=85",
+  posterImageUrl: "/images/sxs/cfmoto_sxs.png",
   logoUrl: "/images/logo.png",
   whatsappGroupLink: "https://chat.whatsapp.com/invite/BarrialCR",
   whatsappBtnTextEs: "Unirse al Chat de la Comunidad",

@@ -29,7 +29,7 @@ export function DjiBrandsGrid() {
   // Fetch only registered brands from backdoor catalog API (Zero Mock Data)
   useEffect(() => {
     let isMounted = true;
-    fetch("/api/catalog/home")
+    fetch("/api/catalog/home", { cache: "no-store" })
       .then((res) => res.json())
       .then((data) => {
         if (!isMounted) return;
@@ -52,12 +52,15 @@ export function DjiBrandsGrid() {
           const cards: BrandCardItem[] = activeBrands.map((b: any) => {
             const known = SXS_BRANDS.find((s) => s.slug.toLowerCase() === b.slug.toLowerCase());
             const modelsList = (b.models || []).map((m: any) => m.name || m.slug);
+            const modelWithImg = b.models?.find(
+              (m: any) => m.imageUrl && m.imageUrl.trim().length > 0 && !m.imageUrl.includes("unsplash.com")
+            );
             return {
               id: b.slug,
               slug: b.slug,
               title: b.name || known?.title || b.slug.toUpperCase(),
               exploreLink: known?.exploreLink || `/productos?sxs=${b.slug}`,
-              sxsImageUrl: known?.sxsImageUrl || b.logoUrl || "/images/sxs/cfmoto_sxs.png",
+              sxsImageUrl: known?.sxsImageUrl || modelWithImg?.imageUrl || b.logoUrl || "/images/sxs/cfmoto_sxs.png",
               models: modelsList,
               descriptionEs: b.descriptionEs || known?.descriptionEs || `Especialistas en ${b.name}.`,
               descriptionEn: b.descriptionEn || known?.descriptionEn || `Specialists in ${b.name}.`,
@@ -65,6 +68,8 @@ export function DjiBrandsGrid() {
             };
           });
           setBrandCards(cards);
+        } else {
+          setBrandCards([]);
         }
       })
       .catch((err) => console.error("Error loading registered brands in DjiBrandsGrid:", err))

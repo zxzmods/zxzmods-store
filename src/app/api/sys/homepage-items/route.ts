@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { requireStealthSession } from "@/lib/stealthAuth";
 import { prisma } from "@/lib/prisma";
 import { recordAuditLog } from "@/lib/audit";
-import { ensureDefaultHomePageItems } from "@/lib/homePageItems";
 
 export const dynamic = "force-dynamic";
 
@@ -11,8 +10,6 @@ export async function GET() {
   if (!auth.authorized) return auth.response;
 
   try {
-    await ensureDefaultHomePageItems();
-
     const items = await prisma.homePageItem.findMany({
       orderBy: [{ order: "asc" }, { createdAt: "asc" }],
     });

@@ -9,7 +9,7 @@ import { CartDrawer } from "@/components/cart/CartDrawer";
 import { FloatingConcierge } from "@/components/home/FloatingConcierge";
 import { DocumentsSkeleton } from "@/components/documents/DocumentsSkeleton";
 import { useLanguage } from "@/context/LanguageContext";
-import { getWhatsAppUrl } from "@/config/company";
+import { getWhatsAppUrl, COMPANY_CONFIG } from "@/config/company";
 import { LegalDocumentItem, LegalDocumentDetail } from "@/types/document";
 import {
   ShieldCheck,
@@ -423,13 +423,14 @@ function DocumentCenterContent() {
                       <div className="pt-8 border-t border-gray-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-xs text-gray-400">
                         <div>
                           <p className="font-bold text-gray-700">
-                            {(activeDocument as any).legalName || t.docsCorporateName}
+                            ZxZ Mods
                           </p>
                           <p>
                             {lang === "en" ? "Corporate Legal ID:" : "Cédula Jurídica:"}{" "}
                             <span className="font-mono font-semibold text-gray-600">
                               {(activeDocument as any).cedulaJuridica || "3-101-436132"}
                             </span>{" "}
+                            <span className="text-[10px] text-gray-400">({(activeDocument as any).legalName || COMPANY_CONFIG.legalName})</span>{" "}
                             • San José, Costa Rica
                           </p>
                         </div>

@@ -32,11 +32,11 @@ export function ProductShowcaseSection() {
   // Dynamic fetch from backend database
   useEffect(() => {
     let isMounted = true;
-    fetch("/api/homepage-items?type=PRODUCT")
+    fetch("/api/homepage-items?type=PRODUCT", { cache: "no-store" })
       .then((res) => res.json())
       .then((data) => {
         if (!isMounted) return;
-        if (data.success && Array.isArray(data.items) && data.items.length > 0) {
+        if (data.success && Array.isArray(data.items)) {
           const mapped: ProductShowcaseItem[] = data.items.map((item: any) => ({
             id: item.id,
             name: lang === "en" ? item.titleEn || item.titleEs : item.titleEs,
@@ -47,6 +47,8 @@ export function ProductShowcaseSection() {
             imageUrl: item.mediaUrl,
           }));
           setProducts(mapped);
+        } else if (data.success) {
+          setProducts([]);
         }
       })
       .catch((err) => {

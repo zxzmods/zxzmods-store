@@ -1,12 +1,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { ensureDefaultHomePageItems } from "@/lib/homePageItems";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   try {
-    await ensureDefaultHomePageItems();
 
     const { searchParams } = new URL(request.url);
     const type = searchParams.get("type"); // "VIDEO" | "PRODUCT" | null

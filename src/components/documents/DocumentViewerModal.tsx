@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
 import { LegalDocumentDetail } from "@/types/document";
+import { COMPANY_CONFIG } from "@/config/company";
 
 interface DocumentViewerModalProps {
   slug: string | null;
@@ -225,9 +226,10 @@ export function DocumentViewerModal({ slug, isOpen, onClose }: DocumentViewerMod
           {/* Footer Bar */}
           <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 flex items-center justify-between gap-4">
             <span className="text-[11px] text-gray-400">
-              {(doc as any)?.legalName || "ZxZ Mods Costa Rica S.A."} •{" "}
+              ZxZ Mods •{" "}
               {lang === "en" ? "Corporate ID" : "Cédula Jurídica"}{" "}
-              {(doc as any)?.cedulaJuridica || "3-101-436132"}
+              {(doc as any)?.cedulaJuridica || "3-101-436132"}{" "}
+              <span className="text-[9.5px] text-gray-400">({(doc as any)?.legalName || COMPANY_CONFIG.legalName})</span>
             </span>
             <button
               type="button"

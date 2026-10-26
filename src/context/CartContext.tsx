@@ -550,6 +550,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   };
 
   const addItemSilently = (item: Omit<CartItem, "quantity">) => {
+    if (!user) {
+      requireAuth(() => performAddItem(item, false), t.authGatingCartReason);
+      return;
+    }
     performAddItem(item, false);
   };
 

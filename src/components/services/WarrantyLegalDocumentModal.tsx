@@ -140,10 +140,10 @@ export function WarrantyLegalDocumentModal({
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h1 className="text-xl sm:text-2xl font-black uppercase tracking-tight text-slate-950 font-mono">
-                  {COMPANY_CONFIG.legalName}
+                  ZxZ Mods
                 </h1>
                 <p className="text-xs text-slate-700 font-bold">
-                  Cédula Jurídica: {COMPANY_CONFIG.cedulaJuridica || "3-101-436132"} • Taller Especializado en UTV & Performance
+                  Cédula Jurídica: {COMPANY_CONFIG.cedulaJuridica || "3-101-436132"} <span className="text-[10px] font-normal text-slate-500">({COMPANY_CONFIG.legalName})</span> • Taller Especializado en UTV & Performance
                 </p>
                 <p className="text-[11px] text-slate-500 font-mono">
                   {COMPANY_CONFIG.location.address} • Tel: {COMPANY_CONFIG.contact.phone} • WhatsApp: {COMPANY_CONFIG.contact.whatsappDisplay}
@@ -256,7 +256,7 @@ export function WarrantyLegalDocumentModal({
                 <p>
                   <strong>PRIMERA. OBJETO Y ALCANCE MECÁNICO:</strong> El presente contrato
                   regula la contratación de servicios especializados de mano de obra mecánica
-                  por parte de <em>ZxZ Mods Costa Rica</em> ({COMPANY_CONFIG.legalName}, Cédula Jurídica {COMPANY_CONFIG.cedulaJuridica || "3-101-436132"}, en adelante “EL PRESTADOR”) en
+                  por parte de <em>ZxZ Mods Costa Rica</em> (Cédula Jurídica {COMPANY_CONFIG.cedulaJuridica || "3-101-436132"}, {COMPANY_CONFIG.legalName}, en adelante “EL PRESTADOR”) en
                   favor del cliente propietario o autorizado (en adelante “EL CLIENTE”). El
                   servicio comprende exclusivamente: (a) Desmontaje técnico de los accesorios y
                   componentes aftermarket de marca ZxZ indicados en la tabla superior; (b)
@@ -330,7 +330,7 @@ export function WarrantyLegalDocumentModal({
                 <p>
                   <strong>FIRST. SCOPE & MECHANICAL PURPOSE:</strong> This agreement governs the
                   contracting of specialized mechanical labor services provided by <em>ZxZ Mods Costa
-                  Rica</em> ({COMPANY_CONFIG.legalName}, Corporate Tax ID {COMPANY_CONFIG.cedulaJuridica || "3-101-436132"}, "THE PROVIDER") to the vehicle owner or authorized client ("THE CLIENT").
+                  Rica</em> (Corporate Tax ID {COMPANY_CONFIG.cedulaJuridica || "3-101-436132"}, {COMPANY_CONFIG.legalName}, "THE PROVIDER") to the vehicle owner or authorized client ("THE CLIENT").
                   The service consists exclusively of: (a) Technical removal of registered ZxZ
                   aftermarket upgrades listed above; (b) Temporary installation of factory original (OEM)
                   parts supplied by THE CLIENT; and (c) Removal of OEM parts and final reinstallation
@@ -393,10 +393,10 @@ export function WarrantyLegalDocumentModal({
             <div className="space-y-8">
               <div className="border-b border-slate-400 pb-1 pt-6 text-center">
                 <span className="font-bold text-slate-900 block">
-                  {COMPANY_CONFIG.legalName}
+                  ZxZ Mods
                 </span>
                 <span className="text-[10px] text-slate-600 font-mono font-bold block">
-                  Cédula Jurídica: {COMPANY_CONFIG.cedulaJuridica || "3-101-436132"}
+                  Cédula Jurídica: {COMPANY_CONFIG.cedulaJuridica || "3-101-436132"} <span className="text-[8.5px] font-normal text-slate-500">({COMPANY_CONFIG.legalName})</span>
                 </span>
                 <span className="text-[10px] text-slate-400">
                   Taller Especializado / Responsable Técnico

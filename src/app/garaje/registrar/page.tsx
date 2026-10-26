@@ -44,7 +44,7 @@ interface YMMResponseData {
 export default function RegisterVehiclePage() {
   const router = useRouter();
   const { vehicles, maxVehicles, addRegisteredVehicle } = useGarage();
-  const { user, requireAuth } = useAuth();
+  const { user, loading: authLoading, requireAuth } = useAuth();
   const { t, lang } = useLanguage();
 
   const [ymmData, setYmmData] = useState<YMMResponseData | null>(null);
@@ -59,6 +59,13 @@ export default function RegisterVehiclePage() {
 
   // Check capacity limit without displaying the number
   const isLimitReached = vehicles.length >= maxVehicles;
+
+  // Immediate auth gating for configurator
+  useEffect(() => {
+    if (!authLoading && !user) {
+      requireAuth(() => {}, t.authGatingGarageReason);
+    }
+  }, [authLoading, user, requireAuth, t.authGatingGarageReason]);
 
   useEffect(() => {
     let isMounted = true;

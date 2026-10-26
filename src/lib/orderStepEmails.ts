@@ -499,7 +499,7 @@ export function generateOrderStepEmailHtml(params: {
 
         <div class="footer">
           <p style="margin:0 0 6px;">
-            <strong>${COMPANY_CONFIG.legalName}</strong>${COMPANY_CONFIG.cedulaJuridica ? ` • Cédula Jurídica: ${COMPANY_CONFIG.cedulaJuridica}` : ""}<br>
+            <strong>ZxZ Mods</strong>${COMPANY_CONFIG.cedulaJuridica ? ` • Cédula Jurídica: ${COMPANY_CONFIG.cedulaJuridica}` : ""} <span style="font-size: 11px; color: #6b7280;">(${COMPANY_CONFIG.legalName})</span><br>
             ${isEs ? (COMPANY_CONFIG.location.addressEs || COMPANY_CONFIG.location.address) : (COMPANY_CONFIG.location.addressEn || COMPANY_CONFIG.location.address)}<br>
             ${isEs ? "Teléfono:" : "Phone:"} ${COMPANY_CONFIG.contact.phone} • WhatsApp: ${COMPANY_CONFIG.contact.whatsapp}
           </p>

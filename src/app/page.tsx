@@ -35,7 +35,7 @@ export default function HomePage() {
     }
 
     // Verify backend connectivity
-    fetch("/api/catalog/home")
+    fetch("/api/catalog/home", { cache: "no-store" })
       .then((res) => res.json())
       .catch((err) => console.error("Catalog check:", err))
       .finally(() => setLoading(false));

@@ -1,6 +1,8 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
+import { useAuth } from "@/context/AuthContext";
+import { useLanguage } from "@/context/LanguageContext";
 
 export interface ActiveVehicle {
   year: number;
@@ -67,6 +69,8 @@ interface GarageContextType {
 const GarageContext = createContext<GarageContextType | undefined>(undefined);
 
 export function GarageProvider({ children }: { children: React.ReactNode }) {
+  const { user, requireAuth } = useAuth();
+  const { t } = useLanguage();
   const [vehicles, setVehicles] = useState<RegisteredVehicle[]>([]);
   const [activeVehicle, setActiveVehicle] = useState<RegisteredVehicle | null>(null);
   const [vehicle, setVehicleState] = useState<ActiveVehicle | null>(null);
@@ -272,6 +276,15 @@ export function GarageProvider({ children }: { children: React.ReactNode }) {
   };
 
   const openModal = (onSuccessCallback?: () => void) => {
+    if (!user) {
+      requireAuth(() => {
+        if (onSuccessCallback) {
+          setPendingCallback(() => onSuccessCallback);
+        }
+        setIsModalOpen(true);
+      }, t.authGatingGarageReason);
+      return;
+    }
     if (onSuccessCallback) {
       setPendingCallback(() => onSuccessCallback);
     }

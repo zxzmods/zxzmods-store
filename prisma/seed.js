@@ -77,14 +77,14 @@ async function main() {
             name: "ZForce 950 Sport / Sport-4",
             category: "Sport UTV",
             yearsJson: JSON.stringify([2021, 2022, 2023, 2024, 2025, 2026, 2027]),
-            imageUrl: "https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&w=800&q=80"
+            imageUrl: "/images/sxs/cfmoto_sxs.png"
           },
           {
             slug: "zforce-1000",
             name: "ZForce 1000 Sport R",
             category: "Sport UTV",
             yearsJson: JSON.stringify([2022, 2023, 2024, 2025, 2026, 2027]),
-            imageUrl: "https://images.unsplash.com/photo-1558981403-c5f9899a28bc?auto=format&fit=crop&w=800&q=80"
+            imageUrl: "/images/sxs/cfmoto_sxs.png"
           },
           {
             slug: "cforce-1000-overland",
@@ -127,7 +127,7 @@ async function main() {
             name: "Maverick R (DCT 240 HP)",
             category: "Hyper UTV",
             yearsJson: JSON.stringify([2024, 2025, 2026, 2027]),
-            imageUrl: "https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&w=800&q=80"
+            imageUrl: "/images/sxs/canam_sxs.png"
           },
           {
             slug: "defender-hd10",
@@ -170,7 +170,7 @@ async function main() {
             name: "RZR Pro XP Ultimate (64\")",
             category: "Sport UTV",
             yearsJson: JSON.stringify([2020, 2021, 2022, 2023, 2024, 2025, 2026, 2027]),
-            imageUrl: "https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&w=800&q=80"
+            imageUrl: "/images/sxs/polaris_sxs.png"
           }
         ]
       }

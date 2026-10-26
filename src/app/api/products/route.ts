@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import {
-  getAllProducts,
   ProductItem,
   normalizeBrandName,
   extractDescriptionText,
@@ -14,6 +13,9 @@ import { prisma } from "@/lib/prisma";
 import { SXS_BRAND_PLATFORMS } from "@/lib/sxsBrands";
 import { getStealthSession } from "@/lib/stealthAuth";
 import { sanitizeSearchQuery } from "@/lib/security/inputSanitizer";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 function dbProductToProductItem(dbProd: any, jsonProd?: ProductItem | null, isStaff: boolean = false): ProductItem {
   const id = dbProd.sku || dbProd.slug || dbProd.id;
@@ -280,41 +282,14 @@ export async function GET(request: Request) {
         },
       });
 
-      if (dbProd?.isArchived) {
+      if (!dbProd || dbProd.isArchived) {
         return NextResponse.json(
-          { success: false, error: "Product is archived" },
+          { success: false, error: dbProd?.isArchived ? "Product is archived" : "Product not found" },
           { status: 404 }
         );
       }
 
-      const jsonProducts = await getAllProducts();
-      const jsonMap = new Map<string, ProductItem>();
-      jsonProducts.forEach((p) => {
-        jsonMap.set(p.id.toLowerCase(), p);
-        jsonMap.set(p.slug.toLowerCase(), p);
-      });
-
-      const jsonProd = jsonMap.get(targetQuery) || (dbProd ? jsonMap.get(dbProd.sku.toLowerCase()) : null);
-
-      if (!dbProd && !jsonProd) {
-        return NextResponse.json(
-          { success: false, error: "Product not found" },
-          { status: 404 }
-        );
-      }
-
-      const finalProduct = dbProd
-        ? dbProductToProductItem(dbProd, jsonProd, isStaff)
-        : {
-            ...jsonProd!,
-            price: {
-              ...jsonProd!.price,
-              profit: isStaff ? jsonProd!.price.profit : 0,
-              P_price_D: isStaff ? jsonProd!.price.P_price_D : 0,
-              P_price: isStaff ? jsonProd!.price.P_price : 0,
-              S_price: isStaff ? jsonProd!.price.S_price : 0,
-            },
-          };
+      const finalProduct = dbProductToProductItem(dbProd, null, isStaff);
 
       if (finalProduct.relatedProductIds && finalProduct.relatedProductIds.length > 0) {
         const relIds = finalProduct.relatedProductIds;
@@ -330,7 +305,7 @@ export async function GET(request: Request) {
           include: { category: true, compatibilities: true },
         });
         finalProduct.relatedProducts = relDb.map((p) =>
-          dbProductToProductItem(p, jsonMap.get(p.sku.toLowerCase()) || jsonMap.get(p.slug.toLowerCase()), isStaff)
+          dbProductToProductItem(p, null, isStaff)
         );
       }
 
@@ -348,7 +323,7 @@ export async function GET(request: Request) {
           include: { category: true, compatibilities: true },
         });
         finalProduct.suggestedProducts = sugDb.map((p) =>
-          dbProductToProductItem(p, jsonMap.get(p.sku.toLowerCase()) || jsonMap.get(p.slug.toLowerCase()), isStaff)
+          dbProductToProductItem(p, null, isStaff)
         );
       } else {
         finalProduct.suggestedProducts = [];
@@ -374,8 +349,8 @@ export async function GET(request: Request) {
       return NextResponse.json({ success: true, product: finalProduct });
     }
 
-    // Load active DB products, archived SKU set, json products, and brands
-    const [activeDbProducts, archivedDbProducts, jsonProducts, dbBrands] = await Promise.all([
+    // Load active DB products and brands (Zero Mock Data: strictly live database)
+    const [activeDbProducts, dbBrands] = await Promise.all([
       prisma.product.findMany({
         where: { isArchived: false },
         include: {
@@ -383,11 +358,6 @@ export async function GET(request: Request) {
           compatibilities: true,
         },
       }),
-      prisma.product.findMany({
-        where: { isArchived: true },
-        select: { sku: true, slug: true, id: true },
-      }),
-      getAllProducts(),
       prisma.brand.findMany({
         include: {
           models: {
@@ -396,10 +366,6 @@ export async function GET(request: Request) {
         },
       }),
     ]);
-
-    const archivedSkus = new Set(
-      archivedDbProducts.flatMap((p) => [p.sku.toLowerCase(), p.slug.toLowerCase(), p.id.toLowerCase()])
-    );
 
     const sxsBrandModels: Record<string, Array<{ id: string; name: string; code?: string | null; slug: string }>> = {};
     for (const b of dbBrands) {
@@ -411,42 +377,9 @@ export async function GET(request: Request) {
       }));
     }
 
-    const jsonMap = new Map<string, ProductItem>();
-    jsonProducts.forEach((p) => {
-      jsonMap.set(p.id.toLowerCase(), p);
-      jsonMap.set(p.slug.toLowerCase(), p);
-    });
-
-    // Combine active DB products with any non-archived json products
-    const processedSkus = new Set<string>();
-    const unifiedProducts: ProductItem[] = [];
-
-    for (const dbProd of activeDbProducts) {
-      const jsonProd = jsonMap.get(dbProd.sku.toLowerCase()) || jsonMap.get(dbProd.slug.toLowerCase());
-      const item = dbProductToProductItem(dbProd, jsonProd, isStaff);
-      unifiedProducts.push(item);
-      processedSkus.add(dbProd.sku.toLowerCase());
-      processedSkus.add(dbProd.slug.toLowerCase());
-      processedSkus.add(dbProd.id.toLowerCase());
-    }
-
-    for (const jProd of jsonProducts) {
-      if (!processedSkus.has(jProd.id.toLowerCase()) && !processedSkus.has(jProd.slug.toLowerCase()) && !archivedSkus.has(jProd.id.toLowerCase())) {
-        const safeJProd = isStaff
-          ? jProd
-          : {
-              ...jProd,
-              price: {
-                ...jProd.price,
-                profit: 0,
-                P_price_D: 0,
-                P_price: 0,
-                S_price: 0,
-              },
-            };
-        unifiedProducts.push(safeJProd);
-      }
-    }
+    const unifiedProducts: ProductItem[] = activeDbProducts.map((dbProd) =>
+      dbProductToProductItem(dbProd, null, isStaff)
+    );
 
     // Filter by text search (q), comp, vehicleModel, sxs brand, and brand
     const queryMatchedProducts = unifiedProducts.filter((product) => {

@@ -95,10 +95,10 @@ export default function WarrantyLegalContractPage() {
                   TERMINOLOGÍA LEGAL & CONTRACTUAL
                 </span>
                 <h1 className="text-xl sm:text-2xl font-black text-slate-950 dark:text-white font-mono mt-0.5">
-                  {COMPANY_CONFIG.legalName}
+                  ZxZ Mods
                 </h1>
                 <p className="text-xs text-slate-700 dark:text-slate-300 font-bold">
-                  Cédula Jurídica: {COMPANY_CONFIG.cedulaJuridica || "3-101-436132"} • Taller Especializado en Performance & UTV
+                  Cédula Jurídica: {COMPANY_CONFIG.cedulaJuridica || "3-101-436132"} <span className="text-[10px] font-normal text-slate-500 dark:text-slate-400">({COMPANY_CONFIG.legalName})</span> • Taller Especializado en Performance & UTV
                 </p>
                 <p className="text-[11px] text-slate-500 font-mono">
                   {COMPANY_CONFIG.location.address} • Tel: {COMPANY_CONFIG.contact.phone}
@@ -144,7 +144,7 @@ export default function WarrantyLegalContractPage() {
                     CLÁUSULA 1: NATURALEZA Y ALCANCE DEL SERVICIO
                   </h3>
                   <p>
-                    ZxZ Mods Costa Rica ({COMPANY_CONFIG.legalName}, Cédula Jurídica {COMPANY_CONFIG.cedulaJuridica || "3-101-436132"}) actúa en calidad de prestador de servicios mecánicos
+                    ZxZ Mods Costa Rica (Cédula Jurídica {COMPANY_CONFIG.cedulaJuridica || "3-101-436132"}, {COMPANY_CONFIG.legalName}) actúa en calidad de prestador de servicios mecánicos
                     independiente. El Servicio de Protección de Garantía comprende de forma
                     exclusiva la mano de obra calificada para dos procedimientos mecánicos: (1) el
                     desmontaje previo de los accesorios aftermarket ZxZ adquiridos por el cliente y el
@@ -227,7 +227,7 @@ export default function WarrantyLegalContractPage() {
                     CLAUSE 1: NATURE AND SCOPE OF SERVICE
                   </h3>
                   <p>
-                    ZxZ Mods Costa Rica ({COMPANY_CONFIG.legalName}, Corporate Tax ID {COMPANY_CONFIG.cedulaJuridica || "3-101-436132"}) provides independent mechanical labor services. The Warranty
+                    ZxZ Mods Costa Rica (Corporate Tax ID {COMPANY_CONFIG.cedulaJuridica || "3-101-436132"}, {COMPANY_CONFIG.legalName}) provides independent mechanical labor services. The Warranty
                     Protection service strictly covers two technical stages: (1) removing the client's
                     ZxZ aftermarket upgrades and mounting the client's factory OEM parts, and (2) after
                     the dealer inspection, dismounting the OEM parts and reinstalling the ZxZ upgrades.

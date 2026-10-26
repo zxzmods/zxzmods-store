@@ -101,9 +101,16 @@ interface CalculationResult {
 
 function TransportServiceContent() {
   const { lang, t } = useLanguage();
-  const { user, orders } = useAuth();
+  const { user, orders, loading: authLoading, openAuthModal, requireAuth } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
+
+  // Require sign in to program services
+  useEffect(() => {
+    if (!authLoading && !user) {
+      openAuthModal(t.authGatingServiceReason);
+    }
+  }, [authLoading, user, openAuthModal, t.authGatingServiceReason]);
 
   // Target order param (?orderId=... or ?order=... or ?orderNumber=...)
   const targetOrderId =
@@ -803,6 +810,11 @@ function TransportServiceContent() {
 
   // Proceed to dedicated Payment screen handler
   const handleProceedToPayment = () => {
+    if (!user) {
+      requireAuth(() => {}, t.authGatingServiceReason);
+      return;
+    }
+
     if (selectedOrders.length === 0) {
       setErrorMessage(t.serviceScheduleRequiresOrder);
       return;
@@ -986,6 +998,11 @@ function TransportServiceContent() {
 
   // Direct return booking submission (0 CRC - bypasses checkout and agends delivery directly)
   const handleConfirmReturnBooking = async () => {
+    if (!user) {
+      requireAuth(() => {}, t.authGatingServiceReason);
+      return;
+    }
+
     if (selectedOrders.length === 0) {
       setErrorMessage(t.serviceScheduleRequiresOrder);
       return;

@@ -239,7 +239,9 @@ export function CustomerZxzCertModal({
               {/* Certificate Header */}
               <div className="text-center space-y-2 border-b-2 border-slate-900/10 pb-5">
                 <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-100 border border-slate-200 text-[10px] font-mono font-bold tracking-widest text-slate-600 uppercase">
-                  <span>{COMPANY_CONFIG.legalName}</span>
+                  <span>ZxZ Mods</span>
+                  <span>•</span>
+                  <span>Cédula: {COMPANY_CONFIG.cedulaJuridica || "3-101-436132"} <span className="text-[8.5px] font-normal text-slate-500">({COMPANY_CONFIG.legalName})</span></span>
                   <span>•</span>
                   <span>COSTA RICA</span>
                 </div>
@@ -436,7 +438,7 @@ export function CustomerZxzCertModal({
 
               {/* Certificate Security Footer */}
               <div className="pt-4 border-t border-slate-200 text-[9px] text-slate-400 font-mono flex flex-col sm:flex-row items-center justify-between gap-1.5">
-                <span>{COMPANY_CONFIG.legalName} • Documento Digital Oficial</span>
+                <span>ZxZ Mods • Cédula: {COMPANY_CONFIG.cedulaJuridica || "3-101-436132"} <span className="text-[7.5px] text-slate-400">({COMPANY_CONFIG.legalName})</span> • Documento Digital Oficial</span>
                 <span className="font-bold text-slate-600">ID: {certData.certificationNumber}</span>
                 <span>Inspección Técnica Certificada</span>
               </div>
