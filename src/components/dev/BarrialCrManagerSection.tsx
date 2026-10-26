@@ -25,6 +25,7 @@ import {
   MapPin,
   X,
 } from "lucide-react";
+import { uploadMediaDirect } from "@/lib/clientDirectUpload";
 
 export interface BarrialCrConfigData {
   id: string;
@@ -100,6 +101,7 @@ export function BarrialCrManagerSection({ userRole }: BarrialCrManagerSectionPro
   const [uploadingVideo, setUploadingVideo] = useState(false);
   const [uploadingPoster, setUploadingPoster] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   const fetchConfig = useCallback(async () => {
     setLoading(true);
@@ -236,69 +238,34 @@ export function BarrialCrManagerSection({ userRole }: BarrialCrManagerSectionPro
     if (type === "VIDEO") setUploadingVideo(true);
     else if (type === "POSTER") setUploadingPoster(true);
     else setUploadingLogo(true);
+    setUploadProgress(0);
 
     try {
-      // Client-side file size guard (max 100MB)
-      const maxDirectBytes = 100 * 1024 * 1024;
-      if (file.size > maxDirectBytes) {
-        throw new Error(
-          lang === "es"
-            ? `El archivo pesa ${(file.size / (1024 * 1024)).toFixed(1)}MB. El límite máximo para subida directa es de 100MB.`
-            : `File is ${(file.size / (1024 * 1024)).toFixed(1)}MB. Direct upload limit is 100MB.`
-        );
-      }
-
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append(
-        "folder",
-        type === "VIDEO" ? "videos" : type === "LOGO" ? "brands" : "products"
-      );
-
-      const res = await fetch("/api/sys/upload", {
-        method: "POST",
-        body: formData,
+      const folder = type === "VIDEO" ? "videos" : type === "LOGO" ? "brands" : "products";
+      const result = await uploadMediaDirect(file, {
+        folder,
+        lang,
+        onProgress: (p) => setUploadProgress(p.percentage),
       });
 
-      let data: any = null;
-      let rawText = "";
-
-      try {
-        rawText = await res.text();
-        data = JSON.parse(rawText);
-      } catch {
-        if (res.status === 413) {
-          throw new Error(
-            lang === "es"
-              ? "El servidor rechazó el archivo por exceso de tamaño (HTTP 413: Request Entity Too Large)."
-              : "Server rejected file due to size (HTTP 413: Request Entity Too Large)."
-          );
-        }
-        throw new Error(
-          lang === "es"
-            ? `Error del servidor (${res.status}): No se pudo procesar el archivo.`
-            : `Server error (${res.status}): Could not process file.`
-        );
-      }
-
-      if (!res.ok || !data?.success || !data?.url) {
-        throw new Error(data?.error || (lang === "es" ? "Error al subir archivo" : "Upload failed"));
+      if (!result.success) {
+        throw new Error(result.error || (lang === "es" ? "Error al subir archivo" : "Upload failed"));
       }
 
       if (type === "VIDEO") {
-        setVideoUrl(data.url);
+        setVideoUrl(result.url || "");
       } else if (type === "POSTER") {
-        setPosterImageUrl(data.url);
+        setPosterImageUrl(result.url || "");
       } else {
-        setLogoUrl(data.url);
+        setLogoUrl(result.url || "");
       }
 
       setFeedback({
         type: "success",
         text:
           lang === "es"
-            ? "Archivo multimedia subido con éxito"
-            : "Media file uploaded successfully",
+            ? `Archivo cargado a Supabase Storage con éxito (${(file.size / (1024 * 1024)).toFixed(1)}MB)`
+            : `File uploaded to Supabase Storage successfully (${(file.size / (1024 * 1024)).toFixed(1)}MB)`,
       });
     } catch (err: any) {
       console.error("Upload error:", err);
@@ -491,8 +458,25 @@ export function BarrialCrManagerSection({ userRole }: BarrialCrManagerSectionPro
                     />
                   </label>
                 </div>
+                {uploadingVideo && (
+                  <div className="mt-2 p-2.5 bg-blue-50 border border-blue-200 rounded-xl space-y-1.5">
+                    <div className="flex items-center justify-between text-xs font-semibold text-blue-900">
+                      <span className="flex items-center gap-1.5">
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin text-blue-600" />
+                        <span>Subiendo a Supabase Storage...</span>
+                      </span>
+                      <span className="font-mono">{uploadProgress}%</span>
+                    </div>
+                    <div className="w-full bg-blue-200 rounded-full h-2 overflow-hidden">
+                      <div
+                        className="bg-blue-600 h-2 rounded-full transition-all duration-150"
+                        style={{ width: `${uploadProgress}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
                 <p className="text-[11px] text-slate-400 mt-1">
-                  Formatos recomendados: MP4 (H.264) optimizado para web, 1080p o 720p.
+                  Formatos recomendados: MP4 (H.264) optimizado para web, 1080p o 720p (hasta 100MB directo).
                 </p>
               </div>
 
@@ -523,6 +507,23 @@ export function BarrialCrManagerSection({ userRole }: BarrialCrManagerSectionPro
                     />
                   </label>
                 </div>
+                {uploadingPoster && (
+                  <div className="mt-2 p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl space-y-1.5">
+                    <div className="flex items-center justify-between text-xs font-semibold text-emerald-900">
+                      <span className="flex items-center gap-1.5">
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-600" />
+                        <span>Subiendo portada...</span>
+                      </span>
+                      <span className="font-mono">{uploadProgress}%</span>
+                    </div>
+                    <div className="w-full bg-emerald-200 rounded-full h-2 overflow-hidden">
+                      <div
+                        className="bg-emerald-600 h-2 rounded-full transition-all duration-150"
+                        style={{ width: `${uploadProgress}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Centered Title */}

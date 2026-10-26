@@ -178,68 +178,143 @@ export function getGCSClient(): Storage | null {
 }
 
 /**
- * Generates a V4 Signed PUT URL for direct browser-to-GCS upload (bypasses Vercel 4.5MB serverless body limit).
+ * Generates a Signed Upload PUT URL for direct browser-to-cloud upload.
+ * Prioritizes Supabase Storage (bypasses Vercel 4.5MB serverless body limit for videos & high-res media up to 100MB),
+ * with graceful fallback to Google Cloud Storage.
  */
 export async function generateSignedUploadUrl(
   originalFilename: string,
   mimeType: string,
   fileSize: number,
-  folder: "products" | "combos" | "brands" | "payments" | "videos" | "audios" = "products"
+  folder: "products" | "combos" | "brands" | "payments" | "videos" | "audios" = "products",
+  overrideSupabaseKey?: string
 ): Promise<{
   success: boolean;
   signedUrl?: string;
   publicUrl?: string;
   fileName?: string;
+  uploadMethod?: "PUT" | "POST";
+  headers?: Record<string, string>;
   error?: string;
+  needsKey?: boolean;
 }> {
   const validation = validateMedia({ type: mimeType, size: fileSize }, folder);
   if (!validation.valid) {
     return { success: false, error: validation.error };
   }
 
-  const bucketName = process.env.GCS_BUCKET_NAME || process.env.FIREBASE_STORAGE_BUCKET;
-  const gcs = getGCSClient();
-  if (!bucketName || !gcs) {
-    return {
-      success: false,
-      error: "Google Cloud Storage no está configurado en el servidor.",
-    };
-  }
-
   const randomSuffix = crypto.randomBytes(8).toString("hex");
   const cleanBaseName = originalFilename
     .replace(/[^a-zA-Z0-9_-]/g, "_")
-    .substring(0, 24);
+    .substring(0, 32);
   const ext =
     path.extname(originalFilename).toLowerCase() ||
     (mimeType.startsWith("video/") ? ".mp4" : ".webp");
   const uniqueFileName = `${folder}_${Date.now()}_${randomSuffix}_${cleanBaseName}${ext}`;
   const destination = `${folder}/${uniqueFileName}`;
 
-  try {
-    const bucket = gcs.bucket(bucketName);
-    const file = bucket.file(destination);
-    const [signedUrl] = await file.getSignedUrl({
-      version: "v4",
-      action: "write",
-      expires: Date.now() + 15 * 60 * 1000, // 15 minutes
-      contentType: mimeType,
-    });
+  const supabaseUrl =
+    process.env.NEXT_PUBLIC_SUPABASE_URL ||
+    process.env.SUPABASE_URL ||
+    `https://${process.env.SUPABASE_PROJECT_REF || "uwfhsolkumynqivaqftz"}.supabase.co`;
+  const bucketName =
+    process.env.SUPABASE_STORAGE_BUCKET || "zxz-mods-media";
+  const supabaseServiceKey =
+    overrideSupabaseKey ||
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.SUPABASE_ANON_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-    const publicUrl = `https://storage.googleapis.com/${bucketName}/${destination}`;
-    return {
-      success: true,
-      signedUrl,
-      publicUrl,
-      fileName: uniqueFileName,
-    };
-  } catch (err: any) {
-    console.error("[GCS_SIGNED_URL_ERROR]:", err);
-    return {
-      success: false,
-      error: err?.message || "No se pudo generar URL firmada de subida.",
-    };
+  // 1. Supabase Storage Signed Upload URL (Primary Cloud Engine)
+  if (supabaseUrl && supabaseServiceKey) {
+    try {
+      const cleanBaseUrl = supabaseUrl.replace(/\/+$/, "");
+      const signEndpoint = `${cleanBaseUrl}/storage/v1/object/upload/sign/${bucketName}/${destination}`;
+
+      const res = await fetch(signEndpoint, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${supabaseServiceKey}`,
+          apikey: supabaseServiceKey,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ upsert: true }),
+      });
+
+      if (res.ok) {
+        const signData = await res.json();
+        const rawSignedPath = signData.url || "";
+        const signedUploadUrl = rawSignedPath.startsWith("http")
+          ? rawSignedPath
+          : `${cleanBaseUrl}/storage/v1${rawSignedPath.startsWith("/") ? "" : "/"}${rawSignedPath}`;
+        const publicUrl = `${cleanBaseUrl}/storage/v1/object/public/${bucketName}/${destination}`;
+
+        return {
+          success: true,
+          signedUrl: signedUploadUrl,
+          publicUrl,
+          fileName: uniqueFileName,
+          uploadMethod: "PUT",
+          headers: {
+            "Content-Type": mimeType,
+            "x-upsert": "true",
+          },
+        };
+      } else {
+        const errJson = await res.json().catch(() => ({}));
+        console.warn("[SUPABASE_STORAGE_SIGN_WARN]:", res.status, errJson);
+        return {
+          success: false,
+          error: `Error al generar URL firmada en Supabase Storage (${bucketName}): ${errJson?.message || errJson?.error || "Error de autorización"}`,
+          needsKey: res.status === 401 || res.status === 403,
+        };
+      }
+    } catch (sbErr: any) {
+      console.error("[SUPABASE_STORAGE_SIGN_ERROR]:", sbErr);
+      return {
+        success: false,
+        error: `Fallo de conexión con Supabase Storage: ${sbErr?.message || "Error desconocido"}`,
+      };
+    }
   }
+
+  // 2. Google Cloud Storage Fallback
+  const gcsBucketName = process.env.GCS_BUCKET_NAME || process.env.FIREBASE_STORAGE_BUCKET;
+  const gcs = getGCSClient();
+  if (gcs && gcsBucketName && process.env.GCS_ENABLED === "true") {
+    try {
+      const bucket = gcs.bucket(gcsBucketName);
+      const file = bucket.file(destination);
+      const [signedUrl] = await file.getSignedUrl({
+        version: "v4",
+        action: "write",
+        expires: Date.now() + 15 * 60 * 1000, // 15 minutes
+        contentType: mimeType,
+      });
+
+      const publicUrl = `https://storage.googleapis.com/${gcsBucketName}/${destination}`;
+      return {
+        success: true,
+        signedUrl,
+        publicUrl,
+        fileName: uniqueFileName,
+        uploadMethod: "PUT",
+      };
+    } catch (err: any) {
+      console.error("[GCS_SIGNED_URL_ERROR]:", err);
+      return {
+        success: false,
+        error: err?.message || "No se pudo generar URL firmada de subida en Google Cloud Storage.",
+      };
+    }
+  }
+
+  // Missing credentials notification
+  return {
+    success: false,
+    error: "SUPABASE_SERVICE_ROLE_KEY no está configurada en las variables de entorno del servidor. Por favor agrégala en Vercel o en el panel de control.",
+    needsKey: true,
+  };
 }
 
 /**

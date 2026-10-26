@@ -35,6 +35,7 @@ import {
   ArrowUp,
   ArrowDown,
 } from "lucide-react";
+import { uploadMediaDirect } from "@/lib/clientDirectUpload";
 import { DealerBrandsManagerSection } from "./DealerBrandsManagerSection";
 import { BarrialCrManagerSection } from "./BarrialCrManagerSection";
 
@@ -109,11 +110,16 @@ export function HomePageManagerTab({ userRole }: HomePageManagerTabProps) {
   const [loadingCatalog, setLoadingCatalog] = useState(false);
   const [catalogLoaded, setCatalogLoaded] = useState(false);
 
-  // Upload States & Handlers
+  // Upload States & Handlers (Supabase Storage Direct CDN)
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [uploadingVideo, setUploadingVideo] = useState(false);
+  const [mediaUploadProgress, setMediaUploadProgress] = useState(0);
+  const [videoUploadProgress, setVideoUploadProgress] = useState(0);
   const [mediaUploadError, setMediaUploadError] = useState<string | null>(null);
   const [videoUploadError, setVideoUploadError] = useState<string | null>(null);
+  const [uploadSuccessMessage, setUploadSuccessMessage] = useState<string | null>(null);
+  const [showKeyModal, setShowKeyModal] = useState(false);
+  const [supabaseKeyInput, setSupabaseKeyInput] = useState("");
   const [showManualMediaUrl, setShowManualMediaUrl] = useState(false);
   const [showManualVideoUrl, setShowManualVideoUrl] = useState(false);
 
@@ -126,74 +132,48 @@ export function HomePageManagerTab({ userRole }: HomePageManagerTabProps) {
 
     if (type === "MEDIA") {
       setUploadingMedia(true);
+      setMediaUploadProgress(0);
       setMediaUploadError(null);
     } else {
       setUploadingVideo(true);
+      setVideoUploadProgress(0);
       setVideoUploadError(null);
     }
+    setUploadSuccessMessage(null);
 
     try {
-      // Client-side file size guard before attempting network request (max 100MB)
-      const maxDirectBytes = 100 * 1024 * 1024;
-      if (file.size > maxDirectBytes) {
-        if (type === "VIDEO") {
-          setShowManualVideoUrl(true);
-          throw new Error(
-            lang === "es"
-              ? `El video pesa ${(file.size / (1024 * 1024)).toFixed(1)}MB. El límite para subida directa es de 100MB.`
-              : `The video is ${(file.size / (1024 * 1024)).toFixed(1)}MB. Direct upload limit is 100MB.`
-          );
-        } else {
-          setShowManualMediaUrl(true);
-          throw new Error(
-            lang === "es"
-              ? `La imagen pesa ${(file.size / (1024 * 1024)).toFixed(1)}MB. El límite máximo para subida directa es de 100MB.`
-              : `The image is ${(file.size / (1024 * 1024)).toFixed(1)}MB. The direct upload limit is 100MB.`
-          );
-        }
-      }
-
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("folder", type === "VIDEO" ? "videos" : "products");
-
-      const res = await fetch("/api/sys/upload", {
-        method: "POST",
-        body: formData,
+      const result = await uploadMediaDirect(file, {
+        folder: type === "VIDEO" ? "videos" : "products",
+        lang,
+        onProgress: (p) => {
+          if (type === "VIDEO") {
+            setVideoUploadProgress(p.percentage);
+          } else {
+            setMediaUploadProgress(p.percentage);
+          }
+        },
       });
 
-      // Resilient response handling (safely catches 413 Request Entity Too Large HTML / non-JSON responses)
-      let data: any = null;
-      let rawText = "";
-
-      try {
-        rawText = await res.text();
-        data = JSON.parse(rawText);
-      } catch {
-        if (res.status === 413) {
-          if (type === "VIDEO") setShowManualVideoUrl(true);
-          throw new Error(
-            lang === "es"
-              ? "El servidor rechazó el archivo por exceso de tamaño (HTTP 413: Request Entity Too Large). El video supera el límite de carga directa del servidor web. Por favor ingresa la URL directa del video en la casilla inferior."
-              : "Server rejected file due to size (HTTP 413: Request Entity Too Large). The video exceeds proxy upload limits. Please enter the direct video URL in the field below."
-          );
+      if (!result.success) {
+        if (result.needsKey) {
+          setShowKeyModal(true);
         }
-        throw new Error(
-          lang === "es"
-            ? `Error del servidor (${res.status}): No se pudo procesar la subida del archivo.`
-            : `Server error (${res.status}): Could not process file upload.`
-        );
-      }
-
-      if (!res.ok || !data?.success || !data?.url) {
-        throw new Error(data?.error || (lang === "es" ? "Error al subir archivo" : "Upload failed"));
+        if (type === "VIDEO") setShowManualVideoUrl(true);
+        else setShowManualMediaUrl(true);
+        throw new Error(result.error || (lang === "es" ? "Error al subir archivo" : "Upload failed"));
       }
 
       if (type === "MEDIA") {
-        setFormMediaUrl(data.url);
+        setFormMediaUrl(result.url || "");
       } else {
-        setFormVideoUrl(data.url);
+        setFormVideoUrl(result.url || "");
       }
+
+      setUploadSuccessMessage(
+        lang === "es"
+          ? `✓ Archivo cargado a Supabase Storage con éxito (${(file.size / (1024 * 1024)).toFixed(1)} MB)`
+          : `✓ File uploaded to Supabase Storage successfully (${(file.size / (1024 * 1024)).toFixed(1)} MB)`
+      );
     } catch (err: any) {
       console.error("Upload error:", err);
       const errMsg = err.message || (lang === "es" ? "Error al procesar el archivo" : "Error processing file");
@@ -1303,6 +1283,25 @@ export function HomePageManagerTab({ userRole }: HomePageManagerTabProps) {
                   </div>
                 )}
 
+                {/* Direct Supabase Upload Progress for Images */}
+                {uploadingMedia && (
+                  <div className="p-3 bg-emerald-50/90 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-2xl space-y-2">
+                    <div className="flex items-center justify-between text-xs font-semibold text-emerald-900 dark:text-emerald-200">
+                      <span className="flex items-center gap-1.5">
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-600" />
+                        {lang === "es" ? "Subiendo a Supabase Storage..." : "Uploading to Supabase Storage..."}
+                      </span>
+                      <span className="font-mono">{mediaUploadProgress}%</span>
+                    </div>
+                    <div className="w-full bg-emerald-200/60 dark:bg-emerald-900/60 rounded-full h-2 overflow-hidden">
+                      <div
+                        className="bg-emerald-600 dark:bg-emerald-400 h-2 rounded-full transition-all duration-150"
+                        style={{ width: `${mediaUploadProgress}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+
                 {/* Optional Manual URL Input */}
                 {showManualMediaUrl && (
                   <div className="pt-2 border-t border-slate-200/60 space-y-1">
@@ -1322,7 +1321,7 @@ export function HomePageManagerTab({ userRole }: HomePageManagerTabProps) {
 
               {/* Video Upload Section (When type === VIDEO) */}
               {formType === "VIDEO" && (
-                <div className="space-y-2 p-4 bg-blue-50/50 rounded-2xl border border-blue-200">
+                <div className="space-y-3 p-4 bg-blue-50/50 rounded-2xl border border-blue-200">
                   <div className="flex items-center justify-between">
                     <div>
                       <label className="text-xs font-bold text-blue-950 flex items-center gap-1.5">
@@ -1330,7 +1329,7 @@ export function HomePageManagerTab({ userRole }: HomePageManagerTabProps) {
                         <span>{t.backdoorHomeVideoUrl}</span>
                       </label>
                       <p className="text-[10px] text-blue-700/80">
-                        Archivo de video para reproducción dinámica de fondo en la página de inicio
+                        Archivo de video para reproducción dinámica de fondo en la página de inicio (sin límite de 4.5MB)
                       </p>
                     </div>
                     {formVideoUrl && (
@@ -1341,10 +1340,91 @@ export function HomePageManagerTab({ userRole }: HomePageManagerTabProps) {
                     )}
                   </div>
 
+                  {/* Supabase Storage Key Configuration Banner (if triggered) */}
+                  {showKeyModal && (
+                    <div className="p-3.5 bg-amber-50 border border-amber-300 rounded-2xl space-y-2 text-xs">
+                      <div className="flex items-start gap-2">
+                        <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                        <div className="text-amber-900 space-y-1">
+                          <p className="font-bold">
+                            {lang === "es"
+                              ? "Falta clave service_role de Supabase"
+                              : "Missing Supabase service_role Key"}
+                          </p>
+                          <p className="text-[11px] text-amber-800">
+                            {lang === "es"
+                              ? "Para subir videos grandes directamente sin pasar por Vercel, ingresa tu clave service_role de Supabase (Supabase Dashboard > Settings > API > service_role):"
+                              : "To upload large videos directly bypassing Vercel limits, enter your Supabase service_role key (Supabase Dashboard > Settings > API > service_role):"}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <input
+                          type="password"
+                          value={supabaseKeyInput}
+                          onChange={(e) => setSupabaseKeyInput(e.target.value)}
+                          placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                          className="flex-1 px-3 py-1.5 text-xs bg-white border border-amber-300 rounded-xl font-mono focus:ring-1 focus:ring-amber-500"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (supabaseKeyInput.trim()) {
+                              localStorage.setItem("zxz_supabase_service_role_key", supabaseKeyInput.trim());
+                              setShowKeyModal(false);
+                              alert(lang === "es" ? "Clave guardada exitosamente. Ahora selecciona tu video nuevamente para subirlo." : "Key saved. Now select your video again to upload.");
+                            }
+                          }}
+                          className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl text-xs transition"
+                        >
+                          {lang === "es" ? "Guardar" : "Save"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShowKeyModal(false)}
+                          className="px-2 text-slate-500 hover:text-slate-800 text-xs"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {uploadSuccessMessage && (
+                    <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>{uploadSuccessMessage}</span>
+                    </div>
+                  )}
+
                   {videoUploadError && (
                     <div className="p-2.5 bg-red-50 border border-red-200 rounded-xl text-red-600 text-xs flex items-center gap-2">
                       <AlertCircle className="w-4 h-4 shrink-0" />
                       <span>{videoUploadError}</span>
+                    </div>
+                  )}
+
+                  {/* Direct Supabase Upload Progress for Video */}
+                  {uploadingVideo && (
+                    <div className="p-3.5 bg-blue-100/70 border border-blue-300 rounded-2xl space-y-2">
+                      <div className="flex items-center justify-between text-xs font-semibold text-blue-950">
+                        <span className="flex items-center gap-2">
+                          <RefreshCw className="w-4 h-4 animate-spin text-blue-600" />
+                          <span>{lang === "es" ? "Subiendo video a Supabase Storage..." : "Uploading video to Supabase Storage..."}</span>
+                        </span>
+                        <span className="font-mono text-sm font-bold text-blue-700">{videoUploadProgress}%</span>
+                      </div>
+                      <div className="w-full bg-blue-200 rounded-full h-3 overflow-hidden">
+                        <div
+                          className="bg-blue-600 h-3 rounded-full transition-all duration-150"
+                          style={{ width: `${videoUploadProgress}%` }}
+                        />
+                      </div>
+                      <p className="text-[11px] text-blue-800">
+                        {lang === "es"
+                          ? "Transfiriendo video en alta velocidad directamente a Supabase CDN (sin límite de 4.5MB)."
+                          : "Streaming high-res video directly to Supabase CDN (bypassing 4.5MB limit)."}
+                      </p>
                     </div>
                   )}
 

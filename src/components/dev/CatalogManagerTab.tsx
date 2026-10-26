@@ -47,6 +47,7 @@ import {
   Receipt,
 } from "lucide-react";
 import { ConfigurableParameter, ParameterOption, resolveOptionColorHex, normalizeAudioUrl, normalizeVideoUrl, cleanDescriptionText, extractAndCleanDescription } from "@/lib/products";
+import { uploadMediaDirect } from "@/lib/clientDirectUpload";
 import { isVehicleBrand, computeAutoProductSku } from "@/lib/dealerBrands";
 
 import {
@@ -3093,41 +3094,24 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
 
     setUploadingMediaType(mediaType);
     setUploadingImage(true);
-    const formData = new FormData();
-    formData.append("file", file);
     const folderTarget = mediaType === "image" ? (isEditingProductView ? "products" : activeCatalogType) : mediaType === "video" ? "videos" : "audios";
-    formData.append("folder", folderTarget);
 
     try {
-      const maxDirectBytes = 100 * 1024 * 1024;
-      if (file.size > maxDirectBytes) {
-        alert(
-          lang === "es"
-            ? `El archivo pesa ${(file.size / (1024 * 1024)).toFixed(1)}MB. El límite máximo para subida directa es de 100MB.`
-            : `File is ${(file.size / (1024 * 1024)).toFixed(1)}MB. Direct upload limit is 100MB.`
-        );
-        return;
-      }
-
-      const res = await fetch("/api/sys/upload", {
-        method: "POST",
-        body: formData,
+      const validFolder = (["products", "combos", "brands", "payments", "videos", "audios"].includes(folderTarget) ? folderTarget : "products") as "products" | "combos" | "brands" | "payments" | "videos" | "audios";
+      const result = await uploadMediaDirect(file, {
+        folder: validFolder,
+        lang,
       });
-      let data: any = null;
-      try {
-        const rawText = await res.text();
-        data = JSON.parse(rawText);
-      } catch {
-        if (res.status === 413) {
-          alert(lang === "es" ? "El archivo supera el tamaño máximo permitido por el servidor (413)." : "File exceeds maximum server limit (413).");
-        } else {
-          alert(lang === "es" ? `Error del servidor (${res.status})` : `Server error (${res.status})`);
-        }
+
+      if (!result.success || !result.url) {
+        alert(result.error || (lang === "es" ? "Error al subir archivo" : "Upload failed"));
         return;
       }
 
-      if (res.ok && data?.success) {
-        if (isEditingProductView) {
+      const fileUrl = result.url;
+      const data = { url: fileUrl };
+
+      if (isEditingProductView) {
           if (mediaType === "image") {
             setProductForm((prev) => {
               const list = prev.imgsText ? prev.imgsText.split("\n").map((s) => s.trim()).filter(Boolean) : [];
@@ -3166,9 +3150,6 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
           type: "success",
           msg: lang === "es" ? "Archivo multimedia subido exitosamente." : "Media file uploaded successfully.",
         });
-      } else {
-        setFeedback({ type: "error", msg: data.error || "Error al subir archivo." });
-      }
     } catch (err) {
       console.error("Upload error:", err);
       setFeedback({ type: "error", msg: "Error al conectar para subir archivo." });

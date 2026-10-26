@@ -10,7 +10,7 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { fileName, mimeType, fileSize, folder = "products" } = body || {};
+    const { fileName, mimeType, fileSize, folder = "products", supabaseKey } = body || {};
 
     if (!fileName || !mimeType || typeof fileSize !== "number") {
       return NextResponse.json(
@@ -22,10 +22,10 @@ export async function POST(request: Request) {
     const validFolders = ["products", "combos", "brands", "payments", "videos", "audios"] as const;
     const safeFolder = validFolders.includes(folder) ? folder : "products";
 
-    const result = await generateSignedUploadUrl(fileName, mimeType, fileSize, safeFolder);
+    const result = await generateSignedUploadUrl(fileName, mimeType, fileSize, safeFolder, supabaseKey);
     if (!result.success) {
       return NextResponse.json(
-        { success: false, error: result.error },
+        { success: false, error: result.error, needsKey: result.needsKey },
         { status: 400 }
       );
     }
@@ -35,6 +35,8 @@ export async function POST(request: Request) {
       signedUrl: result.signedUrl,
       publicUrl: result.publicUrl,
       fileName: result.fileName,
+      uploadMethod: result.uploadMethod || "PUT",
+      headers: result.headers || {},
     });
   } catch (error: any) {
     console.error("[SIGNED_URL_ENDPOINT_ERROR]:", error);

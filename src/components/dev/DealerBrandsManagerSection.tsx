@@ -24,6 +24,7 @@ import {
   Link as LinkIcon,
 } from "lucide-react";
 import { isVehicleBrand, resolveDefaultDealerBrandCode } from "@/lib/dealerBrands";
+import { uploadMediaDirect } from "@/lib/clientDirectUpload";
 
 export interface DealerBrandRecord {
   id: string;
@@ -112,32 +113,16 @@ export function DealerBrandsManagerSection({ userRole }: DealerBrandsManagerSect
     setLogoUploadError(null);
 
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("folder", "brands");
-
-      const res = await fetch("/api/sys/upload", {
-        method: "POST",
-        body: formData,
+      const result = await uploadMediaDirect(file, {
+        folder: "brands",
+        lang,
       });
 
-      let data: any = null;
-      let rawText = "";
-      try {
-        rawText = await res.text();
-        data = JSON.parse(rawText);
-      } catch {
-        if (res.status === 413) {
-          throw new Error(lang === "es" ? "El archivo supera el tamaño máximo permitido por el servidor (413)." : "File exceeds maximum server limit (413).");
-        }
-        throw new Error(lang === "es" ? `Error del servidor (${res.status})` : `Server error (${res.status})`);
+      if (!result.success || !result.url) {
+        throw new Error(result.error || (lang === "es" ? "Error al subir el logo" : "Upload failed"));
       }
 
-      if (!res.ok || !data?.success || !data?.url) {
-        throw new Error(data?.error || (lang === "es" ? "Error al subir el logo" : "Upload failed"));
-      }
-
-      setFormLogoUrl(data.url);
+      setFormLogoUrl(result.url);
     } catch (err: any) {
       console.error("Logo upload error:", err);
       setLogoUploadError(err.message || (lang === "es" ? "Error al procesar el archivo" : "Error processing file"));
