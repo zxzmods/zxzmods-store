@@ -357,6 +357,15 @@ export function CartDrawer() {
                       </div>
                     )}
 
+                    {/* Unique Product Customization Summary */}
+                    {item.uniqueProductSummary && (
+                      <div className="mt-1">
+                        <span className="inline-flex items-center text-[10px] bg-purple-50 text-purple-900 px-2 py-0.5 rounded-md border border-purple-200 font-medium">
+                          ⚙ {item.uniqueProductSummary}
+                        </span>
+                      </div>
+                    )}
+
                     {/* Live US Supplier Availability Chip */}
                     {item.supplierStockStatus && (
                       <div className="flex items-center gap-1.5 my-1">

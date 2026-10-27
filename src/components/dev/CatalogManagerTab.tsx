@@ -46,7 +46,7 @@ import {
   ExternalLink,
   Receipt,
 } from "lucide-react";
-import { ConfigurableParameter, ParameterOption, resolveOptionColorHex, normalizeAudioUrl, normalizeVideoUrl, cleanDescriptionText, extractAndCleanDescription, detectProductVehicleBrands, normalizeBrandName } from "@/lib/products";
+import { ConfigurableParameter, ParameterOption, resolveOptionColorHex, normalizeAudioUrl, normalizeVideoUrl, cleanDescriptionText, extractAndCleanDescription, detectProductVehicleBrands, normalizeBrandName, ComboUniqueProduct, ComboUniqueProductField, SUSPENSION_ADJUST_UNIQUE_PRODUCT_TEMPLATE } from "@/lib/products";
 import { uploadMediaDirect } from "@/lib/clientDirectUpload";
 import { isVehicleBrand, computeAutoProductSku } from "@/lib/dealerBrands";
 import { SXS_BRANDS } from "@/lib/sxsBrands";
@@ -1634,7 +1634,38 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
     parameters: [] as ConfigurableParameter[],
     suggestedProductIds: [] as string[],
     suggestedComboIds: [] as string[],
+    uniqueProduct: {
+      enabled: false,
+      titleEs: "",
+      titleEn: "",
+      badgeEs: "SERVICIO EXCLUSIVO DE AJUSTE",
+      badgeEn: "EXCLUSIVE TUNING SERVICE",
+      descriptionEs: "",
+      descriptionEn: "",
+      priceCRC: 0,
+      imageUrl: "",
+      fields: [] as ComboUniqueProductField[],
+    } as ComboUniqueProduct,
   });
+
+  // Quick Product Creation Modal State (inside Combo Editor)
+  const [isQuickProductModalOpen, setIsQuickProductModalOpen] = useState(false);
+  const [quickProductNameEs, setQuickProductNameEs] = useState("");
+  const [quickProductNameEn, setQuickProductNameEn] = useState("");
+  const [quickProductSku, setQuickProductSku] = useState("");
+  const [quickProductPriceCRC, setQuickProductPriceCRC] = useState<number>(0);
+  const [quickProductCategory, setQuickProductCategory] = useState<string>("suspension");
+  const [creatingQuickProduct, setCreatingQuickProduct] = useState(false);
+  const [quickProductError, setQuickProductError] = useState<string | null>(null);
+
+  // Unique Product Custom Field Addition State
+  const [isAddFieldModalOpen, setIsAddFieldModalOpen] = useState(false);
+  const [newFieldNameEs, setNewFieldNameEs] = useState("");
+  const [newFieldNameEn, setNewFieldNameEn] = useState("");
+  const [newFieldType, setNewFieldType] = useState<"text" | "number" | "select">("select");
+  const [newFieldOptionsRaw, setNewFieldOptionsRaw] = useState("");
+  const [newFieldRequired, setNewFieldRequired] = useState(true);
+  const [newFieldPlaceholderEs, setNewFieldPlaceholderEs] = useState("");
 
   const [uploadingImage, setUploadingImage] = useState(false);
   const [uploadingMediaType, setUploadingMediaType] = useState<"image" | "video" | "audio" | null>(null);
@@ -2839,6 +2870,30 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
     const computedComboInstall = comboLabour + comboExtraPartsSum + comboProfit;
     const effectiveComboInstall = computedComboInstall > 0 ? computedComboInstall : (combo.installationPriceCRC || 0);
 
+    const parsedComboUniqueProduct: ComboUniqueProduct = (() => {
+      if ((combo as any).uniqueProduct && typeof (combo as any).uniqueProduct === "object") {
+        return (combo as any).uniqueProduct;
+      }
+      if ((combo as any).uniqueProductJson) {
+        try {
+          const u = JSON.parse((combo as any).uniqueProductJson);
+          if (u && typeof u === "object") return u;
+        } catch {}
+      }
+      return {
+        enabled: false,
+        titleEs: "",
+        titleEn: "",
+        badgeEs: "SERVICIO EXCLUSIVO DE AJUSTE",
+        badgeEn: "EXCLUSIVE TUNING SERVICE",
+        descriptionEs: "",
+        descriptionEn: "",
+        priceCRC: 0,
+        imageUrl: "",
+        fields: [],
+      };
+    })();
+
     setComboSelectedProducts(matchedProducts);
     setComboProductSearch("");
     setComboForm({
@@ -2902,6 +2957,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
         }
         return [];
       })(),
+      uniqueProduct: parsedComboUniqueProduct,
     });
     setIsEditingComboView(true);
     setIsComboModalOpen(false);
@@ -2931,16 +2987,150 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       discountPercent: 10,
       itemsText: "",
       imageUrl: "/images/sxs/z10_front.png",
-    imgsText: "",
+      imgsText: "",
       featured: true,
       homeInstallationAvailable: true,
       parameters: [] as ConfigurableParameter[],
-    suggestedProductIds: [] as string[],
-    suggestedComboIds: [] as string[],
+      suggestedProductIds: [] as string[],
+      suggestedComboIds: [] as string[],
+      uniqueProduct: {
+        enabled: false,
+        titleEs: "",
+        titleEn: "",
+        badgeEs: "SERVICIO EXCLUSIVO DE AJUSTE",
+        badgeEn: "EXCLUSIVE TUNING SERVICE",
+        descriptionEs: "",
+        descriptionEn: "",
+        priceCRC: 0,
+        imageUrl: "",
+        fields: [],
+      },
     });
     setIsEditingComboView(true);
     setIsComboModalOpen(false);
     setFeedback(null);
+  };
+
+  const handleCreateQuickProductForCombo = async () => {
+    if (!quickProductNameEs.trim()) {
+      setQuickProductError(lang === "es" ? "Ingresa el nombre del producto en español" : "Please enter the product name in Spanish");
+      return;
+    }
+    setCreatingQuickProduct(true);
+    setQuickProductError(null);
+    try {
+      const sku = quickProductSku.trim() || `PRD-${Math.floor(100000 + Math.random() * 900000)}`;
+      const res = await fetch("/api/sys/products", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sku,
+          nameEs: quickProductNameEs.trim(),
+          nameEn: quickProductNameEn.trim() || quickProductNameEs.trim(),
+          category: quickProductCategory || comboForm.category || "suspension",
+          priceCRC: quickProductPriceCRC || 0,
+          originalPriceCRC: quickProductPriceCRC || 0,
+          discountPercent: 0,
+          installationPriceCRC: 0,
+          descriptionEs: quickProductNameEs.trim(),
+          descriptionEn: quickProductNameEn.trim() || quickProductNameEs.trim(),
+          imageUrl: "/images/logo.png",
+          stockStatus: "IN_STOCK_US",
+          featured: false,
+          homeInstallationAvailable: true,
+          isInstallationIncluded: true,
+          warrantyCategory: "MECHANICAL_DRIVETRAIN",
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success && data.product) {
+        setComboSelectedProducts((prev) => [...prev, data.product]);
+        setIsQuickProductModalOpen(false);
+        setQuickProductNameEs("");
+        setQuickProductNameEn("");
+        setQuickProductSku("");
+        setQuickProductPriceCRC(0);
+        setFeedback({
+          type: "success",
+          msg: t.devComboUniqueProductQuickCreateSuccess || "Producto creado exitosamente y vinculado al combo.",
+        });
+        await fetchCatalog();
+      } else {
+        setQuickProductError(data.error || data.message || "Error al crear producto");
+      }
+    } catch (err: any) {
+      setQuickProductError(err.message || "Error al crear producto");
+    } finally {
+      setCreatingQuickProduct(false);
+    }
+  };
+
+  const handleAddUniqueProductField = () => {
+    if (!newFieldNameEs.trim()) return;
+    const newField: ComboUniqueProductField = {
+      id: `field_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      nameEs: newFieldNameEs.trim(),
+      nameEn: newFieldNameEn.trim() || newFieldNameEs.trim(),
+      type: newFieldType,
+      options: newFieldType === "select"
+        ? newFieldOptionsRaw.split(",").map((s) => s.trim()).filter(Boolean)
+        : undefined,
+      required: newFieldRequired,
+      placeholderEs: newFieldPlaceholderEs.trim() || undefined,
+    };
+    setComboForm((prev) => ({
+      ...prev,
+      uniqueProduct: {
+        ...prev.uniqueProduct,
+        fields: [...(prev.uniqueProduct?.fields || []), newField],
+      },
+    }));
+    setIsAddFieldModalOpen(false);
+    setNewFieldNameEs("");
+    setNewFieldNameEn("");
+    setNewFieldOptionsRaw("");
+    setNewFieldPlaceholderEs("");
+    setNewFieldRequired(true);
+  };
+
+  const handleRemoveUniqueProductField = (fieldId: string) => {
+    setComboForm((prev) => ({
+      ...prev,
+      uniqueProduct: {
+        ...prev.uniqueProduct,
+        fields: (prev.uniqueProduct?.fields || []).filter((f) => f.id !== fieldId),
+      },
+    }));
+  };
+
+  const [uploadingUniqueImage, setUploadingUniqueImage] = useState(false);
+  const [uniqueImageProgress, setUniqueImageProgress] = useState(0);
+
+  const handleUniqueProductImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingUniqueImage(true);
+    setUniqueImageProgress(0);
+    try {
+      const res = await uploadMediaDirect(file, {
+        folder: "combos",
+        lang,
+        onProgress: (p) => setUniqueImageProgress(p.percentage),
+      });
+      if (res.success && res.url) {
+        setComboForm((prev) => ({
+          ...prev,
+          uniqueProduct: { ...prev.uniqueProduct, imageUrl: res.url },
+        }));
+      } else {
+        setFeedback({ type: "error", msg: res.error || (lang === "es" ? "Error al subir imagen" : "Upload failed") });
+      }
+    } catch (err: any) {
+      setFeedback({ type: "error", msg: err.message || "Upload error" });
+    } finally {
+      setUploadingUniqueImage(false);
+      e.target.value = "";
+    }
   };
 
   const handleSaveCombo = async (e?: React.FormEvent) => {
@@ -2963,6 +3153,12 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       .filter(Boolean);
 
     const items = [...productItems, ...manualItems];
+    if (comboForm.uniqueProduct?.enabled && comboForm.uniqueProduct.titleEs?.trim()) {
+      const uniqueTag = `★ [EXCLUSIVO] ${comboForm.uniqueProduct.titleEs.trim()}`;
+      if (!items.includes(uniqueTag)) {
+        items.unshift(uniqueTag);
+      }
+    }
 
     const comboImgs = comboForm.imgsText
       .split("\n")
@@ -3010,6 +3206,8 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
           suggestedProductIdsJson: JSON.stringify(comboForm.suggestedProductIds || []),
           suggestedComboIds: comboForm.suggestedComboIds || [],
           suggestedComboIdsJson: JSON.stringify(comboForm.suggestedComboIds || []),
+          uniqueProduct: comboForm.uniqueProduct,
+          uniqueProductJson: JSON.stringify(comboForm.uniqueProduct || {}),
         }),
       });
 
@@ -3375,6 +3573,55 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
     }
     return combos.some((c) => (c.discountPercent && c.discountPercent > 0) || (c.originalPriceCRC && c.originalPriceCRC > c.priceCRC));
   }, [activeCatalogType, products, combos]);
+
+  const comboProductsInstallSummary = useMemo(() => {
+    let totalLabour = 0;
+    let totalProfit = 0;
+    let allExtraParts: InstallExtraPart[] = [];
+    let totalInstall = 0;
+    let totalDuration = 0;
+
+    comboSelectedProducts.forEach((p: any) => {
+      const pLabour = Number(p.installLabourCostCRC) || Number(p.price?.I_price?.I_price) || Number(p.installationPriceCRC) || 0;
+      const pProfit = Number(p.installProfitCRC) || 0;
+      const pDuration = Number(p.installationDurationMinutes) > 0 ? Number(p.installationDurationMinutes) : 60;
+      totalDuration += pDuration;
+      let pParts: InstallExtraPart[] = [];
+      if (Array.isArray(p.installExtraParts)) {
+        pParts = p.installExtraParts;
+      } else if (p.installExtraPartsJson) {
+        try {
+          const parsed = JSON.parse(p.installExtraPartsJson);
+          if (Array.isArray(parsed)) pParts = parsed;
+        } catch {}
+      }
+      const pPartsTotal = pParts.reduce((s, pt) => s + (Number(pt.priceCRC) || 0), 0);
+      totalLabour += pLabour;
+      totalProfit += pProfit;
+      const pTot = (Number(p.installationPriceCRC) || Number(p.price?.I_price?.I_price) || (pLabour + pPartsTotal + pProfit));
+      totalInstall += pTot;
+
+      pParts.forEach((pt) => {
+        allExtraParts.push({
+          id: `cp-${p.id || p.sku || "p"}-${Math.random().toString(36).substring(2, 6)}`,
+          name: `${p.nameEs || p.p_title || p.title || "Pieza"}: ${pt.name}`,
+          priceCRC: Number(pt.priceCRC) || 0,
+        });
+      });
+    });
+
+    const totalParts = allExtraParts.reduce((s, pt) => s + (Number(pt.priceCRC) || 0), 0);
+    const computedSum = totalInstall > 0 ? totalInstall : (totalLabour + totalParts + totalProfit);
+
+    return {
+      totalLabour,
+      totalProfit,
+      allExtraParts,
+      totalParts,
+      totalInstall: computedSum,
+      totalDuration: totalDuration || 60,
+    };
+  }, [comboSelectedProducts]);
 
   // Filtered lists
   const filteredProducts = products.filter((p) => {
@@ -5427,55 +5674,6 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       products
     );
 
-    const comboProductsInstallSummary = useMemo(() => {
-      let totalLabour = 0;
-      let totalProfit = 0;
-      let allExtraParts: InstallExtraPart[] = [];
-      let totalInstall = 0;
-      let totalDuration = 0;
-
-      comboSelectedProducts.forEach((p: any) => {
-        const pLabour = Number(p.installLabourCostCRC) || Number(p.price?.I_price?.I_price) || Number(p.installationPriceCRC) || 0;
-        const pProfit = Number(p.installProfitCRC) || 0;
-        const pDuration = Number(p.installationDurationMinutes) > 0 ? Number(p.installationDurationMinutes) : 60;
-        totalDuration += pDuration;
-        let pParts: InstallExtraPart[] = [];
-        if (Array.isArray(p.installExtraParts)) {
-          pParts = p.installExtraParts;
-        } else if (p.installExtraPartsJson) {
-          try {
-            const parsed = JSON.parse(p.installExtraPartsJson);
-            if (Array.isArray(parsed)) pParts = parsed;
-          } catch {}
-        }
-        const pPartsTotal = pParts.reduce((s, pt) => s + (Number(pt.priceCRC) || 0), 0);
-        totalLabour += pLabour;
-        totalProfit += pProfit;
-        const pTot = (Number(p.installationPriceCRC) || Number(p.price?.I_price?.I_price) || (pLabour + pPartsTotal + pProfit));
-        totalInstall += pTot;
-
-        pParts.forEach((pt) => {
-          allExtraParts.push({
-            id: `cp-${p.id || p.sku || "p"}-${Math.random().toString(36).substring(2, 6)}`,
-            name: `${p.nameEs || p.p_title || p.title || "Pieza"}: ${pt.name}`,
-            priceCRC: Number(pt.priceCRC) || 0,
-          });
-        });
-      });
-
-      const totalParts = allExtraParts.reduce((s, pt) => s + (Number(pt.priceCRC) || 0), 0);
-      const computedSum = totalInstall > 0 ? totalInstall : (totalLabour + totalParts + totalProfit);
-
-      return {
-        totalLabour,
-        totalProfit,
-        allExtraParts,
-        totalParts,
-        totalInstall: computedSum,
-        totalDuration: totalDuration || 60,
-      };
-    }, [comboSelectedProducts]);
-
     const handleApplyComboProductsInstall = () => {
       setComboForm((prev) => ({
         ...prev,
@@ -5837,9 +6035,9 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                 </p>
               </div>
 
-              {/* Product Search Input with Live Autocomplete */}
-              <div className="relative">
-                <div className="relative">
+              {/* Product Search & Quick Product Creation Trigger */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                <div className="relative flex-1">
                   <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                   <input
                     type="text"
@@ -5864,73 +6062,91 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                       <X className="w-3.5 h-3.5" />
                     </button>
                   )}
-                </div>
 
-                {/* Dropdown Results */}
-                {isComboSearchDropdownOpen && filteredProductOptions.length > 0 && (
-                  <div className="absolute left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-2xl shadow-xl z-30 max-h-64 overflow-y-auto divide-y divide-slate-100">
-                    {filteredProductOptions.map((prod) => (
-                      <div
-                        key={prod.id}
-                        onClick={() => {
-                          setComboSelectedProducts((prev) => [...prev, prod]);
-                          setComboProductSearch("");
-                          setIsComboSearchDropdownOpen(false);
-                        }}
-                        className="p-3 hover:bg-slate-50 flex items-center justify-between gap-3 cursor-pointer transition"
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-200 p-1 flex items-center justify-center shrink-0">
-                            <img
-                              src={prod.imageUrl || "/images/logo.png"}
-                              alt=""
-                              className="max-h-full max-w-full object-contain"
-                            />
-                          </div>
-                          <div className="min-w-0">
-                            <span className="text-xs font-bold text-slate-900 block truncate">
-                              {prod.nameEs || prod.p_title}
-                            </span>
-                            <div className="flex items-center gap-2 text-[10px] text-slate-500 font-mono">
-                              <span>SKU: {prod.sku}</span>
-                              {prod.brandName && <span>• {prod.brandName}</span>}
+                  {/* Dropdown Results */}
+                  {isComboSearchDropdownOpen && filteredProductOptions.length > 0 && (
+                    <div className="absolute left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-2xl shadow-xl z-30 max-h-64 overflow-y-auto divide-y divide-slate-100">
+                      {filteredProductOptions.map((prod) => (
+                        <div
+                          key={prod.id}
+                          onClick={() => {
+                            setComboSelectedProducts((prev) => [...prev, prod]);
+                            setComboProductSearch("");
+                            setIsComboSearchDropdownOpen(false);
+                          }}
+                          className="p-3 hover:bg-slate-50 flex items-center justify-between gap-3 cursor-pointer transition"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-200 p-1 flex items-center justify-center shrink-0">
+                              <img
+                                src={prod.imageUrl || "/images/logo.png"}
+                                alt=""
+                                className="max-h-full max-w-full object-contain"
+                              />
+                            </div>
+                            <div className="min-w-0">
+                              <span className="text-xs font-bold text-slate-900 block truncate">
+                                {prod.nameEs || prod.p_title}
+                              </span>
+                              <div className="flex items-center gap-2 text-[10px] text-slate-500 font-mono">
+                                <span>SKU: {prod.sku}</span>
+                                {prod.brandName && <span>• {prod.brandName}</span>}
+                              </div>
                             </div>
                           </div>
-                        </div>
 
-                        <div className="flex items-center gap-2 shrink-0">
-                          {(() => {
-                            const prodStock = resolveProductStockStatus(prod);
-                            return prodStock.status === "OUT_OF_STOCK" || prodStock.status === "UNAVAILABLE" ? (
-                              <span className="text-[10px] font-bold text-rose-800 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-md">
-                                {t.comboComponentOutOfStock}
-                              </span>
-                            ) : prodStock.status === "PRE_ORDER" ? (
-                              <span className="text-[10px] font-bold text-blue-800 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-md">
-                                {t.comboComponentPreOrder}
-                              </span>
-                            ) : prodStock.status === "LOW_STOCK" ? (
-                              <span className="text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md">
-                                {t.devComboStockLowStock}
-                              </span>
-                            ) : (
-                              <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md">
-                                {t.comboComponentInStock}
-                              </span>
-                            );
-                          })()}
-                          <span className="text-xs font-bold font-mono text-slate-800">
-                            {formatCRC(prod.priceCRC || prod.price?.T_price || 0)}
-                          </span>
-                          <span className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-[#C02030] text-white text-[11px] font-bold transition flex items-center gap-1">
-                            <Plus className="w-3 h-3" />
-                            <span>{t.devComboAddProduct}</span>
-                          </span>
+                          <div className="flex items-center gap-2 shrink-0">
+                            {(() => {
+                              const prodStock = resolveProductStockStatus(prod);
+                              return prodStock.status === "OUT_OF_STOCK" || prodStock.status === "UNAVAILABLE" ? (
+                                <span className="text-[10px] font-bold text-rose-800 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-md">
+                                  {t.comboComponentOutOfStock}
+                                </span>
+                              ) : prodStock.status === "PRE_ORDER" ? (
+                                <span className="text-[10px] font-bold text-blue-800 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-md">
+                                  {t.comboComponentPreOrder}
+                                </span>
+                              ) : prodStock.status === "LOW_STOCK" ? (
+                                <span className="text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md">
+                                  {t.devComboStockLowStock}
+                                </span>
+                              ) : (
+                                <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md">
+                                  {t.comboComponentInStock}
+                                </span>
+                              );
+                            })()}
+                            <span className="text-xs font-bold font-mono text-slate-800">
+                              {formatCRC(prod.priceCRC || prod.price?.T_price || 0)}
+                            </span>
+                            <span className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-[#C02030] text-white text-[11px] font-bold transition flex items-center gap-1">
+                              <Plus className="w-3 h-3" />
+                              <span>{t.devComboAddProduct}</span>
+                            </span>
+                          </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQuickProductNameEs("");
+                    setQuickProductNameEn("");
+                    setQuickProductSku(`PRD-${Math.floor(100000 + Math.random() * 900000)}`);
+                    setQuickProductPriceCRC(0);
+                    setQuickProductCategory(comboForm.category || "suspension");
+                    setQuickProductError(null);
+                    setIsQuickProductModalOpen(true);
+                  }}
+                  className="px-3.5 py-2.5 rounded-2xl bg-slate-900 hover:bg-[#C02030] text-white text-xs font-bold transition flex items-center justify-center gap-1.5 shrink-0 shadow-xs cursor-pointer"
+                  title="Crear un nuevo producto en catálogo para este combo"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>{t.devComboUniqueProductQuickCreateProduct}</span>
+                </button>
               </div>
 
               {/* Included Products List */}
@@ -6043,6 +6259,414 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:outline-none focus:border-slate-900 focus:bg-white transition"
                 />
               </div>
+            </div>
+
+            {/* Card 3B: Unique Product / Custom Service for this Combo */}
+            <div className="p-6 bg-white rounded-3xl border border-slate-200 shadow-xs space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                <div className="space-y-0.5">
+                  <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-900 flex items-center gap-2">
+                    <Wrench className="w-4 h-4 text-purple-600" />
+                    <span>{t.devComboUniqueProductTitle}</span>
+                  </h3>
+                  <p className="text-[11px] text-slate-500 max-w-xl leading-relaxed">
+                    {t.devComboUniqueProductDesc}
+                  </p>
+                </div>
+
+                {/* Enable / Disable Toggle Switch */}
+                <div className="flex items-center gap-2.5 shrink-0 self-start sm:self-center">
+                  <span className="text-xs font-bold text-slate-700">
+                    {comboForm.uniqueProduct?.enabled ? (lang === "es" ? "Activado" : "Enabled") : (lang === "es" ? "Desactivado" : "Disabled")}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const willEnable = !comboForm.uniqueProduct?.enabled;
+                      if (willEnable && (!comboForm.uniqueProduct?.titleEs || comboForm.uniqueProduct.fields.length === 0)) {
+                        setComboForm((prev) => ({
+                          ...prev,
+                          uniqueProduct: {
+                            ...SUSPENSION_ADJUST_UNIQUE_PRODUCT_TEMPLATE,
+                            enabled: true,
+                          },
+                        }));
+                      } else {
+                        setComboForm((prev) => ({
+                          ...prev,
+                          uniqueProduct: {
+                            ...prev.uniqueProduct,
+                            enabled: willEnable,
+                          },
+                        }));
+                      }
+                    }}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                      comboForm.uniqueProduct?.enabled ? "bg-purple-600" : "bg-slate-200"
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                        comboForm.uniqueProduct?.enabled ? "translate-x-5" : "translate-x-0"
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
+
+              {comboForm.uniqueProduct?.enabled ? (
+                <div className="space-y-5 animate-in fade-in duration-200">
+                  {/* Quick Preset Templates */}
+                  <div className="p-3.5 bg-purple-50/60 rounded-2xl border border-purple-200/80 space-y-2">
+                    <span className="text-[11px] font-black uppercase text-purple-900 tracking-wider flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-purple-700" />
+                      <span>{t.devComboUniqueProductTemplates}</span>
+                    </span>
+                    <div className="flex flex-wrap gap-2 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setComboForm((prev) => ({
+                            ...prev,
+                            uniqueProduct: {
+                              ...SUSPENSION_ADJUST_UNIQUE_PRODUCT_TEMPLATE,
+                              enabled: true,
+                            },
+                          }));
+                          setFeedback({
+                            type: "success",
+                            msg: lang === "es"
+                              ? "¡Plantilla de Ajuste de Suspensión aplicada con campos de Estilo, Peso y Accesorios!"
+                              : "Suspension Tuning Template applied with Style, Weight, and Accessories fields!",
+                          });
+                        }}
+                        className="px-3 py-1.5 rounded-xl bg-white border border-purple-200 hover:border-purple-400 text-purple-900 font-bold transition shadow-2xs hover:bg-purple-100/50 flex items-center gap-1 cursor-pointer"
+                      >
+                        ⚡ <span>{t.devComboUniqueProductTemplateSuspension}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setComboForm((prev) => ({
+                            ...prev,
+                            uniqueProduct: {
+                              enabled: true,
+                              titleEs: "Reprogramación y Mapa Personalizado de ECU",
+                              titleEn: "Custom ECU Remap & Dyno Calibration",
+                              badgeEs: "CALIBRACIÓN DE SOFTWARE",
+                              badgeEn: "SOFTWARE CALIBRATION",
+                              descriptionEs: "Calibración a medida de inyección, avance de ignición, apertura de mariposa y limitadores según modificaciones del vehículo y octanaje.",
+                              descriptionEn: "Tailored calibration of fueling, timing, throttle tables, and rev limits suited to vehicle modifications and fuel octane.",
+                              priceCRC: 0,
+                              imageUrl: "/images/sxs/z10_front.png",
+                              fields: [
+                                {
+                                  id: "fuel_octane",
+                                  nameEs: "Octanaje de Gasolina Habitual",
+                                  nameEn: "Main Fuel Octane",
+                                  type: "select",
+                                  options: ["Regular (91)", "Super (95)", "Premium / VP (98+)", "E85"],
+                                  required: true,
+                                },
+                                {
+                                  id: "tire_size",
+                                  nameEs: "Medida de Llantas Instaladas",
+                                  nameEn: "Installed Tire Size",
+                                  type: "text",
+                                  placeholderEs: "ej: 32x10 R15 o 35x10.5 R15",
+                                  required: true,
+                                },
+                                {
+                                  id: "exhaust_mod",
+                                  nameEs: "Escape / Mods de Admisión",
+                                  nameEn: "Exhaust / Intake Modifications",
+                                  type: "text",
+                                  placeholderEs: "ej: Escape directo Agency Power, filtro de alto flujo",
+                                  required: false,
+                                },
+                              ],
+                            },
+                          }));
+                          setFeedback({
+                            type: "success",
+                            msg: lang === "es" ? "¡Plantilla de Reprogramación ECU aplicada!" : "ECU Remap template applied!",
+                          });
+                        }}
+                        className="px-3 py-1.5 rounded-xl bg-white border border-purple-200 hover:border-purple-400 text-purple-900 font-bold transition shadow-2xs hover:bg-purple-100/50 flex items-center gap-1 cursor-pointer"
+                      >
+                        ⚡ <span>{t.devComboUniqueProductTemplateECU}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setComboForm((prev) => ({
+                            ...prev,
+                            uniqueProduct: {
+                              enabled: true,
+                              titleEs: "",
+                              titleEn: "",
+                              badgeEs: "PRODUCTO ÚNICO",
+                              badgeEn: "UNIQUE PRODUCT",
+                              descriptionEs: "",
+                              descriptionEn: "",
+                              priceCRC: 0,
+                              imageUrl: "",
+                              fields: [],
+                            },
+                          }));
+                        }}
+                        className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 hover:border-slate-300 text-slate-700 font-bold transition shadow-2xs hover:bg-slate-50 cursor-pointer"
+                      >
+                        <span>{t.devComboUniqueProductTemplateCustom}</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Basic Details of Unique Product */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                        {t.devComboUniqueProductNameEs}: <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={comboForm.uniqueProduct.titleEs || ""}
+                        onChange={(e) =>
+                          setComboForm((prev) => ({
+                            ...prev,
+                            uniqueProduct: { ...prev.uniqueProduct, titleEs: e.target.value },
+                          }))
+                        }
+                        placeholder="Ej: Ajuste y Valvulado Completo de Suspensión"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:outline-none focus:border-purple-600 focus:bg-white transition"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                        {t.devComboUniqueProductNameEn}:
+                      </label>
+                      <input
+                        type="text"
+                        value={comboForm.uniqueProduct.titleEn || ""}
+                        onChange={(e) =>
+                          setComboForm((prev) => ({
+                            ...prev,
+                            uniqueProduct: { ...prev.uniqueProduct, titleEn: e.target.value },
+                          }))
+                        }
+                        placeholder="E.g.: Full Custom Suspension Valving & Tuning"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:outline-none focus:border-purple-600 focus:bg-white transition"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                        {t.devComboUniqueProductBadgeEs}:
+                      </label>
+                      <input
+                        type="text"
+                        value={comboForm.uniqueProduct.badgeEs || ""}
+                        onChange={(e) =>
+                          setComboForm((prev) => ({
+                            ...prev,
+                            uniqueProduct: { ...prev.uniqueProduct, badgeEs: e.target.value },
+                          }))
+                        }
+                        placeholder="SERVICIO EXCLUSIVO DE AJUSTE"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:outline-none focus:border-purple-600 focus:bg-white transition"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                        {t.devComboUniqueProductBadgeEn}:
+                      </label>
+                      <input
+                        type="text"
+                        value={comboForm.uniqueProduct.badgeEn || ""}
+                        onChange={(e) =>
+                          setComboForm((prev) => ({
+                            ...prev,
+                            uniqueProduct: { ...prev.uniqueProduct, badgeEn: e.target.value },
+                          }))
+                        }
+                        placeholder="EXCLUSIVE TUNING SERVICE"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:outline-none focus:border-purple-600 focus:bg-white transition"
+                      />
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                        {t.devComboUniqueProductDescEs}:
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={comboForm.uniqueProduct.descriptionEs || ""}
+                        onChange={(e) =>
+                          setComboForm((prev) => ({
+                            ...prev,
+                            uniqueProduct: { ...prev.uniqueProduct, descriptionEs: e.target.value },
+                          }))
+                        }
+                        placeholder="Explica qué incluye este producto o servicio único (ej. Valvulado interno, resortes progressive, calibración en mesa de prueba)..."
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:outline-none focus:border-purple-600 focus:bg-white transition"
+                      />
+                    </div>
+
+                    {/* Image for Unique Product */}
+                    <div className="sm:col-span-2 space-y-2 pt-2 border-t border-slate-100">
+                      <label className="text-[11px] font-bold text-slate-700 block">
+                        {t.devComboUniqueProductImage}:
+                      </label>
+                      <div className="flex items-center gap-3">
+                        {comboForm.uniqueProduct.imageUrl ? (
+                          <div className="relative w-14 h-14 rounded-xl bg-slate-100 border border-slate-200 p-1 flex items-center justify-center shrink-0">
+                            <img
+                              src={comboForm.uniqueProduct.imageUrl}
+                              alt=""
+                              className="max-h-full max-w-full object-contain rounded-lg"
+                            />
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setComboForm((prev) => ({
+                                  ...prev,
+                                  uniqueProduct: { ...prev.uniqueProduct, imageUrl: "" },
+                                }))
+                              }
+                              className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-red-600 text-white rounded-full flex items-center justify-center text-[10px]"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ) : null}
+
+                        <label className="cursor-pointer px-3 py-2 rounded-xl bg-purple-50 hover:bg-purple-100 border border-purple-200 text-purple-700 text-xs font-bold transition flex items-center gap-1.5">
+                          <Upload className="w-3.5 h-3.5" />
+                          <span>{uploadingUniqueImage ? `${uniqueImageProgress}%...` : t.devComboUniqueProductUploadImage}</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            disabled={uploadingUniqueImage}
+                            onChange={handleUniqueProductImageUpload}
+                            className="hidden"
+                          />
+                        </label>
+
+                        <input
+                          type="text"
+                          value={comboForm.uniqueProduct.imageUrl || ""}
+                          onChange={(e) =>
+                            setComboForm((prev) => ({
+                              ...prev,
+                              uniqueProduct: { ...prev.uniqueProduct, imageUrl: e.target.value },
+                            }))
+                          }
+                          placeholder="/images/sxs/z10_front.png o https://..."
+                          className="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-2 text-xs font-mono text-slate-800 focus:outline-none focus:border-purple-600 focus:bg-white"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Customer Customization Fields List */}
+                  <div className="pt-3 border-t border-slate-100 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="text-xs font-black uppercase text-slate-800 tracking-wider">
+                          {t.devComboUniqueProductFieldsTitle}
+                        </h4>
+                        <p className="text-[11px] text-slate-500">
+                          {t.devComboUniqueProductFieldsSubtitle}
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setNewFieldNameEs("");
+                          setNewFieldNameEn("");
+                          setNewFieldType("select");
+                          setNewFieldOptionsRaw("Paseo / Trail, Dunas / Arena, Rocas / Crawling, Carreras");
+                          setNewFieldPlaceholderEs("");
+                          setNewFieldRequired(true);
+                          setIsAddFieldModalOpen(true);
+                        }}
+                        className="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs transition cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>{t.devComboUniqueProductAddField}</span>
+                      </button>
+                    </div>
+
+                    {comboForm.uniqueProduct.fields.length === 0 ? (
+                      <div className="p-4 rounded-xl bg-slate-50 border border-dashed border-slate-200 text-center text-xs text-slate-500">
+                        No hay campos de personalización configurados aún. Pulsa en "+ Agregar Campo" o carga una plantilla arriba.
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {comboForm.uniqueProduct.fields.map((f) => (
+                          <div
+                            key={f.id}
+                            className="p-3 bg-slate-50 rounded-2xl border border-slate-200 flex items-center justify-between gap-3"
+                          >
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-xs font-bold text-slate-900">
+                                  {f.nameEs}
+                                </span>
+                                {f.nameEn && f.nameEn !== f.nameEs && (
+                                  <span className="text-[10px] text-slate-500">
+                                    ({f.nameEn})
+                                  </span>
+                                )}
+                                <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-purple-100 text-purple-800 font-bold uppercase">
+                                  {f.type === "select" ? "Opciones Desplegables" : f.type === "number" ? "Número" : "Texto"}
+                                </span>
+                                {f.required ? (
+                                  <span className="text-[10px] font-bold text-red-600 bg-red-50 border border-red-200 px-1.5 py-0.2 rounded">
+                                    Obligatorio
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] font-medium text-slate-500 bg-slate-200 px-1.5 py-0.2 rounded">
+                                    Opcional
+                                  </span>
+                                )}
+                              </div>
+                              {f.type === "select" && f.options && (
+                                <p className="text-[11px] text-slate-500 mt-1 truncate">
+                                  Opciones: {f.options.join(" • ")}
+                                </p>
+                              )}
+                              {f.placeholderEs && (
+                                <p className="text-[11px] text-slate-400 mt-0.5 truncate">
+                                  Ej: {f.placeholderEs}
+                                </p>
+                              )}
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveUniqueProductField(f.id)}
+                              className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition cursor-pointer"
+                              title="Eliminar campo"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="p-4 rounded-2xl bg-slate-50 border border-dashed border-slate-200 text-center text-xs text-slate-500">
+                  Este combo no tiene un producto o servicio único activado. Habilita el interruptor si deseas incluir calibración o especificaciones personalizadas.
+                </div>
+              )}
             </div>
           </div>
 
@@ -7387,6 +8011,295 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* QUICK PRODUCT CREATION MODAL FOR COMBO */}
+      {isQuickProductModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-slate-900 text-white flex items-center justify-center">
+                  <Plus className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-xs font-black uppercase tracking-wider text-slate-900">
+                    {t.devComboUniqueProductQuickCreateModalTitle}
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Crea un nuevo artículo en catálogo y vincúlalo a este combo
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsQuickProductModalOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {quickProductError && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                <span>{quickProductError}</span>
+              </div>
+            )}
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                  Nombre del Producto (Español): <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={quickProductNameEs}
+                  onChange={(e) => setQuickProductNameEs(e.target.value)}
+                  placeholder="Ej: Tapas de Reservorio Anodizadas FOX"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:outline-none focus:border-slate-900 focus:bg-white"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                  Nombre del Producto (English):
+                </label>
+                <input
+                  type="text"
+                  value={quickProductNameEn}
+                  onChange={(e) => setQuickProductNameEn(e.target.value)}
+                  placeholder="E.g.: Anodized Billet Reservoir Caps FOX"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:outline-none focus:border-slate-900 focus:bg-white"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                    SKU:
+                  </label>
+                  <input
+                    type="text"
+                    value={quickProductSku}
+                    onChange={(e) => setQuickProductSku(e.target.value)}
+                    placeholder="PRD-123456"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-mono text-slate-900 focus:outline-none focus:border-slate-900 focus:bg-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                    Precio Individual (₡):
+                  </label>
+                  <input
+                    type="number"
+                    value={quickProductPriceCRC || ""}
+                    onChange={(e) => setQuickProductPriceCRC(Math.round(Number(e.target.value) || 0))}
+                    placeholder="0"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-slate-900 focus:bg-white"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                  Categoría:
+                </label>
+                <select
+                  value={quickProductCategory}
+                  onChange={(e) => setQuickProductCategory(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-semibold text-slate-800"
+                >
+                  <option value="suspension">Suspensión & Brazos</option>
+                  <option value="performance">Performance & Potencia</option>
+                  <option value="lighting">Iluminación</option>
+                  <option value="exhaust">Escape</option>
+                  <option value="protection">Protección</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setIsQuickProductModalOpen(false)}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 rounded-xl border border-slate-200"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={creatingQuickProduct}
+                onClick={() => handleCreateQuickProductForCombo()}
+                className="px-4 py-2 text-xs font-bold text-white bg-slate-900 hover:bg-[#C02030] rounded-xl transition flex items-center gap-1.5 shadow-sm disabled:opacity-50"
+              >
+                <Check className="w-3.5 h-3.5" />
+                <span>{creatingQuickProduct ? t.devSaving : "Crear y Vincular"}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ADD FIELD MODAL TO UNIQUE PRODUCT */}
+      {isAddFieldModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-purple-600 text-white flex items-center justify-center">
+                  <ListPlus className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-xs font-black uppercase tracking-wider text-slate-900">
+                    {t.devComboUniqueProductAddField}
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Pregunta o especificación requerida al cliente
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAddFieldModalOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                  {t.devComboUniqueProductFieldName} (Español): <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={newFieldNameEs}
+                  onChange={(e) => setNewFieldNameEs(e.target.value)}
+                  placeholder="Ej: Estilo de Manejo, Peso del Piloto, Accesorios Instalados"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:outline-none focus:border-purple-600 focus:bg-white"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                  {t.devComboUniqueProductFieldName} (English):
+                </label>
+                <input
+                  type="text"
+                  value={newFieldNameEn}
+                  onChange={(e) => setNewFieldNameEn(e.target.value)}
+                  placeholder="E.g.: Riding Style, Rider Weight, Installed Accessories"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:outline-none focus:border-purple-600 focus:bg-white"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                  {t.devComboUniqueProductFieldType}:
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setNewFieldType("select")}
+                    className={`p-2 rounded-xl border text-xs font-bold transition text-center cursor-pointer ${
+                      newFieldType === "select"
+                        ? "bg-purple-600 text-white border-purple-600 shadow-xs"
+                        : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+                    }`}
+                  >
+                    {t.devComboUniqueProductFieldTypeSelect}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNewFieldType("text")}
+                    className={`p-2 rounded-xl border text-xs font-bold transition text-center cursor-pointer ${
+                      newFieldType === "text"
+                        ? "bg-purple-600 text-white border-purple-600 shadow-xs"
+                        : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+                    }`}
+                  >
+                    {t.devComboUniqueProductFieldTypeText}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNewFieldType("number")}
+                    className={`p-2 rounded-xl border text-xs font-bold transition text-center cursor-pointer ${
+                      newFieldType === "number"
+                        ? "bg-purple-600 text-white border-purple-600 shadow-xs"
+                        : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+                    }`}
+                  >
+                    {t.devComboUniqueProductFieldTypeNumber}
+                  </button>
+                </div>
+              </div>
+
+              {newFieldType === "select" ? (
+                <div>
+                  <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                    {t.devComboUniqueProductFieldOptionsPrompt}:
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={newFieldOptionsRaw}
+                    onChange={(e) => setNewFieldOptionsRaw(e.target.value)}
+                    placeholder="Dunas, Rocas, Trail, Carreras, Mixto"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:outline-none focus:border-purple-600 focus:bg-white"
+                  />
+                </div>
+              ) : (
+                <div>
+                  <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                    Ejemplo / Placeholder:
+                  </label>
+                  <input
+                    type="text"
+                    value={newFieldPlaceholderEs}
+                    onChange={(e) => setNewFieldPlaceholderEs(e.target.value)}
+                    placeholder="ej: 85 kg piloto + 60 kg copiloto"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:outline-none focus:border-purple-600 focus:bg-white"
+                  />
+                </div>
+              )}
+
+              <div className="pt-2">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={newFieldRequired}
+                    onChange={(e) => setNewFieldRequired(e.target.checked)}
+                    className="rounded border-slate-300 text-purple-600 focus:ring-purple-600 w-4 h-4"
+                  />
+                  <span className="text-xs font-bold text-slate-800">
+                    {t.devComboUniqueProductFieldRequired} (El cliente debe completarlo obligatoriamente)
+                  </span>
+                </label>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setIsAddFieldModalOpen(false)}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 rounded-xl border border-slate-200"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleAddUniqueProductField}
+                disabled={!newFieldNameEs.trim()}
+                className="px-4 py-2 text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-xl transition flex items-center gap-1.5 shadow-sm disabled:opacity-50 cursor-pointer"
+              >
+                <Check className="w-3.5 h-3.5" />
+                <span>Agregar Campo</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

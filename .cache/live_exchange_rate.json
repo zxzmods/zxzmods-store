@@ -1,41 +1,41 @@
 {
-  "rate": 456.32,
-  "buyRate": 450.04,
+  "rate": 455.53,
+  "buyRate": 451.24,
   "currency": "USD",
   "baseCurrency": "CRC",
   "source": "Banco Central de Costa Rica (BCCR)",
-  "date": "2026-10-26",
+  "date": "2026-10-27",
   "override": false,
   "cached": false,
-  "updatedAt": "2026-10-27T02:39:01.201Z",
-  "lastSyncAt": "2026-10-27T02:39:01.201Z",
+  "updatedAt": "2026-10-27T22:08:33.495Z",
+  "lastSyncAt": "2026-10-27T22:08:33.495Z",
   "diagnostics": [
     {
       "name": "Ministerio de Hacienda / BCCR Dólar",
       "url": "https://api.hacienda.go.cr/indicadores/tc/dolar",
       "status": "ONLINE",
-      "sellRate": 456.32,
-      "buyRate": 450.04,
-      "date": "2026-10-26",
-      "latencyMs": 303
+      "sellRate": 455.53,
+      "buyRate": 451.24,
+      "date": "2026-10-27",
+      "latencyMs": 390
     },
     {
       "name": "PaginasWeb CR (BCCR Feed Oficial)",
       "url": "https://tipodecambio.paginasweb.cr/api",
       "status": "ONLINE",
-      "sellRate": 456.32,
-      "buyRate": 450.04,
-      "date": "2026-10-26",
-      "latencyMs": 101
+      "sellRate": 455.53,
+      "buyRate": 451.24,
+      "date": "2026-10-27",
+      "latencyMs": 324
     },
     {
       "name": "Ministerio de Hacienda General",
       "url": "https://api.hacienda.go.cr/indicadores/tc",
       "status": "ONLINE",
-      "sellRate": 456.32,
-      "buyRate": 450.04,
-      "date": "2026-10-26",
-      "latencyMs": 209
+      "sellRate": 455.53,
+      "buyRate": 451.24,
+      "date": "2026-10-27",
+      "latencyMs": 226
     }
   ]
 }

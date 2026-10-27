@@ -221,6 +221,15 @@ export async function GET() {
           }
           return [];
         })(),
+        uniqueProduct: (() => {
+          if ((c as any).uniqueProductJson) {
+            try {
+              const parsed = JSON.parse((c as any).uniqueProductJson);
+              if (parsed && typeof parsed === "object") return parsed;
+            } catch {}
+          }
+          return null;
+        })(),
         availability,
         stockStatus: availability.status,
         isAvailable: availability.available,

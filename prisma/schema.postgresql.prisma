@@ -152,6 +152,7 @@ model Combo {
   parametersJson       String?  @default("[]")
   imageUrl             String
   imagesJson           String?  @default("[]")
+  uniqueProductJson    String?  @default("{}")
   featured             Boolean  @default(true)
   homeInstallationAvailable Boolean @default(true)
   isArchived           Boolean  @default(false)

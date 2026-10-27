@@ -4,7 +4,7 @@ import React from "react";
 
 export function DevConsoleSkeleton() {
   return (
-    <div className="min-h-screen bg-[#F2F2F4] text-[#141414] p-4 sm:p-6 lg:p-7 flex flex-col gap-6">
+    <div suppressHydrationWarning className="min-h-screen bg-[#F2F2F4] text-[#141414] p-4 sm:p-6 lg:p-7 flex flex-col gap-6">
       {/* Top Pill Header Skeleton */}
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">

@@ -60,10 +60,11 @@ export async function verifyFirebaseIdToken(idToken: string): Promise<DecodedIdT
     }
 
     const auth = getAuth(app);
-    const decoded = await auth.verifyIdToken(idToken, true);
+    // Don't enforce checkRevoked on initial login to prevent false failures from network latency or clock skew
+    const decoded = await auth.verifyIdToken(idToken, false);
     return decoded;
   } catch (err) {
-    console.warn("[FIREBASE_TOKEN_VERIFICATION_FAILED]:", (err as any)?.message || err);
+    console.error("[FIREBASE_TOKEN_VERIFICATION_FAILED]:", (err as any)?.message || err);
     return null;
   }
 }

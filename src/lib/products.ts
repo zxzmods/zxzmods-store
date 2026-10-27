@@ -100,6 +100,79 @@ export interface ParameterOption {
   isDefault?: boolean;
 }
 
+export interface ComboUniqueProductField {
+  id: string;
+  nameEs: string;
+  nameEn?: string;
+  type: "text" | "number" | "select";
+  options?: string[];
+  required: boolean;
+  placeholderEs?: string;
+  placeholderEn?: string;
+}
+
+export interface ComboUniqueProduct {
+  enabled: boolean;
+  titleEs: string;
+  titleEn?: string;
+  badgeEs?: string;
+  badgeEn?: string;
+  descriptionEs?: string;
+  descriptionEn?: string;
+  priceCRC?: number;
+  imageUrl?: string;
+  fields: ComboUniqueProductField[];
+}
+
+export const SUSPENSION_ADJUST_UNIQUE_PRODUCT_TEMPLATE: ComboUniqueProduct = {
+  enabled: true,
+  titleEs: "Ajuste y Valvulado Completo de Suspensión Personalizado",
+  titleEn: "Full Custom Suspension Valving & Tuning",
+  badgeEs: "SERVICIO EXCLUSIVO DE AJUSTE",
+  badgeEn: "EXCLUSIVE TUNING SERVICE",
+  descriptionEs: "Calibración técnica de compresión, rebote y precarga de resortes calculada a medida según tu estilo de manejo, peso del piloto y accesorios instalados.",
+  descriptionEn: "Technical calibration of compression, rebound and spring preload tailored to your ride style, rider weight and installed accessories.",
+  priceCRC: 0,
+  imageUrl: "/images/sxs/z10_front.png",
+  fields: [
+    {
+      id: "ride_style",
+      nameEs: "Estilo de Manejo / Terreno Principal",
+      nameEn: "Riding Style / Main Terrain",
+      type: "select",
+      options: ["Paseo Familiar / Trail", "Dunas / Arena", "Rocas / Crawling", "Barro / Mud Extremo", "Carreras / Alta Velocidad", "Mixto / All-Around"],
+      required: true,
+    },
+    {
+      id: "rider_weight",
+      nameEs: "Peso Total (Piloto + Pasajeros)",
+      nameEn: "Total Weight (Rider + Passengers)",
+      type: "text",
+      placeholderEs: "ej: 85 kg piloto + 60 kg copiloto",
+      placeholderEn: "e.g.: 185 lbs rider + 140 lbs passenger",
+      required: true,
+    },
+    {
+      id: "accessories",
+      nameEs: "Accesorios Instalados (Carga Extra)",
+      nameEn: "Installed Accessories (Extra Load)",
+      type: "text",
+      placeholderEs: "ej: Winch 4500lbs, jaula antivuelco, hielera, llanta de repuesto",
+      placeholderEn: "e.g.: 4500lbs winch, roll cage, cooler, spare tire",
+      required: false,
+    },
+    {
+      id: "feel_notes",
+      nameEs: "Sensación Deseada o Notas de Ajuste",
+      nameEn: "Desired Feel or Tuning Notes",
+      type: "text",
+      placeholderEs: "ej: Mayor suavidad en baches pequeños sin fondear en saltos",
+      placeholderEn: "e.g.: Plush on small bumps without bottoming out on jumps",
+      required: false,
+    },
+  ],
+};
+
 export interface ConfigurableParameter {
   id: string;
   nameEs: string;

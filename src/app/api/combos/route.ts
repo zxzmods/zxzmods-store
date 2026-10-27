@@ -307,6 +307,15 @@ export async function GET(request: NextRequest) {
               }
               return [];
             })(),
+            uniqueProduct: (() => {
+              if ((combo as any).uniqueProductJson) {
+                try {
+                  const p = JSON.parse((combo as any).uniqueProductJson);
+                  if (p && typeof p === "object") return p;
+                } catch {}
+              }
+              return null;
+            })(),
             availability,
             stockStatus: availability.status,
             isAvailable: availability.available,
@@ -371,6 +380,15 @@ export async function GET(request: NextRequest) {
             } catch {}
           }
           return [];
+        })(),
+        uniqueProduct: (() => {
+          if ((c as any).uniqueProductJson) {
+            try {
+              const p = JSON.parse((c as any).uniqueProductJson);
+              if (p && typeof p === "object") return p;
+            } catch {}
+          }
+          return null;
         })(),
         availability,
         stockStatus: availability.status,

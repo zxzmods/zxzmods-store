@@ -63,13 +63,7 @@ export function AuthModal() {
     const result = await loginWithGoogle();
     setLoading(false);
     if (!result.success && result.error) {
-      const sanitizedError =
-        result.error.startsWith("Firebase:") || result.error.includes("auth/")
-          ? (lang === "es"
-              ? "El acceso con Google no está disponible temporalmente. Por favor utiliza el acceso con Código por Correo (100% operativo)."
-              : "Google Sign-In is temporarily unavailable. Please use Email Verification Code (100% operational).")
-          : result.error;
-      setError(sanitizedError);
+      setError(result.error);
     }
   };
 
@@ -177,13 +171,7 @@ export function AuthModal() {
             {error && (
               <div className="flex items-start gap-2.5 p-3.5 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700">
                 <AlertCircle className="w-4 h-4 flex-shrink-0 text-red-500 mt-0.5" />
-                <span>
-                  {error.startsWith("Firebase:") || error.includes("auth/")
-                    ? (lang === "es"
-                        ? "El acceso con Google no está disponible temporalmente. Por favor utiliza el acceso con Código por Correo (100% operativo)."
-                        : "Google Sign-In is temporarily unavailable. Please use Email Verification Code (100% operational).")
-                    : error}
-                </span>
+                <span className="leading-relaxed">{error}</span>
               </div>
             )}
 

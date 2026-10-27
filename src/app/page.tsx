@@ -122,6 +122,12 @@ export default function HomePage() {
                   <Link href="/cotizar" className="text-[#C02030] hover:underline font-bold">
                     {t.navQuote}
                   </Link>
+                  <Link href="/privacidad" className="hover:text-[#C02030] transition-colors font-medium">
+                    {lang === "es" ? "Privacidad" : "Privacy Policy"}
+                  </Link>
+                  <Link href="/terminos" className="hover:text-[#C02030] transition-colors font-medium">
+                    {lang === "es" ? "Términos" : "Terms"}
+                  </Link>
                   <Link href="/documentos" className="hover:text-[#C02030] transition-colors">
                     {lang === "es" ? "Legal & Pólizas" : "Legal & Policies"}
                   </Link>

@@ -32,6 +32,8 @@ export interface CartItem {
   supplierStockMessage?: string;
   supplierLeadDaysMin?: number;
   supplierLeadDaysMax?: number;
+  uniqueProductCustomization?: Record<string, string>;
+  uniqueProductSummary?: string;
 }
 
 

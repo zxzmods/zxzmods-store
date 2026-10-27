@@ -15,7 +15,7 @@ import { useLanguage } from "@/context/LanguageContext";
 import { useCart } from "@/context/CartContext";
 import { useGarage } from "@/context/GarageContext";
 import { formatCRC, formatUSD, convertCRCToUSD } from "@/lib/i18n";
-import { ConfigurableParameter, SelectedParameterItem, resolveOptionColorHex } from "@/lib/products";
+import { ConfigurableParameter, SelectedParameterItem, resolveOptionColorHex, ComboUniqueProduct, ComboUniqueProductField } from "@/lib/products";
 import { useTouchSwipe } from "@/lib/useTouchSwipe";
 import {
   Wrench,
@@ -68,6 +68,7 @@ interface ComboItem {
   leadDaysMin?: number;
   leadDaysMax?: number;
   parameters?: ConfigurableParameter[];
+  uniqueProduct?: ComboUniqueProduct | null;
   reviews?: {
     stars: number;
     count?: number;
@@ -126,6 +127,10 @@ export default function ComboDetailPage() {
   // Selected Configurable Parameters State (parameterId -> optionId)
   const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>({});
 
+  // Unique Product Customization State (fieldId -> answer)
+  const [uniqueAnswers, setUniqueAnswers] = useState<Record<string, string>>({});
+  const [uniqueError, setUniqueError] = useState<string | null>(null);
+
   // Lightbox Modal state
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
   const [lightboxImageIndex, setLightboxImageIndex] = useState(0);
@@ -152,6 +157,19 @@ export default function ComboDetailPage() {
               }
             });
             setSelectedOptions(initialOpts);
+          }
+          if (data.data.combo.uniqueProduct?.enabled && Array.isArray(data.data.combo.uniqueProduct.fields)) {
+            const initialUnique: Record<string, string> = {};
+            data.data.combo.uniqueProduct.fields.forEach((f: ComboUniqueProductField) => {
+              if (f.type === "select" && f.options && f.options.length > 0) {
+                initialUnique[f.id] = f.options[0];
+              } else {
+                initialUnique[f.id] = "";
+              }
+            });
+            setUniqueAnswers(initialUnique);
+          } else {
+            setUniqueAnswers({});
           }
         } else {
           setCombo(null);
@@ -313,9 +331,37 @@ export default function ComboDetailPage() {
   const handleAddToCart = () => {
     if (!combo) return;
 
+    if (combo.uniqueProduct?.enabled && Array.isArray(combo.uniqueProduct.fields)) {
+      const missingRequired = combo.uniqueProduct.fields.filter(
+        (f) => f.required && !uniqueAnswers[f.id]?.trim()
+      );
+      if (missingRequired.length > 0) {
+        const fieldNames = missingRequired
+          .map((f) => (lang === "es" ? f.nameEs : f.nameEn || f.nameEs))
+          .join(", ");
+        setUniqueError(`${t.comboUniqueProductRequiredMissing} ${fieldNames}`);
+        const el = document.getElementById("combo-unique-customization-section");
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+        return;
+      }
+    }
+    setUniqueError(null);
+
+    const uniqueSummaryParts: string[] = [];
+    if (combo.uniqueProduct?.enabled && Array.isArray(combo.uniqueProduct.fields)) {
+      combo.uniqueProduct.fields.forEach((f) => {
+        const val = uniqueAnswers[f.id];
+        if (val && val.trim()) {
+          const fn = lang === "es" ? f.nameEs : (f.nameEn || f.nameEs);
+          uniqueSummaryParts.push(`${fn}: ${val.trim()}`);
+        }
+      });
+    }
+    const uniqueProductSummary = uniqueSummaryParts.join(" | ");
+
     addItem({
       type: "COMBO",
-      id: `combo-${combo.id}`,
+      id: `combo-${combo.id}${uniqueProductSummary ? `-${encodeURIComponent(uniqueProductSummary).slice(0, 24)}` : ""}`,
       title: lang === "es" ? combo.titleEs : combo.titleEn,
       brand: "ZxZ Performance",
       comp: ["all"],
@@ -330,6 +376,8 @@ export default function ComboDetailPage() {
       supplierStockMessage: lang === "es" ? combo.availability?.summaryEs : combo.availability?.summaryEn,
       supplierLeadDaysMin: combo.leadDaysMin || combo.availability?.leadDaysMin || 7,
       supplierLeadDaysMax: combo.leadDaysMax || combo.availability?.leadDaysMax || 12,
+      uniqueProductCustomization: uniqueAnswers,
+      uniqueProductSummary,
     });
   };
 
@@ -792,6 +840,97 @@ export default function ComboDetailPage() {
                   </div>
                 )}
 
+                {/* Unique Product / Custom Service Customization Card */}
+                {combo.uniqueProduct?.enabled && combo.uniqueProduct.fields && combo.uniqueProduct.fields.length > 0 && (
+                  <div id="combo-unique-customization-section" className="p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-purple-50/70 via-white to-slate-50 border-2 border-purple-200/90 shadow-xs space-y-4">
+                    <div className="flex items-start justify-between gap-3 border-b border-purple-100 pb-3">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="w-6 h-6 rounded-lg bg-purple-600 text-white flex items-center justify-center shrink-0">
+                            <Wrench className="w-3.5 h-3.5" />
+                          </span>
+                          <span className="text-xs font-black uppercase tracking-wider text-purple-950">
+                            {t.comboUniqueProductCustomizationTitle}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-purple-800/80 leading-relaxed">
+                          {t.comboUniqueProductCustomizationSubtitle}
+                        </p>
+                      </div>
+                      <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-200 shrink-0 font-mono">
+                        {combo.uniqueProduct.badgeEs || t.comboUniqueProductBadgeDefault}
+                      </span>
+                    </div>
+
+                    {uniqueError && (
+                      <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-medium flex items-center gap-2">
+                        <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                        <span>{uniqueError}</span>
+                      </div>
+                    )}
+
+                    <div className="space-y-3.5">
+                      {combo.uniqueProduct.fields.map((field) => {
+                        const fieldVal = uniqueAnswers[field.id] || "";
+                        const fieldLabel = lang === "es" ? field.nameEs : (field.nameEn || field.nameEs);
+                        const placeholder = lang === "es" ? (field.placeholderEs || "") : (field.placeholderEn || field.placeholderEs || "");
+
+                        return (
+                          <div key={field.id} className="space-y-1.5">
+                            <label className="text-xs font-bold text-slate-800 flex items-center justify-between">
+                              <span className="flex items-center gap-1.5">
+                                <span>{fieldLabel}</span>
+                                {field.required ? (
+                                  <span className="text-rose-600 font-bold text-[10px]">*</span>
+                                ) : (
+                                  <span className="text-[10px] text-slate-400 font-normal">({lang === "es" ? "Opcional" : "Optional"})</span>
+                                )}
+                              </span>
+                            </label>
+
+                            {field.type === "select" && Array.isArray(field.options) && field.options.length > 0 ? (
+                              <div className="flex flex-wrap gap-2">
+                                {field.options.map((opt, oIdx) => {
+                                  const isSelected = fieldVal === opt;
+                                  return (
+                                    <button
+                                      key={oIdx}
+                                      type="button"
+                                      onClick={() => {
+                                        setUniqueAnswers((prev) => ({ ...prev, [field.id]: opt }));
+                                        setUniqueError(null);
+                                      }}
+                                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border ${
+                                        isSelected
+                                          ? "bg-purple-700 text-white border-purple-700 shadow-xs ring-2 ring-purple-400/30 scale-[1.01]"
+                                          : "bg-white text-slate-700 border-slate-200 hover:border-purple-300 hover:bg-purple-50/40"
+                                      }`}
+                                    >
+                                      {isSelected && <Check className="w-3.5 h-3.5 text-white" />}
+                                      <span>{opt}</span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <input
+                                type={field.type === "number" ? "number" : "text"}
+                                value={fieldVal}
+                                onChange={(e) => {
+                                  setUniqueAnswers((prev) => ({ ...prev, [field.id]: e.target.value }));
+                                  setUniqueError(null);
+                                }}
+                                placeholder={placeholder}
+                                className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600 transition"
+                              />
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 {/* Price Block */}
                 <div className="p-4 rounded-2xl bg-gray-50 border border-gray-200">
                   <div className="flex items-baseline gap-3">
@@ -861,6 +1000,34 @@ export default function ComboDetailPage() {
                   </div>
 
                   <div className="space-y-2">
+                    {/* Unique Product / Service Highlight Card */}
+                    {combo.uniqueProduct?.enabled && (
+                      <div className="p-3.5 rounded-xl bg-gradient-to-r from-purple-50 via-slate-50 to-white border border-purple-200/90 shadow-2xs space-y-1.5">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-start gap-2.5 min-w-0">
+                            <div className="w-8 h-8 rounded-lg bg-purple-600 text-white flex items-center justify-center shrink-0 mt-0.5">
+                              <Sparkles className="w-4 h-4 text-amber-300" />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="text-xs font-black text-slate-900">
+                                  {lang === "es" ? combo.uniqueProduct.titleEs : (combo.uniqueProduct.titleEn || combo.uniqueProduct.titleEs)}
+                                </span>
+                              </div>
+                              {combo.uniqueProduct.descriptionEs && (
+                                <p className="text-[11px] text-slate-600 mt-0.5 leading-relaxed">
+                                  {lang === "es" ? combo.uniqueProduct.descriptionEs : (combo.uniqueProduct.descriptionEn || combo.uniqueProduct.descriptionEs)}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-200 uppercase shrink-0 font-mono">
+                            {combo.uniqueProduct.badgeEs || t.comboUniqueProductBadgeDefault}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
                     {combo.items.map((item, idx) => {
                       const compInfo = combo.availability?.components?.[idx] ||
                         combo.availability?.components?.find((c: any) => c.originalText === item || c.name === item);

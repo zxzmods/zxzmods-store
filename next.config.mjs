@@ -47,15 +47,19 @@ const nextConfig = {
             value: "camera=(), microphone=(), geolocation=(self)",
           },
           {
+            key: "Cross-Origin-Opener-Policy",
+            value: "same-origin-allow-popups",
+          },
+          {
             key: "Content-Security-Policy",
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://apis.google.com https://www.googletagmanager.com",
+              "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://apis.google.com https://www.googletagmanager.com https://accounts.google.com https://*.firebaseapp.com",
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
               "font-src 'self' https://fonts.gstatic.com data:",
-              "img-src 'self' data: blob: https://storage.googleapis.com https://*.supabase.co https://images.unsplash.com https://*.tile.openstreetmap.org https://maps.googleapis.com https://*.google.com",
-              "connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://*.googleapis.com https://storage.googleapis.com https://*.supabase.co https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.hacienda.go.cr https://tipodecambio.paginasweb.cr",
-              "frame-src 'self' https://www.google.com https://maps.google.com https://*.firebaseapp.com",
+              "img-src 'self' data: blob: https://storage.googleapis.com https://*.supabase.co https://images.unsplash.com https://*.tile.openstreetmap.org https://maps.googleapis.com https://*.google.com https://lh3.googleusercontent.com",
+              "connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://*.googleapis.com https://storage.googleapis.com https://*.supabase.co https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.hacienda.go.cr https://tipodecambio.paginasweb.cr https://*.firebaseapp.com https://accounts.google.com",
+              "frame-src 'self' https://www.google.com https://maps.google.com https://*.firebaseapp.com https://accounts.google.com",
               "media-src 'self' data: blob: https://storage.googleapis.com https://*.supabase.co",
             ].join("; "),
           },
@@ -110,6 +114,35 @@ const nextConfig = {
         source: "/recogida-utv",
         destination: "/servicios?service=pickup",
         permanent: false,
+      },
+      {
+        source: "/politica-privacidad",
+        destination: "/privacidad",
+        permanent: true,
+      },
+      {
+        source: "/privacy-policy",
+        destination: "/privacy",
+        permanent: true,
+      },
+      {
+        source: "/terms-of-service",
+        destination: "/terms",
+        permanent: true,
+      },
+      {
+        source: "/condiciones",
+        destination: "/terminos",
+        permanent: true,
+      },
+    ];
+  },
+
+  async rewrites() {
+    return [
+      {
+        source: "/__/auth/:path*",
+        destination: "https://zxzmods-ac591.firebaseapp.com/__/auth/:path*",
       },
     ];
   },

@@ -175,6 +175,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         };
       }
 
+      // Configure provider to always prompt account chooser
+      googleProvider.setCustomParameters({ prompt: "select_account" });
+
       const result = await signInWithPopup(auth, googleProvider);
       const firebaseUser = result.user;
       const idToken = await firebaseUser.getIdToken();
@@ -194,21 +197,77 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }),
       });
 
-      const syncData = await syncRes.json();
+      const syncData = await syncRes.json().catch(() => ({}));
       if (syncData.success) {
         handleAuthSuccess(syncData.user);
         await refreshUser();
         return { success: true };
       } else {
-        return { success: false, error: syncData.error || "Error de sincronización con Google" };
+        console.error("[SOCIAL_SYNC_ERROR]:", syncData);
+        return { success: false, error: syncData.error || "Error de sincronización con Google en el servidor." };
       }
     } catch (error: any) {
-      console.error("Error en Google Sign-In:", error);
+      console.error("[GOOGLE_AUTH_ERROR_DETAILS]:", {
+        code: error?.code,
+        message: error?.message,
+        customData: error?.customData,
+      });
+
       const errCode = String(error?.code || "").toLowerCase();
       const errMsg = String(error?.message || "").toLowerCase();
 
-      if (errCode.includes("popup-closed-by-user") || errMsg.includes("popup-closed-by-user") || errMsg.includes("closed by user")) {
+      if (
+        errCode.includes("popup-closed-by-user") ||
+        errMsg.includes("popup-closed-by-user") ||
+        errMsg.includes("closed by user")
+      ) {
         return { success: false, error: "Inicio de sesión con Google cancelado por el usuario." };
+      }
+
+      if (errCode.includes("popup-blocked") || errMsg.includes("popup-blocked")) {
+        return {
+          success: false,
+          error: "El navegador bloqueó la ventana emergente de Google. Por favor permite las ventanas emergentes en tu navegador para continuar.",
+        };
+      }
+
+      if (errCode.includes("cancelled-popup-request") || errMsg.includes("cancelled-popup-request")) {
+        return {
+          success: false,
+          error: "Se canceló la ventana de autenticación anterior. Por favor intenta de nuevo con un solo clic.",
+        };
+      }
+
+      if (errCode.includes("operation-not-allowed") || errMsg.includes("operation-not-allowed")) {
+        return {
+          success: false,
+          error: "El proveedor Google no está habilitado en Firebase Console. Por favor ve a Firebase Console > Authentication > Sign-in method y activa Google.",
+        };
+      }
+
+      if (errCode.includes("unauthorized-domain") || errMsg.includes("unauthorized-domain")) {
+        const currentHost = typeof window !== "undefined" ? window.location.hostname : "este dominio";
+        return {
+          success: false,
+          error: `El dominio actual (${currentHost}) no está autorizado en Firebase Console (Authentication > Settings > Authorized domains).`,
+        };
+      }
+
+      if (errCode.includes("network-request-failed") || errMsg.includes("network-request-failed")) {
+        return {
+          success: false,
+          error: "Error de red al conectar con Google. Por favor verifica tu conexión a internet e intenta de nuevo.",
+        };
+      }
+
+      if (
+        errCode.includes("account-exists-with-different-credential") ||
+        errMsg.includes("account-exists-with-different-credential")
+      ) {
+        return {
+          success: false,
+          error: "Ya existe una cuenta registrada con este correo mediante otro método. Por favor ingresa mediante Código por Correo.",
+        };
       }
 
       if (
@@ -218,20 +277,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         errCode.includes("configuration-not-found") ||
         errMsg.includes("configuration-not-found") ||
         errCode.includes("invalid-api-key") ||
-        errMsg.includes("invalid-api-key") ||
-        errCode.includes("unauthorized-domain") ||
-        errMsg.includes("unauthorized-domain")
+        errMsg.includes("invalid-api-key")
       ) {
         return {
           success: false,
           error:
-            "El acceso con Google no está disponible temporalmente. Por favor utiliza el acceso con Código por Correo (100% operativo).",
+            "El acceso con Google no está disponible temporalmente debido a la configuración de Firebase. Por favor utiliza el acceso con Código por Correo.",
         };
       }
 
+      const readableError = error?.code || error?.message;
       return {
         success: false,
-        error: "Error al autenticar con Google. Por favor ingresa mediante Código por Correo.",
+        error: readableError
+          ? `Error al autenticar con Google (${readableError}). Si el problema continúa, ingresa mediante Código por Correo.`
+          : "Error al autenticar con Google. Por favor ingresa mediante Código por Correo.",
       };
     }
   };

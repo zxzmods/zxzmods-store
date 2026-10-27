@@ -35,7 +35,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="es" className="light">
+    <html lang="es" className="light" suppressHydrationWarning>
       <head>
         {/* Early interceptor for browser extension errors (e.g. Urban VPN M_ID) */}
         <script
@@ -72,7 +72,7 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className="min-h-screen bg-[#FFFFFF] text-[#1A1A1D] antialiased selection:bg-[#C02030] selection:text-white">
+      <body suppressHydrationWarning className="min-h-screen bg-[#FFFFFF] text-[#1A1A1D] antialiased selection:bg-[#C02030] selection:text-white">
         <ExtensionErrorGuard />
         <ThemeProvider>
           <LanguageProvider>

@@ -66,6 +66,11 @@ export async function PATCH(
     } else if (body.parametersJson !== undefined) {
       updateData.parametersJson = typeof body.parametersJson === "string" ? body.parametersJson : JSON.stringify(body.parametersJson);
     }
+    if (body.uniqueProduct !== undefined) {
+      updateData.uniqueProductJson = typeof body.uniqueProduct === "string" ? body.uniqueProduct : JSON.stringify(body.uniqueProduct);
+    } else if (body.uniqueProductJson !== undefined) {
+      updateData.uniqueProductJson = typeof body.uniqueProductJson === "string" ? body.uniqueProductJson : JSON.stringify(body.uniqueProductJson);
+    }
     if (body.featured !== undefined) updateData.featured = Boolean(body.featured);
     if (body.homeInstallationAvailable !== undefined) updateData.homeInstallationAvailable = Boolean(body.homeInstallationAvailable);
     if (body.isArchived !== undefined) updateData.isArchived = Boolean(body.isArchived);

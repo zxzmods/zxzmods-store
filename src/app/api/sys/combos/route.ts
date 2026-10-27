@@ -104,6 +104,9 @@ export async function POST(request: Request) {
         imagesJson: body.imagesJson !== undefined
           ? (typeof body.imagesJson === "string" ? body.imagesJson : JSON.stringify(body.imagesJson))
           : (Array.isArray(body.imgs) ? JSON.stringify(body.imgs) : (Array.isArray(body.images) ? JSON.stringify(body.images) : "[]")),
+        uniqueProductJson: body.uniqueProduct !== undefined
+          ? JSON.stringify(body.uniqueProduct)
+          : (typeof body.uniqueProductJson === "string" ? body.uniqueProductJson : "{}"),
         featured: Boolean(featured),
         homeInstallationAvailable: Boolean(homeInstallationAvailable),
       },

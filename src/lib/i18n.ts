@@ -896,6 +896,39 @@ export interface Translations {
   devComboAddProduct: string;
   devComboEditProductLink: string;
   devComboNoProductsSelected: string;
+  devComboUniqueProductTitle: string;
+  devComboUniqueProductDesc: string;
+  devComboUniqueProductEnableToggle: string;
+  devComboUniqueProductTemplates: string;
+  devComboUniqueProductTemplateSuspension: string;
+  devComboUniqueProductTemplateECU: string;
+  devComboUniqueProductTemplateCustom: string;
+  devComboUniqueProductNameEs: string;
+  devComboUniqueProductNameEn: string;
+  devComboUniqueProductBadgeEs: string;
+  devComboUniqueProductBadgeEn: string;
+  devComboUniqueProductDescEs: string;
+  devComboUniqueProductDescEn: string;
+  devComboUniqueProductPrice: string;
+  devComboUniqueProductImage: string;
+  devComboUniqueProductUploadImage: string;
+  devComboUniqueProductFieldsTitle: string;
+  devComboUniqueProductFieldsSubtitle: string;
+  devComboUniqueProductAddField: string;
+  devComboUniqueProductFieldName: string;
+  devComboUniqueProductFieldType: string;
+  devComboUniqueProductFieldTypeText: string;
+  devComboUniqueProductFieldTypeNumber: string;
+  devComboUniqueProductFieldTypeSelect: string;
+  devComboUniqueProductFieldOptionsPrompt: string;
+  devComboUniqueProductFieldRequired: string;
+  devComboUniqueProductQuickCreateProduct: string;
+  devComboUniqueProductQuickCreateModalTitle: string;
+  devComboUniqueProductQuickCreateSuccess: string;
+  comboUniqueProductBadgeDefault: string;
+  comboUniqueProductCustomizationTitle: string;
+  comboUniqueProductCustomizationSubtitle: string;
+  comboUniqueProductRequiredMissing: string;
   devComboAvailabilityCol: string;
   devComboAvailabilityLiveTitle: string;
   devComboAvailabilityNotice: string;
@@ -2820,6 +2853,39 @@ export const translations: Record<Language, Translations> = {
     devComboAddProduct: "Agregar al Combo",
     devComboEditProductLink: "Editar Producto",
     devComboNoProductsSelected: "No hay productos seleccionados aún. Busca productos arriba para vincularlos al combo.",
+    devComboUniqueProductTitle: "Producto / Servicio Único del Combo",
+    devComboUniqueProductDesc: "Crea un producto o servicio exclusivo para este combo (ej: ajuste completo de suspensión según estilo de manejo, peso y accesorios). No todos los combos requieren este producto único.",
+    devComboUniqueProductEnableToggle: "Incluir Producto / Servicio Único en este Combo",
+    devComboUniqueProductTemplates: "Plantillas Rápidas:",
+    devComboUniqueProductTemplateSuspension: "Ajuste de Suspensión (Estilo, Peso, Accesorios)",
+    devComboUniqueProductTemplateECU: "Reprogramación ECU / Tuning",
+    devComboUniqueProductTemplateCustom: "Personalizado en Blanco",
+    devComboUniqueProductNameEs: "Nombre del Producto/Servicio (Español)",
+    devComboUniqueProductNameEn: "Nombre del Producto/Servicio (English)",
+    devComboUniqueProductBadgeEs: "Insignia / Badge (Español)",
+    devComboUniqueProductBadgeEn: "Insignia / Badge (English)",
+    devComboUniqueProductDescEs: "Descripción Detallada (Español)",
+    devComboUniqueProductDescEn: "Descripción Detallada (English)",
+    devComboUniqueProductPrice: "Valor / Precio Incluido en el Combo (₡)",
+    devComboUniqueProductImage: "Imagen del Producto/Servicio Único",
+    devComboUniqueProductUploadImage: "Subir Imagen",
+    devComboUniqueProductFieldsTitle: "Campos de Personalización Requeridos al Comprador",
+    devComboUniqueProductFieldsSubtitle: "Define los datos que el cliente debe especificar al comprar este combo (ej. Peso del piloto, Estilo de manejo, Accesorios instalados).",
+    devComboUniqueProductAddField: "Agregar Campo",
+    devComboUniqueProductFieldName: "Nombre del Campo",
+    devComboUniqueProductFieldType: "Tipo de Campo",
+    devComboUniqueProductFieldTypeText: "Texto Libre",
+    devComboUniqueProductFieldTypeNumber: "Número",
+    devComboUniqueProductFieldTypeSelect: "Opciones (Menú Desplegable)",
+    devComboUniqueProductFieldOptionsPrompt: "Opciones separadas por coma (ej: Dunas, Trail, Rocas)",
+    devComboUniqueProductFieldRequired: "Obligatorio",
+    devComboUniqueProductQuickCreateProduct: "Crear Producto Rápido en Catálogo",
+    devComboUniqueProductQuickCreateModalTitle: "Crear y Vincular Nuevo Producto al Catálogo",
+    devComboUniqueProductQuickCreateSuccess: "Producto creado exitosamente y vinculado al combo.",
+    comboUniqueProductBadgeDefault: "PRODUCTO / SERVICIO EXCLUSIVO",
+    comboUniqueProductCustomizationTitle: "Personalización Requerida para este Combo",
+    comboUniqueProductCustomizationSubtitle: "Por favor especifica los siguientes detalles para que nuestros técnicos preparen y calibren el paquete exactamente para ti y tu vehículo.",
+    comboUniqueProductRequiredMissing: "Por favor completa los siguientes campos de personalización del combo antes de continuar:",
     devComboAvailabilityCol: "Disponibilidad",
     devComboAvailabilityLiveTitle: "Disponibilidad Dinámica del Combo",
     devComboAvailabilityNotice: "La disponibilidad de este combo se calcula automáticamente en tiempo real según el stock de sus productos listados.",
@@ -4704,6 +4770,39 @@ export const translations: Record<Language, Translations> = {
     devComboAddProduct: "Add to Combo",
     devComboEditProductLink: "Edit Product",
     devComboNoProductsSelected: "No products selected yet. Search products above to link them to this combo.",
+    devComboUniqueProductTitle: "Unique Combo Product / Service",
+    devComboUniqueProductDesc: "Create an exclusive product or service for this combo (e.g., full suspension adjustment according to ride style, weight, and accessories). Not all combos require this unique product.",
+    devComboUniqueProductEnableToggle: "Include Unique Product / Service in this Combo",
+    devComboUniqueProductTemplates: "Quick Templates:",
+    devComboUniqueProductTemplateSuspension: "Suspension Tuning (Style, Weight, Accessories)",
+    devComboUniqueProductTemplateECU: "ECU Remap / Tuning",
+    devComboUniqueProductTemplateCustom: "Blank Custom",
+    devComboUniqueProductNameEs: "Product/Service Name (Spanish)",
+    devComboUniqueProductNameEn: "Product/Service Name (English)",
+    devComboUniqueProductBadgeEs: "Badge (Spanish)",
+    devComboUniqueProductBadgeEn: "Badge (English)",
+    devComboUniqueProductDescEs: "Detailed Description (Spanish)",
+    devComboUniqueProductDescEn: "Detailed Description (English)",
+    devComboUniqueProductPrice: "Included Value / Price in Combo (₡)",
+    devComboUniqueProductImage: "Unique Product/Service Image",
+    devComboUniqueProductUploadImage: "Upload Image",
+    devComboUniqueProductFieldsTitle: "Customization Fields Required from Buyer",
+    devComboUniqueProductFieldsSubtitle: "Define the specifications the customer must provide when buying this combo (e.g. Rider weight, Ride style, Installed accessories).",
+    devComboUniqueProductAddField: "Add Field",
+    devComboUniqueProductFieldName: "Field Name",
+    devComboUniqueProductFieldType: "Field Type",
+    devComboUniqueProductFieldTypeText: "Free Text",
+    devComboUniqueProductFieldTypeNumber: "Number",
+    devComboUniqueProductFieldTypeSelect: "Options (Dropdown)",
+    devComboUniqueProductFieldOptionsPrompt: "Comma-separated options (e.g. Dunes, Trail, Rocks)",
+    devComboUniqueProductFieldRequired: "Required",
+    devComboUniqueProductQuickCreateProduct: "Quick Create Product in Catalog",
+    devComboUniqueProductQuickCreateModalTitle: "Create & Link New Product to Catalog",
+    devComboUniqueProductQuickCreateSuccess: "Product created successfully and linked to combo.",
+    comboUniqueProductBadgeDefault: "EXCLUSIVE PRODUCT / SERVICE",
+    comboUniqueProductCustomizationTitle: "Customization Required for this Combo",
+    comboUniqueProductCustomizationSubtitle: "Please specify the following details so our technicians prepare and calibrate the package specifically for you and your machine.",
+    comboUniqueProductRequiredMissing: "Please complete the following required combo customization fields before proceeding:",
     devComboAvailabilityCol: "Availability",
     devComboAvailabilityLiveTitle: "Live Dynamic Combo Availability",
     devComboAvailabilityNotice: "This combo's availability is automatically calculated in real-time based on the stock of its listed products.",

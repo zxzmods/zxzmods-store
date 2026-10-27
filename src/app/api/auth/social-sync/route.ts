@@ -22,6 +22,7 @@ export async function POST(request: Request) {
     if (idToken) {
       const decoded = await verifyFirebaseIdToken(idToken);
       if (!decoded) {
+        console.error("[SOCIAL_SYNC_ERROR] verifyFirebaseIdToken failed or returned null for token");
         return NextResponse.json(
           { success: false, error: "Token de autenticación inválido o expirado" },
           { status: 401 }
