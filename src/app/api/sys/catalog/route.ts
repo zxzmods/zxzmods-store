@@ -74,11 +74,27 @@ export async function GET() {
         try { brand = JSON.parse(p.brandJson); } catch {}
       }
 
-      let imgs: string[] = [p.imageUrl || "/images/logo.png"];
-      if (jsonP?.imgs && Array.isArray(jsonP.imgs) && jsonP.imgs.length > 0) imgs = jsonP.imgs;
-      else if (p.imagesJson) {
-        try { imgs = JSON.parse(p.imagesJson); } catch {}
+      let imgs: string[] = [];
+      const primaryImg = typeof p.imageUrl === "string" && p.imageUrl.trim() ? p.imageUrl.trim() : "";
+      if (primaryImg) imgs.push(primaryImg);
+      if (p.imagesJson) {
+        try {
+          const parsed = JSON.parse(p.imagesJson);
+          if (Array.isArray(parsed)) {
+            parsed.forEach((img: any) => {
+              const s = typeof img === "string" ? img.trim() : "";
+              if (s && !imgs.includes(s)) imgs.push(s);
+            });
+          }
+        } catch {}
       }
+      if (imgs.length === 0 && jsonP?.imgs && Array.isArray(jsonP.imgs)) {
+        jsonP.imgs.forEach((img: string) => {
+          const s = typeof img === "string" ? img.trim() : "";
+          if (s && !imgs.includes(s)) imgs.push(s);
+        });
+      }
+      if (imgs.length === 0) imgs = ["/images/logo.png"];
 
       let vids: string[] = [];
       if (p.videosJson) {

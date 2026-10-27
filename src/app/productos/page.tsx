@@ -143,7 +143,15 @@ function ProductCatalogCard({
   const selectedParametersList: SelectedParameterItem[] = useMemo(() => {
     if (!product.parameters || product.parameters.length === 0) return [];
     return product.parameters.map((param) => {
-      const def = param.options?.find((o) => o.isDefault) || param.options?.[0];
+      const matchingLinkedOption = (param as any).type === "product_linking"
+        ? param.options?.find(
+            (o: any) =>
+              o.linkedProductId === product.id ||
+              o.linkedProductId === product.slug ||
+              o.linkedProductId === (product as any).sku
+          )
+        : null;
+      const def = matchingLinkedOption || param.options?.find((o) => o.isDefault) || param.options?.[0];
       return {
         parameterId: param.id,
         parameterName: lang === "es" ? param.nameEs : (param.nameEn || param.nameEs),
@@ -154,7 +162,7 @@ function ProductCatalogCard({
         imageUrl: def?.imageUrl,
       };
     });
-  }, [product.parameters, lang]);
+  }, [product.parameters, product.id, product.slug, (product as any).sku, lang]);
 
   const totalDeltaCRC = useMemo(() => {
     return selectedParametersList.reduce((acc, p) => acc + (p.priceDeltaCRC || 0), 0);
@@ -162,16 +170,16 @@ function ProductCatalogCard({
 
   const effectivePriceCRC = (product.price?.T_price ?? 0) + totalDeltaCRC;
 
-  const activeOptionImage = useMemo(() => {
-    for (const item of selectedParametersList) {
-      if (item.imageUrl) return item.imageUrl;
-    }
-    return null;
-  }, [selectedParametersList]);
-
-  const cardImageUrl = activeOptionImage || product.imgs?.[0] || "/images/logo.png";
+  // The preview image in searching must always show the product's primary image
+  const cardImageUrl = (product.imageUrl && product.imageUrl.trim()) || product.imgs?.[0] || "/images/logo.png";
   const compStatus = checkVehicleCompatibility(product);
   const isFreeInstallation = product.price?.I_price?.includes ?? false;
+
+  const [imgSrc, setImgSrc] = useState(cardImageUrl);
+
+  useEffect(() => {
+    setImgSrc(cardImageUrl);
+  }, [cardImageUrl]);
 
   return (
     <div
@@ -218,11 +226,12 @@ function ProductCatalogCard({
             </span>
           )}
           <Image
-            src={cardImageUrl}
+            src={imgSrc}
             alt={lang === "en" && (product as any).nameEn ? (product as any).nameEn : product.p_title}
             fill
             sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
             className="object-contain p-2 group-hover:scale-105 transition-transform duration-500"
+            onError={() => setImgSrc("/images/logo.png")}
           />
         </div>
 
@@ -391,7 +400,7 @@ function ProductsContent() {
   const [hasInStock, setHasInStock] = useState(false);
   const [hasDiscounted, setHasDiscounted] = useState(false);
   const [sxsBrandModels, setSxsBrandModels] = useState<
-    Record<string, Array<{ id: string; name: string; code?: string | null; slug: string }>>
+    Record<string, Array<{ id: string; name: string; code?: string | null; slug: string; imageUrl?: string | null }>>
   >({});
 
   const activeSxsBrand = getSxsBrandBySlug(selectedVehicleBrand !== "all" ? selectedVehicleBrand : undefined);
@@ -405,6 +414,84 @@ function ProductsContent() {
     }
     return null;
   });
+
+  // Determine if a specific vehicle model is actively selected or searched
+  const selectedVehicleModel = useMemo(() => {
+    const currentModels = sxsBrandModels[selectedVehicleBrand?.toLowerCase()] || [];
+    if (currentModels.length === 0) return null;
+
+    const qNorm = searchQuery.toLowerCase().trim();
+    const vModelParam = (searchParams.get("vehicleModel") || "").toLowerCase().trim();
+    const escapeRegex = (s: string) => s.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
+
+    if (qNorm || vModelParam) {
+      for (const mod of currentModels) {
+        const modNameNorm = mod.name.toLowerCase().trim();
+        const modCodeNorm = (mod.code || "").toLowerCase().trim();
+        const modSlugNorm = mod.slug.toLowerCase().trim();
+
+        if (qNorm) {
+          if (qNorm === modNameNorm || (modCodeNorm && qNorm === modCodeNorm) || qNorm === modSlugNorm) {
+            return mod;
+          }
+          const qPlat = detectVehiclePlatform(qNorm);
+          const modPlat = detectVehiclePlatform(mod.code || mod.name || mod.slug);
+          if (qPlat && modPlat && qPlat === modPlat) {
+            return mod;
+          }
+          if (modCodeNorm) {
+            const codeRegex = new RegExp(`(^|[\\s\\-_/])${escapeRegex(modCodeNorm)}($|[\\s\\-_/])`, "i");
+            if (codeRegex.test(qNorm)) return mod;
+          }
+          if (qNorm.includes(modNameNorm) || (modNameNorm.length > 5 && modNameNorm.includes(qNorm))) {
+            return mod;
+          }
+        }
+
+        if (vModelParam) {
+          if (vModelParam === modNameNorm || (modCodeNorm && vModelParam === modCodeNorm) || vModelParam === modSlugNorm) {
+            return mod;
+          }
+          if (vModelParam.includes(modNameNorm) || (modCodeNorm && vModelParam.includes(modCodeNorm))) {
+            return mod;
+          }
+        }
+      }
+    }
+
+    if (onlyCompatibleWithGarage && vehicle) {
+      const vNameNorm = `${vehicle.brandName || ""} ${vehicle.modelName || ""}`.toLowerCase().trim();
+      for (const mod of currentModels) {
+        if (vNameNorm.includes(mod.name.toLowerCase().trim())) {
+          return mod;
+        }
+      }
+    }
+
+    return null;
+  }, [sxsBrandModels, selectedVehicleBrand, searchQuery, searchParams, onlyCompatibleWithGarage, vehicle]);
+
+  const bannerVehicleImageUrl = useMemo(() => {
+    if (
+      selectedVehicleModel?.imageUrl &&
+      selectedVehicleModel.imageUrl.trim() &&
+      selectedVehicleModel.imageUrl !== "null" &&
+      selectedVehicleModel.imageUrl !== "undefined"
+    ) {
+      return selectedVehicleModel.imageUrl.trim();
+    }
+    return activeSxsBrand?.sxsImageUrl || "/images/sxs/cfmoto_sxs.png";
+  }, [selectedVehicleModel, activeSxsBrand]);
+
+  const [bannerImageError, setBannerImageError] = useState(false);
+
+  useEffect(() => {
+    setBannerImageError(false);
+  }, [bannerVehicleImageUrl]);
+
+  const finalBannerImageUrl = bannerImageError
+    ? (activeSxsBrand?.sxsImageUrl || "/images/sxs/cfmoto_sxs.png")
+    : bannerVehicleImageUrl;
 
   // Helper to update URL params smoothly
   const updateUrlParams = (newParams: Record<string, string | null | undefined>) => {
@@ -571,7 +658,7 @@ function ProductsContent() {
       installationPriceCRC: isIncluded ? 0 : (Number(product.price?.I_price?.I_price) || 0),
       withInstallation: isIncluded,
       freeInstallation: isIncluded,
-      imageUrl: chosenImage || product.imgs?.[0] || "/images/logo.png",
+      imageUrl: chosenImage || (product.imageUrl && product.imageUrl.trim()) || product.imgs?.[0] || "/images/logo.png",
       homeInstallation: product.homeInstallation !== false,
       supplierStockStatus: product.supplierStockStatus,
       supplierStockMessage: (lang === "es" ? product.supplierStockMessageEs : product.supplierStockMessageEn) || undefined,
@@ -770,11 +857,13 @@ function ProductsContent() {
             <div className="relative w-64 sm:w-80 h-44 sm:h-52 flex items-center justify-center flex-shrink-0">
               <div className="relative w-full h-full">
                 <Image
-                  src={activeSxsBrand.sxsImageUrl}
-                  alt={`${activeSxsBrand.title} SxS`}
+                  key={finalBannerImageUrl}
+                  src={finalBannerImageUrl}
+                  alt={selectedVehicleModel ? `${selectedVehicleModel.name} SxS` : `${activeSxsBrand.title} SxS`}
                   fill
-                  className="object-contain drop-shadow-md"
+                  className="object-contain drop-shadow-md transition-all duration-300"
                   priority
+                  onError={() => setBannerImageError(true)}
                 />
               </div>
               <div className="absolute bottom-1 inset-x-8 h-4 bg-gradient-to-t from-gray-300/40 to-transparent blur-md rounded-full pointer-events-none" />

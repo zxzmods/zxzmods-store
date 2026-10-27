@@ -5,7 +5,7 @@ export interface DirectUploadProgress {
 }
 
 export interface DirectUploadOptions {
-  folder?: "videos" | "products" | "combos" | "brands" | "payments" | "audios";
+  folder?: "videos" | "products" | "combos" | "brands" | "payments" | "audios" | "vehicles";
   onProgress?: (progress: DirectUploadProgress) => void;
   lang?: "es" | "en";
 }

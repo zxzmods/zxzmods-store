@@ -186,7 +186,7 @@ export async function generateSignedUploadUrl(
   originalFilename: string,
   mimeType: string,
   fileSize: number,
-  folder: "products" | "combos" | "brands" | "payments" | "videos" | "audios" = "products",
+  folder: "products" | "combos" | "brands" | "payments" | "videos" | "audios" | "vehicles" = "products",
   overrideSupabaseKey?: string
 ): Promise<{
   success: boolean;
@@ -324,7 +324,7 @@ export async function processAndStoreImage(
   buffer: Buffer,
   originalFilename: string,
   mimeType: string,
-  folder: "products" | "combos" | "brands" | "payments" | "videos" | "audios" = "products"
+  folder: "products" | "combos" | "brands" | "payments" | "videos" | "audios" | "vehicles" = "products"
 ): Promise<UploadImageResult> {
   const validation = validateMedia({ type: mimeType, size: buffer.length }, folder);
   if (!validation.valid) {

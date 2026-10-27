@@ -15,7 +15,6 @@ const nextConfig = {
     ],
     optimizePackageImports: [
       "lucide-react",
-      "framer-motion",
     ],
   },
   webpack: (config) => {

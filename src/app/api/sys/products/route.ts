@@ -60,7 +60,14 @@ export async function POST(request: Request) {
     const compArr = body.comp !== undefined ? (Array.isArray(body.comp) ? body.comp : [body.comp]) : ["z10", "z10-4"];
     const catArr = body.category !== undefined ? (Array.isArray(body.category) ? body.category : [body.category]) : ["performance"];
     const brandArr = body.brand !== undefined ? (Array.isArray(body.brand) ? body.brand : [body.brand]) : [brandName || "Bikeman Performance"];
-    const imgsArr = body.imgs !== undefined ? (Array.isArray(body.imgs) ? body.imgs : [body.imgs]) : [imageUrl || "/images/logo.png"];
+    const explicitImageUrl = typeof imageUrl === "string" && imageUrl.trim() ? imageUrl.trim() : (typeof body.imageUrl === "string" && body.imageUrl.trim() ? body.imageUrl.trim() : null);
+    let rawImgs = body.imgs !== undefined ? (Array.isArray(body.imgs) ? body.imgs : [body.imgs]) : (explicitImageUrl ? [explicitImageUrl] : ["/images/logo.png"]);
+    rawImgs = rawImgs.map((s: any) => (typeof s === "string" ? s.trim() : "")).filter(Boolean);
+    if (explicitImageUrl) {
+      rawImgs = [explicitImageUrl, ...rawImgs.filter((u: string) => u !== explicitImageUrl)];
+    }
+    const imgsArr = rawImgs.length > 0 ? rawImgs : ["/images/logo.png"];
+    const finalImageUrl = explicitImageUrl || imgsArr[0] || "/images/logo.png";
     const vidsArr = (body.vids !== undefined ? (Array.isArray(body.vids) ? body.vids : [body.vids]) : (videoUrl ? [videoUrl] : []))
       .map(normalizeVideoUrl)
       .filter(Boolean);
@@ -170,7 +177,7 @@ export async function POST(request: Request) {
         warrantyCategory,
         descriptionEs: cleanDescriptionText(descriptionEs),
         descriptionEn: cleanDescriptionText(descriptionEn),
-        imageUrl: imgsArr[0] || imageUrl,
+        imageUrl: finalImageUrl,
         stockStatus,
         featured: Boolean(featured),
         homeInstallationAvailable: Boolean(body.inHome_install !== undefined ? body.inHome_install : homeInstallationAvailable),

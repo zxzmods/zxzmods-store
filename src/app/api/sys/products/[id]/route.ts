@@ -121,12 +121,34 @@ export async function PATCH(
       updateData.brandJson = typeof body.brandJson === "string" ? body.brandJson : JSON.stringify(body.brandJson);
     }
 
+    const explicitImageUrl = typeof body.imageUrl === "string" && body.imageUrl.trim() ? body.imageUrl.trim() : null;
+
     if (body.imgs !== undefined) {
-      const imgsArray = Array.isArray(body.imgs) ? body.imgs : [body.imgs];
+      let imgsArray = (Array.isArray(body.imgs) ? body.imgs : [body.imgs])
+        .map((s: any) => (typeof s === "string" ? s.trim() : ""))
+        .filter(Boolean);
+      if (explicitImageUrl) {
+        imgsArray = [explicitImageUrl, ...imgsArray.filter((u: string) => u !== explicitImageUrl)];
+        updateData.imageUrl = explicitImageUrl;
+      } else if (imgsArray.length > 0) {
+        updateData.imageUrl = imgsArray[0];
+      }
       updateData.imagesJson = JSON.stringify(imgsArray);
-      if (imgsArray.length > 0) updateData.imageUrl = imgsArray[0];
     } else if (body.imagesJson !== undefined) {
-      updateData.imagesJson = typeof body.imagesJson === "string" ? body.imagesJson : JSON.stringify(body.imagesJson);
+      let imgsArray: string[] = [];
+      try {
+        const parsed = typeof body.imagesJson === "string" ? JSON.parse(body.imagesJson) : body.imagesJson;
+        if (Array.isArray(parsed)) {
+          imgsArray = parsed.map((s: any) => (typeof s === "string" ? s.trim() : "")).filter(Boolean);
+        }
+      } catch {}
+      if (explicitImageUrl) {
+        imgsArray = [explicitImageUrl, ...imgsArray.filter((u: string) => u !== explicitImageUrl)];
+        updateData.imageUrl = explicitImageUrl;
+      }
+      updateData.imagesJson = JSON.stringify(imgsArray);
+    } else if (explicitImageUrl) {
+      updateData.imageUrl = explicitImageUrl;
     }
 
     if (body.vids !== undefined) {

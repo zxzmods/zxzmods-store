@@ -3,6 +3,7 @@ import { PrismaClient } from "@prisma/client";
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
   sqlitePragmasConfigured?: boolean;
+  hasRegisteredPrismaExitHook?: boolean;
 };
 
 export const prisma =
@@ -13,7 +14,7 @@ export const prisma =
 
 // Configure SQLite pragmas for high concurrency, durability and busy timeout tolerance only on SQLite
 const dbUrl = process.env.DATABASE_URL || "";
-const isSqlite = !dbUrl.startsWith("postgres://") && !dbUrl.startsWith("postgresql://") && (dbUrl.startsWith("file:") || !dbUrl);
+const isSqlite = Boolean(dbUrl && (dbUrl.startsWith("file:") || dbUrl.includes(".db") || dbUrl.includes("sqlite")));
 
 if (isSqlite && !globalForPrisma.sqlitePragmasConfigured) {
   globalForPrisma.sqlitePragmasConfigured = true;
@@ -36,7 +37,8 @@ if (isSqlite && !globalForPrisma.sqlitePragmasConfigured) {
 }
 
 // Clean up connections on process termination
-if (typeof process !== "undefined") {
+if (typeof process !== "undefined" && !globalForPrisma.hasRegisteredPrismaExitHook) {
+  globalForPrisma.hasRegisteredPrismaExitHook = true;
   const cleanDisconnect = async () => {
     try {
       await prisma.$disconnect();

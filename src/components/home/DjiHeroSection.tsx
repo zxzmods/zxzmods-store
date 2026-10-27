@@ -6,8 +6,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useLanguage } from "@/context/LanguageContext";
 import { useCart } from "@/context/CartContext";
 import { formatCRC, formatUSD, convertCRCToUSD } from "@/lib/i18n";
-import { ChevronRight, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { useTouchSwipe } from "@/lib/useTouchSwipe";
 
 export interface RelatedItem {
   id: string;
@@ -246,6 +247,15 @@ export function DjiHeroSection() {
     };
   }, [activeVideoIndex, videoScenes.length]);
 
+  // Touch swipe support for mobile phone gestures
+  const { touchHandlers, isSwiping } = useTouchSwipe({
+    onSwipeLeft: advanceToNext,
+    onSwipeRight: () => {
+      transitionToScene((activeVideoIndex - 1 + videoScenes.length) % videoScenes.length);
+    },
+    minDistance: 45,
+  });
+
   // Rule 7: Animated Skeleton Screen while loading real backend data
   if (loading) {
     return (
@@ -266,7 +276,10 @@ export function DjiHeroSection() {
   const currentScene = videoScenes[activeVideoIndex] || videoScenes[0];
 
   return (
-    <section className="relative w-full h-[90vh] sm:h-screen overflow-hidden bg-black select-none flex flex-col justify-end pb-12 sm:pb-16 border-b border-gray-200">
+    <section
+      {...touchHandlers}
+      className="relative w-full h-[90vh] sm:h-screen overflow-hidden bg-black select-none flex flex-col justify-end pb-12 sm:pb-16 border-b border-gray-200 touch-pan-y"
+    >
       {/* 
         1. Stacked Dual-Layer Video/Image Container
       */}
@@ -321,30 +334,56 @@ export function DjiHeroSection() {
         <div className="absolute bottom-0 inset-x-0 h-72 bg-gradient-to-t from-black/85 via-black/35 to-transparent pointer-events-none z-20" />
       </div>
 
+      {/* Mobile Swipe Navigation Floating Chevrons */}
+      {videoScenes.length > 1 && (
+        <div className="absolute inset-y-0 inset-x-2 flex items-center justify-between pointer-events-none z-30 sm:hidden">
+          <button
+            type="button"
+            onClick={() => transitionToScene((activeVideoIndex - 1 + videoScenes.length) % videoScenes.length)}
+            className="w-10 h-10 rounded-full bg-black/40 hover:bg-black/60 backdrop-blur-md text-white border border-white/20 flex items-center justify-center pointer-events-auto active:scale-95 transition-all shadow-md"
+            aria-label="Video anterior"
+          >
+            <ChevronLeft className="w-5 h-5 text-white" />
+          </button>
+          <button
+            type="button"
+            onClick={advanceToNext}
+            className="w-10 h-10 rounded-full bg-black/40 hover:bg-black/60 backdrop-blur-md text-white border border-white/20 flex items-center justify-center pointer-events-auto active:scale-95 transition-all shadow-md"
+            aria-label="Siguiente video"
+          >
+            <ChevronRight className="w-5 h-5 text-white" />
+          </button>
+        </div>
+      )}
+
       {/* 
-        2. Minimalist DJI Scene Dots / Switcher with Smooth Progress Fill
+        2. Minimalist DJI Scene Dots / Switcher with Smooth Progress Fill (Comfortable Mobile Touch Areas)
       */}
-      <div className="absolute bottom-6 left-4 sm:bottom-10 sm:left-10 z-30 flex items-center gap-2">
+      <div className="absolute bottom-6 left-4 sm:bottom-10 sm:left-10 z-30 flex items-center gap-1.5 sm:gap-2">
         {videoScenes.map((scene, idx) => {
           const isActive = activeVideoIndex === idx;
           return (
             <button
               key={scene.id}
               onClick={() => transitionToScene(idx)}
-              className={`relative h-2 rounded-full overflow-hidden transition-all duration-300 ${
-                isActive
-                  ? "w-10 bg-white/30 shadow-md"
-                  : "w-2.5 bg-white/40 hover:bg-white/70"
-              }`}
+              className="p-2 -m-1.5 flex items-center justify-center cursor-pointer group"
               title={scene.title}
               aria-label={`Ver video ${scene.title}`}
             >
-              {isActive && (
-                <span
-                  className="absolute inset-y-0 left-0 bg-white rounded-full transition-all duration-75 ease-linear"
-                  style={{ width: `${progress}%` }}
-                />
-              )}
+              <span
+                className={`relative h-2 rounded-full overflow-hidden transition-all duration-300 block ${
+                  isActive
+                    ? "w-10 bg-white/30 shadow-md"
+                    : "w-2.5 bg-white/40 group-hover:bg-white/70"
+                }`}
+              >
+                {isActive && (
+                  <span
+                    className="absolute inset-y-0 left-0 bg-white rounded-full transition-all duration-75 ease-linear"
+                    style={{ width: `${progress}%` }}
+                  />
+                )}
+              </span>
             </button>
           );
         })}
@@ -372,8 +411,11 @@ export function DjiHeroSection() {
           {currentScene.relatedItems && currentScene.relatedItems.length >= 2 ? (
             <button
               type="button"
-              onClick={() => setPopupScene(currentScene)}
-              className="flex items-center gap-1.5 px-6 py-2.5 rounded-full border border-white/80 hover:border-white text-xs sm:text-sm font-semibold text-white bg-black/30 hover:bg-black/50 backdrop-blur-md transition-all shadow-md hover:scale-105 cursor-pointer"
+              onClick={() => {
+                if (isSwiping()) return;
+                setPopupScene(currentScene);
+              }}
+              className="flex items-center gap-1.5 px-6 py-2.5 rounded-full border border-white/80 hover:border-white text-xs sm:text-sm font-semibold text-white bg-black/30 hover:bg-black/50 backdrop-blur-md transition-all shadow-md hover:scale-105 cursor-pointer active:scale-95"
             >
               <span>{t.heroLearnMore || "Conocer Más"}</span>
               <ChevronRight className="w-3.5 h-3.5 text-white" />
@@ -381,7 +423,10 @@ export function DjiHeroSection() {
           ) : (
             <Link
               href={currentScene.exploreLink}
-              className="flex items-center gap-1.5 px-6 py-2.5 rounded-full border border-white/80 hover:border-white text-xs sm:text-sm font-semibold text-white bg-black/30 hover:bg-black/50 backdrop-blur-md transition-all shadow-md hover:scale-105"
+              onClick={(e) => {
+                if (isSwiping()) e.preventDefault();
+              }}
+              className="flex items-center gap-1.5 px-6 py-2.5 rounded-full border border-white/80 hover:border-white text-xs sm:text-sm font-semibold text-white bg-black/30 hover:bg-black/50 backdrop-blur-md transition-all shadow-md hover:scale-105 active:scale-95"
             >
               <span>{t.heroLearnMore || "Conocer Más"}</span>
               <ChevronRight className="w-3.5 h-3.5 text-white" />

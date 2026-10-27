@@ -2,7 +2,7 @@
 
 export const dynamic = "force-dynamic";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -15,8 +15,9 @@ import { useLanguage } from "@/context/LanguageContext";
 import { useCart } from "@/context/CartContext";
 import { useGarage } from "@/context/GarageContext";
 import { getWhatsAppUrl } from "@/config/company";
-import { formatCRC, getCategoryLabel } from "@/lib/i18n";
+import { formatCRC, getCategoryLabel, formatUSD, convertCRCToUSD } from "@/lib/i18n";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { useTouchSwipe } from "@/lib/useTouchSwipe";
 import {
   ProductItem,
   ParameterOption,
@@ -328,7 +329,7 @@ export default function ProductDetailPage() {
   const slug = params?.slug as string;
 
   const { t, lang } = useLanguage();
-  const { items, addItem, updateQuantity, removeItem, setIsOpen, createQuotationOrder } = useCart();
+  const { items, addItem, updateQuantity, removeItem, setIsOpen, createQuotationOrder, currency, sellRate } = useCart();
   const { requireVehicleBeforeAction, vehicle, openModal } = useGarage();
 
   const [product, setProduct] = useState<ProductItem | null>(null);
@@ -468,6 +469,10 @@ export default function ProductDetailPage() {
     }));
     if (opt.imageUrl) {
       setSelectedImageOverride(opt.imageUrl);
+      const optIdx = allImages.indexOf(opt.imageUrl);
+      if (optIdx !== -1) {
+        setActiveImageIndex(optIdx);
+      }
     }
   };
 
@@ -728,18 +733,18 @@ export default function ProductDetailPage() {
     return list;
   }, [product, selectedOptions, lang]);
 
-  // Complete image gallery (primary, imagesJson, additionalImages, and option images)
+  // Complete image gallery (primary image first, followed by deduplicated gallery images)
   const allImages = useMemo(() => {
     const list: string[] = [];
+    if (product?.imageUrl && typeof product.imageUrl === "string") {
+      const s = product.imageUrl.trim();
+      if (s) list.push(s);
+    }
     if (product?.imgs && Array.isArray(product.imgs)) {
       product.imgs.forEach((img) => {
         const s = typeof img === "string" ? img.trim() : "";
         if (s && !list.includes(s)) list.push(s);
       });
-    }
-    if (product?.imageUrl && typeof product.imageUrl === "string") {
-      const s = product.imageUrl.trim();
-      if (s && !list.includes(s)) list.unshift(s);
     }
     return list.length > 0 ? list : ["/images/logo.png"];
   }, [product]);
@@ -754,9 +759,8 @@ export default function ProductDetailPage() {
 
   const displayImageUrl = useMemo(() => {
     if (selectedImageOverride) return selectedImageOverride;
-    if (activeOptionImage && allImages.includes(activeOptionImage)) return activeOptionImage;
     return allImages[activeImageIndex] || allImages[0] || "/images/logo.png";
-  }, [selectedImageOverride, activeOptionImage, allImages, activeImageIndex]);
+  }, [selectedImageOverride, allImages, activeImageIndex]);
 
   const totalDeltaCRC = useMemo(() => {
     return selectedParametersList.reduce((acc, p) => acc + (p.priceDeltaCRC || 0), 0);
@@ -770,6 +774,54 @@ export default function ProductDetailPage() {
     const paramSlug = selectedParametersList.map((p) => `${p.parameterId}_${p.optionId}`).join("__");
     return `${product.id}__${paramSlug}`;
   }, [product, selectedParametersList]);
+
+  // Gallery navigation functions for touch swipe and tap
+  const handleNextImage = useCallback(() => {
+    if (allImages.length <= 1) return;
+    setSelectedImageOverride(null);
+    setActiveImageIndex((prev) => (prev + 1) % allImages.length);
+  }, [allImages.length]);
+
+  const handlePrevImage = useCallback(() => {
+    if (allImages.length <= 1) return;
+    setSelectedImageOverride(null);
+    setActiveImageIndex((prev) => (prev - 1 + allImages.length) % allImages.length);
+  }, [allImages.length]);
+
+  // Touch swipe support for main product gallery (phone usage)
+  const { touchHandlers: galleryTouchHandlers, isSwiping: isGallerySwiping } = useTouchSwipe({
+    onSwipeLeft: handleNextImage,
+    onSwipeRight: handlePrevImage,
+    minDistance: 35,
+  });
+
+  // Touch swipe support for fullscreen lightbox modal
+  const { touchHandlers: lightboxTouchHandlers } = useTouchSwipe({
+    onSwipeLeft: () => {
+      if (allImages.length <= 1) return;
+      setLightboxImageIndex((prev) => (prev === allImages.length - 1 ? 0 : prev + 1));
+    },
+    onSwipeRight: () => {
+      if (allImages.length <= 1) return;
+      setLightboxImageIndex((prev) => (prev === 0 ? allImages.length - 1 : prev - 1));
+    },
+    minDistance: 40,
+  });
+
+  // Mobile Sticky Bottom Bar tracking
+  const buySectionRef = useRef<HTMLDivElement>(null);
+  const [showStickyBar, setShowStickyBar] = useState(false);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      if (!buySectionRef.current) return;
+      const rect = buySectionRef.current.getBoundingClientRect();
+      setShowStickyBar(rect.bottom < 60);
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
 
   const handleAddToCart = () => {
     if (!product) return;
@@ -927,7 +979,7 @@ export default function ProductDetailPage() {
       <NotificationBanner />
       <Navbar />
 
-      <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 sm:pt-24 pb-16 w-full">
+      <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 sm:pt-24 pb-24 sm:pb-16 w-full">
         {/* Navigation Breadcrumb */}
         <div className="flex items-center gap-2 text-xs text-gray-500 mb-6">
           <Link
@@ -991,9 +1043,10 @@ export default function ProductDetailPage() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-14 items-start">
               {/* Left Column: Visual Media Gallery & Description Below Audio */}
               <div className="space-y-5">
-                {/* Main Image with Zoom Lightbox Trigger */}
+                {/* Main Image with Zoom Lightbox Trigger & Touch Swipe Gestures */}
                 <div
                   onClick={() => {
+                    if (isGallerySwiping()) return;
                     const currentIdx = selectedImageOverride
                       ? allImages.indexOf(selectedImageOverride) !== -1
                         ? allImages.indexOf(selectedImageOverride)
@@ -1002,13 +1055,22 @@ export default function ProductDetailPage() {
                     setLightboxImageIndex(currentIdx >= 0 ? currentIdx : 0);
                     setIsLightboxOpen(true);
                   }}
-                  className="group relative h-80 sm:h-[460px] w-full rounded-3xl bg-gradient-to-b from-[#FBFBFC] to-[#F1F3F5] border border-gray-200 overflow-hidden flex items-center justify-center p-6 shadow-sm cursor-zoom-in"
+                  {...galleryTouchHandlers}
+                  className="group relative h-80 sm:h-[460px] w-full rounded-3xl bg-gradient-to-b from-[#FBFBFC] to-[#F1F3F5] border border-gray-200 overflow-hidden flex items-center justify-center p-6 shadow-sm cursor-zoom-in touch-pan-y select-none"
                 >
                   {Boolean(product.discountPercent && product.discountPercent > 0) && (
                     <span className="absolute top-4 left-4 z-10 bg-[#C02030] text-white text-xs font-black px-3 py-1 rounded-full shadow-md tracking-wider uppercase">
                       -{product.discountPercent}% OFF
                     </span>
                   )}
+
+                  {/* Mobile Image Counter Badge */}
+                  {allImages.length > 1 && (
+                    <div className="absolute top-4 left-4 bg-black/60 backdrop-blur-sm text-white text-[10px] font-bold px-2.5 py-1 rounded-full z-10 sm:hidden">
+                      {((selectedImageOverride ? allImages.indexOf(selectedImageOverride) : activeImageIndex) + 1) || 1} / {allImages.length}
+                    </div>
+                  )}
+
                   <Image
                     src={displayImageUrl}
                     alt={product.p_title}
@@ -1024,6 +1086,55 @@ export default function ProductDetailPage() {
                       {lang === "es" ? "Ampliar imagen" : "Enlarge image"}
                     </span>
                   </div>
+
+                  {/* Mobile Floating Chevrons for 1-Tap Swapping */}
+                  {allImages.length > 1 && (
+                    <div className="absolute inset-y-0 inset-x-2 flex items-center justify-between pointer-events-none sm:hidden z-10">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handlePrevImage();
+                        }}
+                        className="w-9 h-9 rounded-full bg-white/85 hover:bg-white backdrop-blur-md text-gray-800 border border-gray-200/80 shadow-md flex items-center justify-center pointer-events-auto active:scale-95 transition-transform"
+                        aria-label={lang === "es" ? "Imagen anterior" : "Previous image"}
+                      >
+                        <ChevronLeft className="w-4 h-4 text-gray-800" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleNextImage();
+                        }}
+                        className="w-9 h-9 rounded-full bg-white/85 hover:bg-white backdrop-blur-md text-gray-800 border border-gray-200/80 shadow-md flex items-center justify-center pointer-events-auto active:scale-95 transition-transform"
+                        aria-label={lang === "es" ? "Siguiente imagen" : "Next image"}
+                      >
+                        <ChevronRight className="w-4 h-4 text-gray-800" />
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Mobile Pagination Indicator Dots */}
+                  {allImages.length > 1 && (
+                    <div className="absolute bottom-3 inset-x-0 flex items-center justify-center gap-1.5 z-10 pointer-events-none sm:hidden">
+                      {allImages.map((imgUrl, i) => {
+                        const isCurrentActive =
+                          (!selectedImageOverride && activeImageIndex === i) ||
+                          selectedImageOverride === imgUrl;
+                        return (
+                          <span
+                            key={i}
+                            className={`h-1.5 rounded-full transition-all duration-300 ${
+                              isCurrentActive
+                                ? "w-6 bg-[#C02030] shadow-sm"
+                                : "w-1.5 bg-black/30"
+                            }`}
+                          />
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
 
                 {/* Thumbnails */}
@@ -1681,7 +1792,7 @@ export default function ProductDetailPage() {
                 )}
 
                 {/* Action Buttons */}
-                <div className="flex flex-col sm:flex-row items-center gap-3 pt-2">
+                <div ref={buySectionRef} className="flex flex-col sm:flex-row items-center gap-3 pt-2">
                   {quantityInCart === 0 ? (
                     availability?.status === "OUT_OF_STOCK" || availability?.status === "UNAVAILABLE" ? (
                       <button
@@ -2071,10 +2182,11 @@ export default function ProductDetailPage() {
             </button>
           </div>
 
-          {/* Lightbox Center Image */}
+          {/* Lightbox Center Image with Touch Swipe Support */}
           <div
-            className="flex-1 relative flex items-center justify-center max-w-6xl mx-auto w-full p-2 sm:p-6"
+            className="flex-1 relative flex items-center justify-center max-w-6xl mx-auto w-full p-2 sm:p-6 touch-pan-y select-none"
             onClick={(e) => e.stopPropagation()}
+            {...lightboxTouchHandlers}
           >
             {allImages.length > 1 && (
               <button
@@ -2188,6 +2300,45 @@ export default function ProductDetailPage() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Mobile Phone Sticky Buy Action Bar */}
+      {showStickyBar && product && (
+        <div className="fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur-md border-t border-gray-200 p-3 sm:hidden shadow-[0_-4px_20px_rgba(0,0,0,0.12)] flex items-center justify-between gap-3 animate-fade-in pb-safe">
+          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+            <div className="relative w-11 h-11 rounded-xl bg-gray-100 overflow-hidden shrink-0 border border-gray-200">
+              <Image
+                src={displayImageUrl}
+                alt={product.p_title}
+                fill
+                className="object-contain p-1"
+              />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-bold text-gray-900 truncate">
+                {lang === "en" && (product as any).nameEn ? (product as any).nameEn : product.p_title}
+              </p>
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-sm font-black text-[#C02030] font-mono">
+                  {formatCRC(effectivePriceCRC)}
+                </span>
+                {currency === "USD" && (
+                  <span className="text-[10px] font-bold text-gray-400 font-mono">
+                    ({formatUSD(convertCRCToUSD(effectivePriceCRC, sellRate))})
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <button
+            onClick={handleAddToCart}
+            className="px-4 py-2.5 rounded-full bg-[#111827] hover:bg-[#C02030] text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm active:scale-95 shrink-0 cursor-pointer"
+          >
+            <ShoppingCart className="w-3.5 h-3.5" />
+            <span>{quantityInCart > 0 ? `(${quantityInCart}) +` : t.productsAddToCart}</span>
+          </button>
         </div>
       )}
 

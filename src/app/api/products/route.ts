@@ -60,21 +60,6 @@ function dbProductToProductItem(dbProd: any, jsonProd?: ProductItem | null, isSt
       }
     } catch (e) {}
   }
-  if (dbProd.parametersJson) {
-    try {
-      const params = JSON.parse(dbProd.parametersJson);
-      if (Array.isArray(params)) {
-        params.forEach((param: any) => {
-          if (Array.isArray(param.options)) {
-            param.options.forEach((opt: any) => {
-              const optImg = typeof opt.imageUrl === "string" ? opt.imageUrl.trim() : "";
-              if (optImg && !imgs.includes(optImg)) imgs.push(optImg);
-            });
-          }
-        });
-      }
-    } catch (e) {}
-  }
   if (jsonProd?.imgs && Array.isArray(jsonProd.imgs)) {
     jsonProd.imgs.forEach((img: string) => {
       const s = typeof img === "string" ? img.trim() : "";
@@ -420,13 +405,14 @@ export async function GET(request: Request) {
       }),
     ]);
 
-    const sxsBrandModels: Record<string, Array<{ id: string; name: string; code?: string | null; slug: string }>> = {};
+    const sxsBrandModels: Record<string, Array<{ id: string; name: string; code?: string | null; slug: string; imageUrl?: string | null }>> = {};
     for (const b of dbBrands) {
       sxsBrandModels[b.slug.toLowerCase()] = b.models.map((m) => ({
         id: m.id,
         name: m.name,
         code: m.code,
         slug: m.slug,
+        imageUrl: m.imageUrl && m.imageUrl !== "null" && m.imageUrl !== "undefined" ? m.imageUrl.trim() : null,
       }));
     }
 

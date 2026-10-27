@@ -1234,6 +1234,10 @@ export interface Translations {
   backdoorVehiclesYearFromLabel: string;
   backdoorVehiclesYearToLabel: string;
   backdoorVehiclesImageUrlLabel: string;
+  backdoorVehiclesUploadImageBtn: string;
+  backdoorVehiclesUploadingImage: string;
+  backdoorVehiclesRemoveImageBtn: string;
+  backdoorVehiclesChangeImageBtn: string;
   backdoorVehiclesSaveSuccess: string;
   backdoorVehiclesUpdateSuccess: string;
   backdoorVehiclesDeleteConfirm: string;
@@ -3118,6 +3122,10 @@ export const translations: Record<Language, Translations> = {
     backdoorVehiclesYearFromLabel: "Desde Año",
     backdoorVehiclesYearToLabel: "Hasta Año",
     backdoorVehiclesImageUrlLabel: "URL de Imagen del Vehículo (Opcional)",
+    backdoorVehiclesUploadImageBtn: "Subir Imagen del Vehículo",
+    backdoorVehiclesUploadingImage: "Subiendo imagen...",
+    backdoorVehiclesRemoveImageBtn: "Quitar imagen",
+    backdoorVehiclesChangeImageBtn: "Cambiar imagen",
     backdoorVehiclesSaveSuccess: "¡Vehículo agregado exitosamente al catálogo del Garaje!",
     backdoorVehiclesUpdateSuccess: "¡Vehículo actualizado correctamente!",
     backdoorVehiclesDeleteConfirm: "¿Estás seguro de eliminar este modelo de vehículo del Garaje?",
@@ -4998,6 +5006,10 @@ export const translations: Record<Language, Translations> = {
     backdoorVehiclesYearFromLabel: "From Year",
     backdoorVehiclesYearToLabel: "To Year",
     backdoorVehiclesImageUrlLabel: "Vehicle Image URL (Optional)",
+    backdoorVehiclesUploadImageBtn: "Upload Vehicle Image",
+    backdoorVehiclesUploadingImage: "Uploading image...",
+    backdoorVehiclesRemoveImageBtn: "Remove image",
+    backdoorVehiclesChangeImageBtn: "Change image",
     backdoorVehiclesSaveSuccess: "Vehicle successfully added to Garage catalog!",
     backdoorVehiclesUpdateSuccess: "Vehicle successfully updated!",
     backdoorVehiclesDeleteConfirm: "Are you sure you want to delete this vehicle model from Garage?",

@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ChevronRight, ChevronLeft, Wrench } from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { useTouchSwipe } from "@/lib/useTouchSwipe";
 
 interface ProductShowcaseItem {
   id: string;
@@ -91,6 +92,13 @@ export function ProductShowcaseSection() {
     const dir = idx > currentIndex ? "next" : "prev";
     triggerTransition(idx, dir);
   };
+
+  // Touch swipe gesture support for mobile phones
+  const { touchHandlers, isSwiping } = useTouchSwipe({
+    onSwipeLeft: handleNext,
+    onSwipeRight: handlePrev,
+    minDistance: 45,
+  });
 
   // 9-second automatic cycle timer
   useEffect(() => {
@@ -217,14 +225,50 @@ export function ProductShowcaseSection() {
                   setDirection("idle");
                   setNextIndex(null);
                 }}
-                className="w-full h-full rounded-3xl bg-gradient-to-b from-[#FFFFFF] via-[#F8F9FA] to-[#EDEFF2] border border-gray-200/90 shadow-xl relative overflow-hidden group cursor-pointer"
+                {...touchHandlers}
+                className="w-full h-full rounded-3xl bg-gradient-to-b from-[#FFFFFF] via-[#F8F9FA] to-[#EDEFF2] border border-gray-200/90 shadow-xl relative overflow-hidden group cursor-pointer touch-pan-y"
               >
                 <Link
                   href={currentProduct.redirectUrl}
+                  onClick={(e) => {
+                    if (isSwiping()) {
+                      e.preventDefault();
+                    }
+                  }}
                   className="w-full h-full p-5 sm:p-8 lg:p-12 flex flex-col justify-between relative select-none block"
                 >
                   {/* Minimalistic Studio Spotlight Backdrop */}
                   <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_#FFFFFF_0%,_#F5F6F8_60%,_#EAECEF_100%)] pointer-events-none" />
+
+                  {/* Mobile Quick Chevrons for 1-Tap Swapping */}
+                  {products.length > 1 && (
+                    <div className="absolute inset-y-0 inset-x-2 flex items-center justify-between pointer-events-none z-20 sm:hidden">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handlePrev();
+                        }}
+                        className="w-9 h-9 rounded-full bg-white/90 backdrop-blur-md text-gray-800 border border-gray-200 shadow-md flex items-center justify-center pointer-events-auto active:scale-95 transition-transform"
+                        aria-label={t.ariaPreviousProduct || "Producto anterior"}
+                      >
+                        <ChevronLeft className="w-4 h-4 text-gray-800" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleNext();
+                        }}
+                        className="w-9 h-9 rounded-full bg-white/90 backdrop-blur-md text-gray-800 border border-gray-200 shadow-md flex items-center justify-center pointer-events-auto active:scale-95 transition-transform"
+                        aria-label={t.ariaNextProduct || "Siguiente producto"}
+                      >
+                        <ChevronRight className="w-4 h-4 text-gray-800" />
+                      </button>
+                    </div>
+                  )}
 
                   {/* TOP: Centered text with shortened title */}
                   <div className="relative z-10 flex flex-col items-center text-center space-y-2 pt-2">
@@ -258,7 +302,7 @@ export function ProductShowcaseSection() {
 
                   {/* BOTTOM: Centered 'Ver Más' button */}
                   <div className="relative z-10 flex items-center justify-center pt-3 border-t border-gray-200/60">
-                    <div className="inline-flex items-center gap-2 px-8 py-3 rounded-full bg-[#111827] group-hover:bg-[#C02030] text-white text-xs sm:text-sm font-bold shadow-md transition-all group-hover:scale-105">
+                    <div className="inline-flex items-center gap-2 px-8 py-3 rounded-full bg-[#111827] group-hover:bg-[#C02030] text-white text-xs sm:text-sm font-bold shadow-md transition-all group-hover:scale-105 active:scale-95">
                       <span>{t.homeProductShowcaseViewMore}</span>
                       <ChevronRight className="w-4 h-4 text-white" />
                     </div>
@@ -318,19 +362,24 @@ export function ProductShowcaseSection() {
               <ChevronLeft className="w-4 h-4" />
             </button>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 sm:gap-2">
               {products.map((p, idx) => (
                 <button
                   key={p.id}
                   onClick={() => handleSelect(idx)}
                   disabled={isAnimating}
-                  className={`h-2 rounded-full transition-all duration-300 ${
-                    currentIndex === idx
-                      ? "w-8 bg-[#C02030]"
-                      : "w-2 bg-gray-300 hover:bg-gray-400"
-                  }`}
+                  className="p-2 -m-1 flex items-center justify-center cursor-pointer group"
                   title={p.name}
-                />
+                  aria-label={`Ver producto ${p.name}`}
+                >
+                  <span
+                    className={`h-2 rounded-full transition-all duration-300 block ${
+                      currentIndex === idx
+                        ? "w-8 bg-[#C02030]"
+                        : "w-2 bg-gray-300 group-hover:bg-gray-400"
+                    }`}
+                  />
+                </button>
               ))}
             </div>
 

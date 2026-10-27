@@ -46,9 +46,10 @@ import {
   ExternalLink,
   Receipt,
 } from "lucide-react";
-import { ConfigurableParameter, ParameterOption, resolveOptionColorHex, normalizeAudioUrl, normalizeVideoUrl, cleanDescriptionText, extractAndCleanDescription } from "@/lib/products";
+import { ConfigurableParameter, ParameterOption, resolveOptionColorHex, normalizeAudioUrl, normalizeVideoUrl, cleanDescriptionText, extractAndCleanDescription, detectProductVehicleBrands, normalizeBrandName } from "@/lib/products";
 import { uploadMediaDirect } from "@/lib/clientDirectUpload";
 import { isVehicleBrand, computeAutoProductSku } from "@/lib/dealerBrands";
+import { SXS_BRANDS } from "@/lib/sxsBrands";
 
 import {
   calculateComboAvailability,
@@ -1655,6 +1656,13 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
   const [eliminatingCombo, setEliminatingCombo] = useState(false);
   const [eliminateComboError, setEliminateComboError] = useState<string | null>(null);
 
+  // Backdoor Catalog Separated Parameter Filtering (Category, Vehicle Brand, Distributor Brand, In Stock, Discounted)
+  const [backdoorCategory, setBackdoorCategory] = useState<string>("all");
+  const [backdoorVehicleBrand, setBackdoorVehicleBrand] = useState<string>("all");
+  const [backdoorDistributorBrand, setBackdoorDistributorBrand] = useState<string>("all");
+  const [backdoorInStockOnly, setBackdoorInStockOnly] = useState<boolean>(false);
+  const [backdoorDiscountedOnly, setBackdoorDiscountedOnly] = useState<boolean>(false);
+
   // Unsaved changes warning state (User Requirement)
   const [initialFormSnapshot, setInitialFormSnapshot] = useState<string>("");
   const [showUnsavedChangesModal, setShowUnsavedChangesModal] = useState<boolean>(false);
@@ -2428,8 +2436,12 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       .split("\n")
       .map((s) => s.trim())
       .filter(Boolean);
-    if (parsedImgs.length === 0 && productForm.imageUrl.trim()) {
-      parsedImgs.push(productForm.imageUrl.trim());
+    const chosenPrimaryImage = productForm.imageUrl.trim() || parsedImgs[0] || "/images/logo.png";
+    const orderedImgs = chosenPrimaryImage && chosenPrimaryImage !== "/images/logo.png"
+      ? [chosenPrimaryImage, ...parsedImgs.filter((u) => u !== chosenPrimaryImage)]
+      : parsedImgs;
+    if (orderedImgs.length === 0 && chosenPrimaryImage) {
+      orderedImgs.push(chosenPrimaryImage);
     }
 
     const parsedVids = productForm.vidsText
@@ -2600,8 +2612,8 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       isInstallationIncluded: Boolean(productForm.I_price_includes),
       totalPriceD: productForm.T_price_D || "calculate in checkout with the selling value of dolar to colones",
       // Multimedia:
-      imgs: parsedImgs,
-      imageUrl: parsedImgs[0] || productForm.imageUrl || "/images/logo.png",
+      imgs: orderedImgs,
+      imageUrl: chosenPrimaryImage,
       vids: parsedVids,
       videoUrl: parsedVids[0] || "",
       audios: parsedAudios,
@@ -2956,10 +2968,13 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       .split("\n")
       .map((s) => s.trim())
       .filter(Boolean);
-    if (comboForm.imageUrl && !comboImgs.includes(comboForm.imageUrl)) {
-      comboImgs.unshift(comboForm.imageUrl);
+    const chosenComboPrimary = comboForm.imageUrl.trim() || comboImgs[0] || "/images/logo.png";
+    const orderedComboImgs = chosenComboPrimary && chosenComboPrimary !== "/images/logo.png"
+      ? [chosenComboPrimary, ...comboImgs.filter((u) => u !== chosenComboPrimary)]
+      : comboImgs;
+    if (orderedComboImgs.length === 0 && chosenComboPrimary) {
+      orderedComboImgs.push(chosenComboPrimary);
     }
-    const finalImageUrl = comboImgs[0] || comboForm.imageUrl;
 
     try {
       const res = await fetch(url, {
@@ -2984,9 +2999,9 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
           installExtraPartsJson: JSON.stringify(comboForm.installExtraParts || []),
           discountPercent: comboForm.discountPercent,
           itemsJson: JSON.stringify(items),
-          imageUrl: finalImageUrl,
-          imagesJson: JSON.stringify(comboImgs),
-          imgs: comboImgs,
+          imageUrl: chosenComboPrimary,
+          imagesJson: JSON.stringify(orderedComboImgs),
+          imgs: orderedComboImgs,
           featured: comboForm.featured,
           homeInstallationAvailable: comboForm.homeInstallationAvailable,
           parameters: comboForm.parameters,
@@ -3201,17 +3216,213 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => handleMediaUpload(e, "image");
 
+  // Dynamic computation of available vehicle brands & distributor brands
+  // (Zero Mock Data Policy: only show parameters actually present in catalog with count > 0)
+  const availableProductVehicleBrands = useMemo(() => {
+    const counts: Record<string, number> = {};
+    products.forEach((p) => {
+      const vBrands = detectProductVehicleBrands(p);
+      vBrands.forEach((vb) => {
+        const slug = vb.toLowerCase();
+        counts[slug] = (counts[slug] || 0) + 1;
+      });
+    });
+    return SXS_BRANDS.filter((b) => (counts[b.slug.toLowerCase()] || 0) > 0).map((b) => ({
+      slug: b.slug,
+      title: b.title,
+      count: counts[b.slug.toLowerCase()] || 0,
+    }));
+  }, [products]);
+
+  const availableComboVehicleBrands = useMemo(() => {
+    const counts: Record<string, number> = {};
+    combos.forEach((c) => {
+      const vBrands = detectProductVehicleBrands({
+        p_title: c.titleEs,
+        nameEs: c.titleEs,
+        nameEn: c.titleEn,
+        description: c.descriptionEs,
+        slug: c.slug,
+        comp: [c.slug, c.category],
+      });
+      vBrands.forEach((vb) => {
+        const slug = vb.toLowerCase();
+        counts[slug] = (counts[slug] || 0) + 1;
+      });
+    });
+    return SXS_BRANDS.filter((b) => (counts[b.slug.toLowerCase()] || 0) > 0).map((b) => ({
+      slug: b.slug,
+      title: b.title,
+      count: counts[b.slug.toLowerCase()] || 0,
+    }));
+  }, [combos]);
+
+  const availableVehicleBrands = activeCatalogType === "products" ? availableProductVehicleBrands : availableComboVehicleBrands;
+
+  const availableProductDistributorBrands = useMemo(() => {
+    const counts: Record<string, number> = {};
+    products.forEach((p) => {
+      const brandsList = Array.isArray(p.brand) && p.brand.length > 0
+        ? p.brand
+        : (p.brandName ? [p.brandName] : []);
+      brandsList.forEach((b) => {
+        const norm = normalizeBrandName(b || "");
+        if (norm) {
+          counts[norm] = (counts[norm] || 0) + 1;
+        }
+      });
+    });
+    return Object.entries(counts)
+      .filter(([_, count]) => count > 0)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [products]);
+
+  const availableComboDistributorBrands = useMemo(() => {
+    const counts: Record<string, number> = {};
+    combos.forEach((c) => {
+      const itemsStr = (c.itemsJson || "").toLowerCase();
+      dealerBrands.forEach((db) => {
+        if (itemsStr.includes(db.name.toLowerCase())) {
+          counts[db.name] = (counts[db.name] || 0) + 1;
+        }
+      });
+    });
+    return Object.entries(counts)
+      .filter(([_, count]) => count > 0)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [combos, dealerBrands]);
+
+  const availableDistributorBrands = activeCatalogType === "products" ? availableProductDistributorBrands : availableComboDistributorBrands;
+
+  // Dynamic computation of available categories
+  // (Zero Mock Data Policy: only show categories actually present in catalog with count > 0)
+  const availableProductCategories = useMemo(() => {
+    const counts: Record<string, number> = {};
+    products.forEach((p) => {
+      let cats: string[] = [];
+      if (Array.isArray(p.category) && p.category.length > 0) {
+        cats = p.category;
+      } else if (typeof p.category === "string" && p.category) {
+        cats = [p.category];
+      } else if ((p as any).category?.slug) {
+        cats = [(p as any).category.slug];
+      }
+      cats.forEach((c) => {
+        const slug = String(c).trim().toLowerCase();
+        if (slug) {
+          counts[slug] = (counts[slug] || 0) + 1;
+        }
+      });
+    });
+
+    return Object.entries(counts)
+      .filter(([_, count]) => count > 0)
+      .map(([slug, count]) => {
+        const matchedCat = categories.find((cat) => (cat.slug || "").toLowerCase() === slug || cat.id === slug);
+        const nameEs = matchedCat?.nameEs || slug.replace(/-/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
+        const nameEn = matchedCat?.nameEn || nameEs;
+        return {
+          slug,
+          nameEs,
+          nameEn,
+          title: lang === "es" ? nameEs : nameEn,
+          count,
+        };
+      })
+      .sort((a, b) => a.title.localeCompare(b.title));
+  }, [products, categories, lang]);
+
+  const availableComboCategories = useMemo(() => {
+    const counts: Record<string, number> = {};
+    combos.forEach((c) => {
+      const slug = (c.category || "").trim().toLowerCase();
+      if (slug) {
+        counts[slug] = (counts[slug] || 0) + 1;
+      }
+    });
+
+    return Object.entries(counts)
+      .filter(([_, count]) => count > 0)
+      .map(([slug, count]) => {
+        const matchedCat = categories.find((cat) => (cat.slug || "").toLowerCase() === slug || cat.id === slug);
+        const nameEs = matchedCat?.nameEs || slug.replace(/-/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
+        const nameEn = matchedCat?.nameEn || nameEs;
+        return {
+          slug,
+          nameEs,
+          nameEn,
+          title: lang === "es" ? nameEs : nameEn,
+          count,
+        };
+      })
+      .sort((a, b) => a.title.localeCompare(b.title));
+  }, [combos, categories, lang]);
+
+  const availableCategories = activeCatalogType === "products" ? availableProductCategories : availableComboCategories;
+
+  const hasInStockItems = useMemo(() => {
+    if (activeCatalogType === "products") {
+      return products.some((p) => p.supplierStockStatus !== "OUT_OF_STOCK" && p.supplierStockStatus !== "UNAVAILABLE" && p.stockStatus !== "Agotado");
+    }
+    return combos.some((c) => c.stockStatus !== "OUT_OF_STOCK" && c.availability?.status !== "OUT_OF_STOCK" && c.availability?.available !== false);
+  }, [activeCatalogType, products, combos]);
+
+  const hasDiscountedItems = useMemo(() => {
+    if (activeCatalogType === "products") {
+      return products.some((p) => (p.discountPercent && p.discountPercent > 0) || (p.originalPriceCRC && p.originalPriceCRC > p.priceCRC));
+    }
+    return combos.some((c) => (c.discountPercent && c.discountPercent > 0) || (c.originalPriceCRC && c.originalPriceCRC > c.priceCRC));
+  }, [activeCatalogType, products, combos]);
+
   // Filtered lists
   const filteredProducts = products.filter((p) => {
+    const qLower = search.toLowerCase();
     const matchesSearch =
-      p.nameEn.toLowerCase().includes(search.toLowerCase()) ||
-      p.nameEs.toLowerCase().includes(search.toLowerCase()) ||
-      p.sku.toLowerCase().includes(search.toLowerCase());
+      p.nameEn.toLowerCase().includes(qLower) ||
+      p.nameEs.toLowerCase().includes(qLower) ||
+      p.sku.toLowerCase().includes(qLower) ||
+      (p.brandName && p.brandName.toLowerCase().includes(qLower));
 
     if (!matchesSearch) return false;
 
-    if (productFilterStatus === "active") return !p.isArchived;
-    if (productFilterStatus === "archived") return Boolean(p.isArchived);
+    if (productFilterStatus === "active" && p.isArchived) return false;
+    if (productFilterStatus === "archived" && !p.isArchived) return false;
+
+    if (backdoorCategory !== "all") {
+      let cats: string[] = [];
+      if (Array.isArray(p.category) && p.category.length > 0) {
+        cats = p.category;
+      } else if (typeof p.category === "string" && p.category) {
+        cats = [p.category];
+      } else if ((p as any).category?.slug) {
+        cats = [(p as any).category.slug];
+      }
+      const matchCat = cats.some((c) => String(c).trim().toLowerCase() === backdoorCategory.toLowerCase());
+      if (!matchCat) return false;
+    }
+
+    if (backdoorVehicleBrand !== "all") {
+      const vBrands = detectProductVehicleBrands(p);
+      if (!vBrands.includes(backdoorVehicleBrand.toLowerCase())) return false;
+    }
+
+    if (backdoorDistributorBrand !== "all") {
+      const pBrands = (Array.isArray(p.brand) && p.brand.length > 0 ? p.brand : [p.brandName || ""]).map((b) => normalizeBrandName(b || ""));
+      if (!pBrands.includes(normalizeBrandName(backdoorDistributorBrand))) return false;
+    }
+
+    if (backdoorInStockOnly) {
+      const isOut = p.supplierStockStatus === "OUT_OF_STOCK" || p.supplierStockStatus === "UNAVAILABLE" || p.stockStatus === "Agotado";
+      if (isOut) return false;
+    }
+
+    if (backdoorDiscountedOnly) {
+      const hasDiscount = (p.discountPercent && p.discountPercent > 0) || (p.originalPriceCRC && p.originalPriceCRC > p.priceCRC);
+      if (!hasDiscount) return false;
+    }
+
     return true;
   });
 
@@ -3219,21 +3430,80 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
   const archivedProductsCount = products.filter((p) => Boolean(p.isArchived)).length;
 
   const filteredCombos = combos.filter((c) => {
+    const qLower = search.toLowerCase();
     const matchesSearch =
-      c.titleEn.toLowerCase().includes(search.toLowerCase()) ||
-      c.titleEs.toLowerCase().includes(search.toLowerCase()) ||
-      c.slug.toLowerCase().includes(search.toLowerCase()) ||
-      c.category.toLowerCase().includes(search.toLowerCase());
+      c.titleEn.toLowerCase().includes(qLower) ||
+      c.titleEs.toLowerCase().includes(qLower) ||
+      c.slug.toLowerCase().includes(qLower) ||
+      c.category.toLowerCase().includes(qLower);
 
     if (!matchesSearch) return false;
 
-    if (comboFilterStatus === "active") return !c.isArchived;
-    if (comboFilterStatus === "archived") return Boolean(c.isArchived);
+    if (comboFilterStatus === "active" && c.isArchived) return false;
+    if (comboFilterStatus === "archived" && !c.isArchived) return false;
+
+    if (backdoorCategory !== "all") {
+      const cCat = (c.category || "").trim().toLowerCase();
+      if (cCat !== backdoorCategory.toLowerCase()) return false;
+    }
+
+    if (backdoorVehicleBrand !== "all") {
+      const vBrands = detectProductVehicleBrands({
+        p_title: c.titleEs,
+        nameEs: c.titleEs,
+        nameEn: c.titleEn,
+        description: c.descriptionEs,
+        slug: c.slug,
+        comp: [c.slug, c.category],
+      });
+      if (!vBrands.includes(backdoorVehicleBrand.toLowerCase())) return false;
+    }
+
+    if (backdoorDistributorBrand !== "all") {
+      const normTarget = normalizeBrandName(backdoorDistributorBrand).toLowerCase();
+      const titleMatch = (c.titleEs || "").toLowerCase().includes(normTarget) || (c.titleEn || "").toLowerCase().includes(normTarget);
+      const itemsMatch = (c.itemsJson || "").toLowerCase().includes(normTarget);
+      if (!titleMatch && !itemsMatch) return false;
+    }
+
+    if (backdoorInStockOnly) {
+      const isOut = c.stockStatus === "OUT_OF_STOCK" || c.availability?.status === "OUT_OF_STOCK" || c.availability?.available === false;
+      if (isOut) return false;
+    }
+
+    if (backdoorDiscountedOnly) {
+      const hasDiscount = (c.discountPercent && c.discountPercent > 0) || (c.originalPriceCRC && c.originalPriceCRC > c.priceCRC);
+      if (!hasDiscount) return false;
+    }
+
     return true;
   });
 
   const activeCombosCount = combos.filter((c) => !c.isArchived).length;
   const archivedCombosCount = combos.filter((c) => Boolean(c.isArchived)).length;
+
+  const hasActiveBackdoorFilters =
+    search.trim() !== "" ||
+    backdoorCategory !== "all" ||
+    backdoorVehicleBrand !== "all" ||
+    backdoorDistributorBrand !== "all" ||
+    backdoorInStockOnly ||
+    backdoorDiscountedOnly ||
+    (activeCatalogType === "products" ? productFilterStatus !== "all" : comboFilterStatus !== "all");
+
+  const handleClearBackdoorFilters = () => {
+    setSearch("");
+    setBackdoorCategory("all");
+    setBackdoorVehicleBrand("all");
+    setBackdoorDistributorBrand("all");
+    setBackdoorInStockOnly(false);
+    setBackdoorDiscountedOnly(false);
+    if (activeCatalogType === "products") {
+      setProductFilterStatus("all");
+    } else {
+      setComboFilterStatus("all");
+    }
+  };
 
   if (loading) {
     return (
@@ -3446,7 +3716,15 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                           className={`relative group shrink-0 w-16 h-16 rounded-xl border-2 overflow-hidden transition cursor-pointer ${
                             isPrimary ? "border-[#C02030] shadow-sm ring-2 ring-red-200" : "border-slate-200 hover:border-slate-400 opacity-80 hover:opacity-100"
                           }`}
-                          onClick={() => setProductForm({ ...productForm, imageUrl: imgUrl })}
+                          onClick={() => {
+                            const remaining = parsedImgsList.filter((u) => u !== imgUrl);
+                            const reordered = [imgUrl, ...remaining];
+                            setProductForm({
+                              ...productForm,
+                              imageUrl: imgUrl,
+                              imgsText: reordered.join("\n"),
+                            });
+                          }}
                           title={`Click para establecer como principal (${imgUrl})`}
                         >
                           <img src={imgUrl} alt={`Thumb ${idx + 1}`} className="w-full h-full object-contain p-1 bg-white" />
@@ -5979,7 +6257,15 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                                 src={imgUrl}
                                 alt={`Combo media ${idx + 1}`}
                                 className="w-full h-16 object-contain rounded-lg cursor-pointer"
-                                onClick={() => setComboForm((prev) => ({ ...prev, imageUrl: imgUrl }))}
+                                onClick={() => {
+                                  const remaining = list.filter((u) => u !== imgUrl);
+                                  const reordered = [imgUrl, ...remaining];
+                                  setComboForm((prev) => ({
+                                    ...prev,
+                                    imageUrl: imgUrl,
+                                    imgsText: reordered.join("\n"),
+                                  }));
+                                }}
                               />
                               <button
                                 type="button"
@@ -6270,6 +6556,172 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
         </div>
       </div>
 
+      {/* Separated Catalog Parameters Filter Bar (Category, Vehicle Brand, Distributor Brand, In Stock, Discounted) */}
+      <div className="bg-white p-3.5 sm:p-4 rounded-xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Category Parameter Dropdown (Zero Mock Data: strictly present categories only) */}
+          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs">
+            <Layers className="w-3.5 h-3.5 text-blue-600" />
+            <span className="font-bold text-slate-700">{t.productsFilterCategory || "Categoría"}:</span>
+            <select
+              value={backdoorCategory}
+              onChange={(e) => setBackdoorCategory(e.target.value)}
+              className="bg-transparent font-semibold text-slate-900 outline-none cursor-pointer text-xs"
+            >
+              <option value="all">
+                {availableCategories.length === 0
+                  ? (t.productsAllCategories || "Todas las Categorías")
+                  : `${t.productsAllCategories || "Todas las Categorías"} (${availableCategories.length})`}
+              </option>
+              {availableCategories.map((c) => (
+                <option key={c.slug} value={c.slug}>
+                  {c.title} ({c.count})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Vehicle Brand Parameter Dropdown (Zero Mock Data: strictly present brands only) */}
+          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs">
+            <Car className="w-3.5 h-3.5 text-[#C02030]" />
+            <span className="font-bold text-slate-700">{t.productsFilterVehicleBrand || "Marca de Vehículo"}:</span>
+            <select
+              value={backdoorVehicleBrand}
+              onChange={(e) => setBackdoorVehicleBrand(e.target.value)}
+              className="bg-transparent font-semibold text-slate-900 outline-none cursor-pointer text-xs"
+            >
+              <option value="all">
+                {availableVehicleBrands.length === 0
+                  ? (t.productsAllVehicleBrands || "Todos los Vehículos")
+                  : `${t.productsAllVehicleBrands || "Todos los Vehículos"} (${availableVehicleBrands.length})`}
+              </option>
+              {availableVehicleBrands.map((vb) => (
+                <option key={vb.slug} value={vb.slug}>
+                  {vb.title} ({vb.count})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Distributor Brand Parameter Dropdown (Zero Mock Data: strictly present brands only) */}
+          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs">
+            <Tag className="w-3.5 h-3.5 text-slate-500" />
+            <span className="font-bold text-slate-700">{t.productsFilterDistributorBrand || "Marca Fabricante"}:</span>
+            <select
+              value={backdoorDistributorBrand}
+              onChange={(e) => setBackdoorDistributorBrand(e.target.value)}
+              className="bg-transparent font-semibold text-slate-900 outline-none cursor-pointer text-xs"
+            >
+              <option value="all">
+                {availableDistributorBrands.length === 0
+                  ? (t.productsAllDistributorBrands || "Todas las Marcas")
+                  : `${t.productsAllDistributorBrands || "Todas las Marcas"} (${availableDistributorBrands.length})`}
+              </option>
+              {availableDistributorBrands.map((db) => (
+                <option key={db.name} value={db.name}>
+                  {db.name} ({db.count})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* In Stock Toggle Parameter */}
+          <button
+            type="button"
+            onClick={() => setBackdoorInStockOnly(!backdoorInStockOnly)}
+            disabled={!hasInStockItems && !backdoorInStockOnly}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition border ${
+              backdoorInStockOnly
+                ? "bg-emerald-600 text-white border-emerald-600 shadow-xs"
+                : hasInStockItems
+                ? "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+                : "bg-slate-50 text-slate-400 border-slate-200 opacity-50 cursor-not-allowed"
+            }`}
+          >
+            <span className={`w-2 h-2 rounded-full ${backdoorInStockOnly ? "bg-white" : "bg-emerald-500"}`} />
+            <span>{t.productsFilterInStock || "En Stock"}</span>
+          </button>
+
+          {/* Discounted Toggle Parameter */}
+          <button
+            type="button"
+            onClick={() => setBackdoorDiscountedOnly(!backdoorDiscountedOnly)}
+            disabled={!hasDiscountedItems && !backdoorDiscountedOnly}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition border ${
+              backdoorDiscountedOnly
+                ? "bg-[#C02030] text-white border-[#C02030] shadow-xs"
+                : hasDiscountedItems
+                ? "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+                : "bg-slate-50 text-slate-400 border-slate-200 opacity-50 cursor-not-allowed"
+            }`}
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>{t.productsFilterDiscounted || "En Oferta"}</span>
+          </button>
+        </div>
+
+        {/* Clear Filters Button (shown when any filter is active) */}
+        {hasActiveBackdoorFilters && (
+          <button
+            type="button"
+            onClick={handleClearBackdoorFilters}
+            className="text-xs font-bold text-slate-500 hover:text-red-600 flex items-center gap-1 px-2.5 py-1 rounded-lg hover:bg-red-50 transition"
+          >
+            <X className="w-3.5 h-3.5" />
+            <span>{t.productsClearFilters || "Limpiar filtros"}</span>
+          </button>
+        )}
+      </div>
+
+      {/* Active Filter Pills Bar */}
+      {hasActiveBackdoorFilters && (
+        <div className="flex flex-wrap items-center gap-2 pt-1 text-xs">
+          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Filtros activos:</span>
+          {search.trim() && (
+            <span className="inline-flex items-center gap-1 bg-slate-900 text-white px-2.5 py-1 rounded-full text-[11px] font-semibold">
+              <span>Búsqueda: &ldquo;{search}&rdquo;</span>
+              <button type="button" onClick={() => setSearch("")} className="hover:text-red-300">✕</button>
+            </span>
+          )}
+          {backdoorCategory !== "all" && (
+            <span className="inline-flex items-center gap-1 bg-blue-700 text-white px-2.5 py-1 rounded-full text-[11px] font-semibold">
+              <span>Categoría: {availableCategories.find((c) => c.slug === backdoorCategory)?.title || backdoorCategory}</span>
+              <button type="button" onClick={() => setBackdoorCategory("all")} className="hover:text-blue-200">✕</button>
+            </span>
+          )}
+          {backdoorVehicleBrand !== "all" && (
+            <span className="inline-flex items-center gap-1 bg-[#C02030] text-white px-2.5 py-1 rounded-full text-[11px] font-semibold">
+              <span>Vehículo: {availableVehicleBrands.find((b) => b.slug === backdoorVehicleBrand)?.title || backdoorVehicleBrand.toUpperCase()}</span>
+              <button type="button" onClick={() => setBackdoorVehicleBrand("all")} className="hover:text-red-200">✕</button>
+            </span>
+          )}
+          {backdoorDistributorBrand !== "all" && (
+            <span className="inline-flex items-center gap-1 bg-slate-800 text-white px-2.5 py-1 rounded-full text-[11px] font-semibold">
+              <span>Distribuidor: {backdoorDistributorBrand}</span>
+              <button type="button" onClick={() => setBackdoorDistributorBrand("all")} className="hover:text-red-300">✕</button>
+            </span>
+          )}
+          {backdoorInStockOnly && (
+            <span className="inline-flex items-center gap-1 bg-emerald-700 text-white px-2.5 py-1 rounded-full text-[11px] font-semibold">
+              <span>En Stock</span>
+              <button type="button" onClick={() => setBackdoorInStockOnly(false)} className="hover:text-emerald-200">✕</button>
+            </span>
+          )}
+          {backdoorDiscountedOnly && (
+            <span className="inline-flex items-center gap-1 bg-rose-700 text-white px-2.5 py-1 rounded-full text-[11px] font-semibold">
+              <span>En Oferta</span>
+              <button type="button" onClick={() => setBackdoorDiscountedOnly(false)} className="hover:text-rose-200">✕</button>
+            </span>
+          )}
+          {(activeCatalogType === "products" ? productFilterStatus !== "all" : comboFilterStatus !== "all") && (
+            <span className="inline-flex items-center gap-1 bg-amber-700 text-white px-2.5 py-1 rounded-full text-[11px] font-semibold">
+              <span>Estado: {(activeCatalogType === "products" ? productFilterStatus : comboFilterStatus) === "active" ? "Activos" : "Archivados"}</span>
+              <button type="button" onClick={() => activeCatalogType === "products" ? setProductFilterStatus("all") : setComboFilterStatus("all")} className="hover:text-amber-200">✕</button>
+            </span>
+          )}
+        </div>
+      )}
+
       {/* PRODUCTS TABLE */}
       {activeCatalogType === "products" && (
         <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
@@ -6414,6 +6866,23 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                   </td>
                 </tr>
               ))}
+              {filteredProducts.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="py-12 text-center text-slate-400 space-y-2">
+                    <Package className="w-8 h-8 mx-auto text-slate-300" />
+                    <p className="font-semibold text-xs text-slate-600">No se encontraron productos con los filtros seleccionados.</p>
+                    {hasActiveBackdoorFilters && (
+                      <button
+                        type="button"
+                        onClick={handleClearBackdoorFilters}
+                        className="text-xs font-bold text-[#C02030] hover:underline"
+                      >
+                        Limpiar todos los filtros
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -6590,7 +7059,24 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                     </tr>
                   );
                 })}
-              </tbody>
+                {filteredCombos.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="py-12 text-center text-slate-400 space-y-2">
+                      <Layers className="w-8 h-8 mx-auto text-slate-300" />
+                      <p className="font-semibold text-xs text-slate-600">No se encontraron combos con los filtros seleccionados.</p>
+                      {hasActiveBackdoorFilters && (
+                        <button
+                          type="button"
+                          onClick={handleClearBackdoorFilters}
+                          className="text-xs font-bold text-[#C02030] hover:underline"
+                        >
+                          Limpiar todos los filtros
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                )}
+            </tbody>
             </table>
           </div>
         </div>

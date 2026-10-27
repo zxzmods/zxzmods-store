@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { cleanExpiredQuotations, getQuotationDaysRemaining } from "@/lib/orders";
 import { getCustomerSession } from "@/lib/customerAuth";
 import { getStealthSession } from "@/lib/stealthAuth";
-import { GET as getOrderUpdates } from "../updates/route";
+import { fetchOrderUpdatesResponse } from "@/lib/orderUpdates";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +13,7 @@ export async function GET(
 ) {
   try {
     if (params.id === "updates") {
-      return getOrderUpdates(request);
+      return fetchOrderUpdatesResponse(request);
     }
 
     await cleanExpiredQuotations();

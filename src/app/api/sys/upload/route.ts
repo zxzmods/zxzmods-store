@@ -12,7 +12,7 @@ export async function POST(request: Request) {
   try {
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
-    const folder = (formData.get("folder") as "products" | "combos" | "brands" | "videos" | "audios" | "payments") || "products";
+    const folder = (formData.get("folder") as "products" | "combos" | "brands" | "vehicles" | "videos" | "audios" | "payments") || "products";
 
     if (!file) {
       return NextResponse.json(

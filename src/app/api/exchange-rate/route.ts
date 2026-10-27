@@ -43,7 +43,7 @@ interface MemoryCache {
 let memoryCache: MemoryCache | null = null;
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
-const PERSISTENT_CACHE_PATH = path.join(process.cwd(), "src", "data", "live_exchange_rate.json");
+const PERSISTENT_CACHE_PATH = path.join(process.cwd(), ".cache", "live_exchange_rate.json");
 const IS_SERVERLESS = process.env.VERCEL === "1" || process.env.NODE_ENV === "production";
 
 // Helper to read persistent cache (Database primary, local disk fallback)
