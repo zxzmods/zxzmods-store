@@ -614,9 +614,6 @@ export default function ComboDetailPage() {
                         <Sliders className="w-4 h-4 text-[#C02030]" />
                         <span>{t.productParametersTitle}</span>
                       </span>
-                      <span className="text-[11px] text-gray-500 font-medium">
-                        {t.productParametersDesc}
-                      </span>
                     </div>
 
                     <div className="space-y-3">

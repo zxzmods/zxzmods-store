@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getStealthSession } from "@/lib/stealthAuth";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(request: Request) {
   try {
     const session = await getStealthSession();

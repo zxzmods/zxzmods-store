@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { calculateComboAvailability } from "@/lib/comboAvailability";
 
+export const dynamic = "force-dynamic";
+
 function extractComboImages(combo: any, catalogProducts: any[]) {
   const imgs: string[] = [];
   if (combo.imageUrl && typeof combo.imageUrl === "string" && combo.imageUrl.trim()) {

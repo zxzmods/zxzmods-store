@@ -994,3 +994,73 @@ export async function searchAndFilterProducts(options: FilterOptions = {}): Prom
     brands,
   };
 }
+
+/**
+ * Dynamically detects matching vehicle brand slugs (e.g. "cfmoto", "can-am", "polaris")
+ * for any product based on compatibility list, model-year matrix, and platform keywords.
+ */
+export function detectProductVehicleBrands(product: any): string[] {
+  const matchedSlugs = new Set<string>();
+
+  for (const [brandSlug, platforms] of Object.entries(SXS_BRAND_PLATFORMS)) {
+    // 1. Check comp array
+    if (product.comp && Array.isArray(product.comp)) {
+      const matchComp = product.comp.some((c: string) => {
+        const cLower = typeof c === "string" ? c.toLowerCase().trim() : "";
+        return platforms.some((plat) => isPlatformOrVehicleMatch(cLower, plat.toLowerCase()));
+      });
+      if (matchComp) {
+        matchedSlugs.add(brandSlug);
+        continue;
+      }
+    }
+
+    // 2. Check modelYearCompatibility
+    if (product.modelYearCompatibility && Array.isArray(product.modelYearCompatibility)) {
+      const matchMY = product.modelYearCompatibility.some((m: any) => {
+        const make = (m.make || "").toLowerCase().trim();
+        const model = (m.model || "").toLowerCase().trim();
+        return platforms.some(
+          (plat) =>
+            isPlatformOrVehicleMatch(make, plat.toLowerCase()) ||
+            isPlatformOrVehicleMatch(model, plat.toLowerCase())
+        );
+      });
+      if (matchMY) {
+        matchedSlugs.add(brandSlug);
+        continue;
+      }
+    }
+
+    // 3. Check compatibilities array
+    if (product.compatibilities && Array.isArray(product.compatibilities)) {
+      const matchRel = product.compatibilities.some((rel: any) => {
+        const vm = (rel.vehicleModel || "").toLowerCase().trim();
+        return platforms.some((plat) => isPlatformOrVehicleMatch(vm, plat.toLowerCase()));
+      });
+      if (matchRel) {
+        matchedSlugs.add(brandSlug);
+        continue;
+      }
+    }
+
+    // 4. Fallback to title / description
+    const title = (product.p_title || product.nameEs || product.nameEn || "").toLowerCase();
+    const desc = (
+      typeof product.description === "string"
+        ? product.description
+        : (product.descriptionEs || product.descriptionEn || "")
+    ).toLowerCase();
+    const matchesText = platforms.some((plat) => {
+      const platLower = plat.toLowerCase();
+      const regex = new RegExp(`(^|[\\s\\-_/])${platLower.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&")}($|[\\s\\-_/])`, "i");
+      return regex.test(title) || regex.test(desc);
+    });
+    if (matchesText) {
+      matchedSlugs.add(brandSlug);
+    }
+  }
+
+  return Array.from(matchedSlugs);
+}
+

@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireStealthSession } from "@/lib/stealthAuth";
+
+export const dynamic = "force-dynamic";
 import {
   liftExpiredRejectedServiceSchedules,
   parseTimeToMinutes,

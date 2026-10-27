@@ -8,9 +8,10 @@ import {
   isUniversalFit,
   normalizeAudioUrl,
   normalizeVideoUrl,
+  detectProductVehicleBrands,
 } from "@/lib/products";
 import { prisma } from "@/lib/prisma";
-import { SXS_BRAND_PLATFORMS } from "@/lib/sxsBrands";
+import { SXS_BRAND_PLATFORMS, SXS_BRANDS } from "@/lib/sxsBrands";
 import { getStealthSession } from "@/lib/stealthAuth";
 import { sanitizeSearchQuery } from "@/lib/security/inputSanitizer";
 
@@ -270,30 +271,41 @@ export async function GET(request: Request) {
     const rawQ = searchParams.get("q") || undefined;
     const q = rawQ ? sanitizeSearchQuery(rawQ) : undefined;
     const category = searchParams.get("category") || undefined;
-    let brand = searchParams.get("brand") || searchParams.get("marca") || undefined;
-    if (!brand) {
+
+    // Vehicle Brand parameter (separated, e.g. "cfmoto", "can-am", "polaris", "kawasaki")
+    const vehicleBrand = searchParams.get("vehicleBrand") || searchParams.get("sxs") || undefined;
+
+    // Distributor Brand parameter (separated, e.g. "Shock Therapy", "EVP")
+    let distributorBrand = searchParams.get("distributorBrand") || searchParams.get("brand") || searchParams.get("marca") || undefined;
+    if (!distributorBrand) {
       searchParams.forEach((v, k) => {
         if (
           k &&
           !v &&
-          !brand &&
-          !["q", "category", "sxs", "sort", "intro", "comp", "vehicleModel", "slug", "id"].includes(k)
+          !distributorBrand &&
+          !["q", "category", "sxs", "vehicleBrand", "distributorBrand", "inStock", "discounted", "sort", "intro", "comp", "vehicleModel", "slug", "id"].includes(k)
         ) {
-          brand = k;
+          distributorBrand = k;
         }
       });
     }
-    if (brand) {
-      brand = brand.trim();
-      if (brand.startsWith("(") && brand.endsWith(")")) {
-        brand = brand.slice(1, -1).trim();
+    if (distributorBrand) {
+      distributorBrand = distributorBrand.trim();
+      if (distributorBrand.startsWith("(") && distributorBrand.endsWith(")")) {
+        distributorBrand = distributorBrand.slice(1, -1).trim();
       }
       try {
-        brand = decodeURIComponent(brand);
+        distributorBrand = decodeURIComponent(distributorBrand);
       } catch {}
     }
+
+    // In Stock filter (separated toggle: "true" or "1")
+    const inStock = searchParams.get("inStock") === "true" || searchParams.get("inStock") === "1";
+
+    // Discounted filter (separated toggle: "true" or "1")
+    const discounted = searchParams.get("discounted") === "true" || searchParams.get("discounted") === "1";
+
     const comp = searchParams.get("comp") || undefined;
-    const sxs = searchParams.get("sxs") || undefined;
     const vehicleModel = searchParams.get("vehicleModel") || undefined;
     const sort = (searchParams.get("sort") as any) || undefined;
 
@@ -422,8 +434,56 @@ export async function GET(request: Request) {
       dbProductToProductItem(dbProd, null, isStaff)
     );
 
-    // Filter by text search (q), comp, vehicleModel, sxs brand, and brand
-    const queryMatchedProducts = unifiedProducts.filter((product) => {
+    // Dynamic computation of parameters present across active catalog products
+    // (Strict Zero Mock Data: only include options that actually exist!)
+    const vehicleBrandCounts: Record<string, number> = {};
+    const distributorBrandCounts: Record<string, number> = {};
+    let globalHasInStock = false;
+    let globalHasDiscounted = false;
+
+    unifiedProducts.forEach((p) => {
+      // Vehicle brands
+      const pVehicleBrands = detectProductVehicleBrands(p);
+      pVehicleBrands.forEach((vb) => {
+        vehicleBrandCounts[vb.toLowerCase()] = (vehicleBrandCounts[vb.toLowerCase()] || 0) + 1;
+      });
+
+      // Distributor brands
+      p.brand.forEach((b) => {
+        const norm = normalizeBrandName(b.trim());
+        if (norm) {
+          distributorBrandCounts[norm] = (distributorBrandCounts[norm] || 0) + 1;
+        }
+      });
+
+      // Stock
+      const isAvailable =
+        p.supplierStockStatus !== "OUT_OF_STOCK" &&
+        p.supplierStockStatus !== "UNAVAILABLE";
+      if (isAvailable) globalHasInStock = true;
+
+      // Discounted
+      const isDiscounted =
+        (p.discountPercent !== undefined && p.discountPercent > 0) ||
+        (p.originalPriceCRC !== undefined && p.originalPriceCRC !== null && p.originalPriceCRC > p.price.T_price);
+      if (isDiscounted) globalHasDiscounted = true;
+    });
+
+    // ONLY show vehicle brands present in products (e.g. if no Yamaha products, Yamaha is NOT shown)
+    const availableVehicleBrands = SXS_BRANDS.filter((sb) => (vehicleBrandCounts[sb.slug.toLowerCase()] || 0) > 0).map((sb) => ({
+      slug: sb.slug,
+      title: sb.title,
+      count: vehicleBrandCounts[sb.slug.toLowerCase()] || 0,
+    }));
+
+    // ONLY show distributor brands present in products
+    const availableDistributorBrands = Object.entries(distributorBrandCounts)
+      .filter(([_, count]) => count > 0)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    // Filter by text search (q), comp, vehicleModel, vehicle brand, distributor brand, inStock, discounted, and category
+    const filteredProducts = unifiedProducts.filter((product) => {
       // 1. Text Search (q)
       if (q && q.trim()) {
         const qClean = q.trim();
@@ -499,45 +559,18 @@ export async function GET(request: Request) {
         if (!isUniversal && !matchesVehicle) return false;
       }
 
-      // 4. Special by SxS Brand Filter
-      if (sxs && sxs.toLowerCase() !== "all") {
-        const targetSxs = sxs.toLowerCase().trim();
-        const platforms = SXS_BRAND_PLATFORMS[targetSxs] || [targetSxs];
+      // 4. Vehicle Brand Filter (Separated parameter: e.g. "cfmoto", "can-am", "polaris", "kawasaki")
+      if (vehicleBrand && vehicleBrand.toLowerCase() !== "all") {
+        const targetVehicleBrand = vehicleBrand.toLowerCase().trim();
         const isUniversal = isUniversalFit(product.comp);
-
-        const descText = extractDescriptionText(product.description).toLowerCase();
-        const titleLower = product.p_title.toLowerCase();
-        const escapeRegex = (s: string) => s.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
-
-        const matchesSxs = platforms.some((plat) => {
-          const platLower = plat.toLowerCase();
-          const compMatch = product.comp && product.comp.some((c) =>
-            isPlatformOrVehicleMatch(c, platLower)
-          );
-          if (compMatch) return true;
-
-          const myCompMatch = product.modelYearCompatibility && product.modelYearCompatibility.some((m) =>
-            isPlatformOrVehicleMatch(m.model, platLower) || (m.make && isPlatformOrVehicleMatch(m.make, platLower))
-          );
-          if (myCompMatch) return true;
-
-          // ONLY fallback to title/desc if product has ZERO compatibility defined anywhere
-          if ((!product.comp || product.comp.length === 0) && (!product.modelYearCompatibility || product.modelYearCompatibility.length === 0)) {
-            const platRegex = new RegExp(
-              `(^|[\\s\\-_/])${escapeRegex(platLower)}($|[\\s\\-_/])`,
-              "i"
-            );
-            if (platRegex.test(titleLower) || platRegex.test(descText)) return true;
-          }
-          return false;
-        });
-
-        if (!isUniversal && !matchesSxs) return false;
+        const pVehicleBrands = detectProductVehicleBrands(product);
+        const matchesVehicleBrand = pVehicleBrands.includes(targetVehicleBrand);
+        if (!isUniversal && !matchesVehicleBrand) return false;
       }
 
-      // 5. Brand filter
-      if (brand && brand.toLowerCase() !== "all") {
-        let cleanTarget = brand.trim();
+      // 5. Distributor / Parts Manufacturer Brand Filter (Separated parameter: e.g. "Shock Therapy", "EVP")
+      if (distributorBrand && distributorBrand.toLowerCase() !== "all") {
+        let cleanTarget = distributorBrand.trim();
         if (cleanTarget.startsWith("(") && cleanTarget.endsWith(")")) {
           cleanTarget = cleanTarget.slice(1, -1).trim();
         }
@@ -545,8 +578,7 @@ export async function GET(request: Request) {
         const targetAlpha = targetBrand.replace(/[^a-z0-9]/g, "");
         const normalizedTarget = normalizeBrandName(cleanTarget).toLowerCase();
 
-        // 5a. Direct brand name match in product.brand (partial, exact, or alphanumeric match)
-        const matchesBrandName = product.brand.some((b) => {
+        const matchesDistributorBrand = product.brand.some((b) => {
           const bNorm = normalizeBrandName(b).toLowerCase();
           const bRaw = b.toLowerCase();
           const bAlpha = bRaw.replace(/[^a-z0-9]/g, "");
@@ -561,74 +593,50 @@ export async function GET(request: Request) {
           );
         });
 
-        // 5b. Vehicle manufacturer / platform match (e.g. Polaris, Can-Am, CFMOTO, Honda, Yamaha, Segway)
-        const platforms =
-          SXS_BRAND_PLATFORMS[targetBrand] ||
-          SXS_BRAND_PLATFORMS[normalizedTarget] ||
-          [targetBrand];
-
-        const isUniversal = product.comp.some((c) => c.toLowerCase() === "all");
-        const matchesVehicleBrand = platforms.some((plat) => {
-          const platLower = plat.toLowerCase();
-          return product.comp.some((c) => isPlatformOrVehicleMatch(c, platLower));
-        });
-
-        // 5c. Title / Description match
-        const titleLower = product.p_title.toLowerCase();
-        const descLower = extractDescriptionText(product.description).toLowerCase();
-        const titleAlpha = titleLower.replace(/[^a-z0-9]/g, "");
-        const descAlpha = descLower.replace(/[^a-z0-9]/g, "");
-
-        const matchesText =
-          titleLower.includes(targetBrand) ||
-          descLower.includes(targetBrand) ||
-          (targetAlpha.length >= 3 && (titleAlpha.includes(targetAlpha) || descAlpha.includes(targetAlpha)));
-
-        if (!matchesBrandName && !matchesVehicleBrand && !matchesText && !isUniversal) {
-          return false;
-        }
+        if (!matchesDistributorBrand) return false;
       }
 
-      return true;
-    });
-
-    // Dynamically compute categories that exist ONLY in the matching products
-    const matchingCategorySet = new Set<string>();
-    queryMatchedProducts.forEach((p) => {
-      p.category.forEach((cat) => matchingCategorySet.add(cat.trim()));
-    });
-    const categories = Array.from(matchingCategorySet);
-
-    // Dynamically compute brands that exist ONLY in the matching products
-    const matchingBrandsSet = new Set<string>();
-    queryMatchedProducts.forEach((p) => {
-      p.brand.forEach((b) => matchingBrandsSet.add(normalizeBrandName(b.trim())));
-    });
-    if (brand && brand.toLowerCase() !== "all") {
-      let cleanBrand = brand.trim();
-      if (cleanBrand.startsWith("(") && cleanBrand.endsWith(")")) {
-        cleanBrand = cleanBrand.slice(1, -1).trim();
+      // 6. In Stock Filter (Separated parameter)
+      if (inStock) {
+        const isAvailable =
+          product.supplierStockStatus !== "OUT_OF_STOCK" &&
+          product.supplierStockStatus !== "UNAVAILABLE";
+        if (!isAvailable) return false;
       }
-      matchingBrandsSet.add(cleanBrand);
-    }
-    const brands = Array.from(matchingBrandsSet);
 
-    // Apply category filter if specified
-    let filtered = queryMatchedProducts;
-    if (category && category.toLowerCase() !== "all") {
-      const targetCat = category.toLowerCase();
-      filtered = filtered.filter((product) => {
-        return product.category.some((c) => {
+      // 7. Discounted Filter (Separated parameter)
+      if (discounted) {
+        const hasDiscount =
+          (product.discountPercent !== undefined && product.discountPercent > 0) ||
+          (product.originalPriceCRC !== undefined && product.originalPriceCRC !== null && product.originalPriceCRC > product.price.T_price);
+        if (!hasDiscount) return false;
+      }
+
+      // 8. Category filter
+      if (category && category.toLowerCase() !== "all") {
+        const targetCat = category.toLowerCase();
+        const matchesCat = product.category.some((c) => {
           const cLower = c.toLowerCase();
           if (targetCat === "skit plates" || targetCat === "skid plates") {
             return cLower.includes("skit") || cLower.includes("skid");
           }
           return cLower === targetCat || cLower.includes(targetCat);
         });
-      });
-    }
+        if (!matchesCat) return false;
+      }
+
+      return true;
+    });
+
+    // Dynamically compute categories that exist ONLY in active products
+    const matchingCategorySet = new Set<string>();
+    unifiedProducts.forEach((p) => {
+      p.category.forEach((cat) => matchingCategorySet.add(cat.trim()));
+    });
+    const categories = Array.from(matchingCategorySet);
 
     // Sort
+    const filtered = [...filteredProducts];
     if (sort === "price-asc") {
       filtered.sort((a, b) => a.price.T_price - b.price.T_price);
     } else if (sort === "price-desc") {
@@ -644,7 +652,11 @@ export async function GET(request: Request) {
       products: filtered,
       total: filtered.length,
       categories,
-      brands,
+      brands: availableDistributorBrands.map((b) => b.name),
+      availableVehicleBrands,
+      availableDistributorBrands,
+      hasInStock: globalHasInStock,
+      hasDiscounted: globalHasDiscounted,
       sxsBrandModels,
     });
   } catch (error) {

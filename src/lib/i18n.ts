@@ -576,6 +576,12 @@ export interface Translations {
   productsAllVehicles: string;
   productsFilterCategory: string;
   productsFilterBrand: string;
+  productsFilterVehicleBrand: string;
+  productsAllVehicleBrands: string;
+  productsFilterDistributorBrand: string;
+  productsAllDistributorBrands: string;
+  productsFilterInStock: string;
+  productsFilterDiscounted: string;
   productsFilterCompatibility: string;
   productsFitMyGarage: string;
   productsSortBy: string;
@@ -2456,6 +2462,12 @@ export const translations: Record<Language, Translations> = {
     productsAllVehicles: "Todos los Modelos SXS",
     productsFilterCategory: "Categoría",
     productsFilterBrand: "Marca",
+    productsFilterVehicleBrand: "Marca de Vehículo",
+    productsAllVehicleBrands: "Todos los Vehículos",
+    productsFilterDistributorBrand: "Marca Fabricante",
+    productsAllDistributorBrands: "Todas las Marcas",
+    productsFilterInStock: "En Stock",
+    productsFilterDiscounted: "En Oferta",
     productsFilterCompatibility: "Compatibilidad",
     productsFitMyGarage: "Compatible con mi Garaje",
     productsSortBy: "Ordenar por",
@@ -4330,6 +4342,12 @@ export const translations: Record<Language, Translations> = {
     productsAllVehicles: "All SXS Models",
     productsFilterCategory: "Category",
     productsFilterBrand: "Brand",
+    productsFilterVehicleBrand: "Vehicle Brand",
+    productsAllVehicleBrands: "All Vehicles",
+    productsFilterDistributorBrand: "Distributor Brand",
+    productsAllDistributorBrands: "All Brands",
+    productsFilterInStock: "In Stock",
+    productsFilterDiscounted: "On Sale",
     productsFilterCompatibility: "Fitment",
     productsFitMyGarage: "Compatible with My Garage",
     productsSortBy: "Sort by",

@@ -32,6 +32,8 @@ import {
   Car,
   PackageOpen,
   Volume2,
+  Percent,
+  ArrowUpDown,
 } from "lucide-react";
 
 // Stars component - displays empty stars if no reviews submitted
@@ -362,8 +364,10 @@ function ProductsContent() {
   // Search and filter params from URL
   const initialQuery = searchParams.get("q") || "";
   const initialCategory = searchParams.get("category") || "all";
-  const initialBrand = parseBrandParam(searchParams);
-  const initialSxs = searchParams.get("sxs") || "";
+  const initialVehicleBrand = searchParams.get("vehicleBrand") || searchParams.get("sxs") || "all";
+  const initialDistributorBrand = searchParams.get("distributorBrand") || parseBrandParam(searchParams) || "all";
+  const initialInStock = searchParams.get("inStock") === "true";
+  const initialDiscounted = searchParams.get("discounted") === "true";
 
   const { t, lang } = useLanguage();
   const { addItem } = useCart();
@@ -374,28 +378,46 @@ function ProductsContent() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState(initialQuery);
   const [selectedCategory, setSelectedCategory] = useState(initialCategory);
-  const [selectedBrand, setSelectedBrand] = useState(initialBrand);
-  const [selectedSxs, setSelectedSxs] = useState(initialSxs);
+  const [selectedVehicleBrand, setSelectedVehicleBrand] = useState(initialVehicleBrand);
+  const [selectedDistributorBrand, setSelectedDistributorBrand] = useState(initialDistributorBrand);
+  const [inStockOnly, setInStockOnly] = useState(initialInStock);
+  const [discountedOnly, setDiscountedOnly] = useState(initialDiscounted);
   const [onlyCompatibleWithGarage, setOnlyCompatibleWithGarage] = useState(false);
   const [sortBy, setSortBy] = useState<"relevant" | "price-asc" | "price-desc" | "stars">("relevant");
 
   const [availableCategories, setAvailableCategories] = useState<string[]>([]);
-  const [availableBrands, setAvailableBrands] = useState<string[]>([]);
+  const [availableVehicleBrands, setAvailableVehicleBrands] = useState<Array<{ slug: string; title: string; count: number }>>([]);
+  const [availableDistributorBrands, setAvailableDistributorBrands] = useState<Array<{ name: string; count: number }>>([]);
+  const [hasInStock, setHasInStock] = useState(false);
+  const [hasDiscounted, setHasDiscounted] = useState(false);
   const [sxsBrandModels, setSxsBrandModels] = useState<
     Record<string, Array<{ id: string; name: string; code?: string | null; slug: string }>>
   >({});
 
-  const activeSxsBrand = getSxsBrandBySlug(selectedSxs);
+  const activeSxsBrand = getSxsBrandBySlug(selectedVehicleBrand !== "all" ? selectedVehicleBrand : undefined);
 
   // Intro animation state for SxS brands (CFMOTO, CAN-AM, POLARIS)
   const [activeIntroBrand, setActiveIntroBrand] = useState<string | null>(() => {
-    const sxsParam = (initialSxs || "").toLowerCase().trim();
+    const sxsParam = (initialVehicleBrand || "").toLowerCase().trim();
     const isIntro = searchParams.get("intro") === "true";
     if (isIntro && (sxsParam === "cfmoto" || sxsParam === "can-am" || sxsParam === "polaris")) {
       return sxsParam;
     }
     return null;
   });
+
+  // Helper to update URL params smoothly
+  const updateUrlParams = (newParams: Record<string, string | null | undefined>) => {
+    const params = new URLSearchParams(searchParams.toString());
+    Object.entries(newParams).forEach(([k, v]) => {
+      if (v === null || v === undefined || v === "" || v === "all") {
+        params.delete(k);
+      } else {
+        params.set(k, v);
+      }
+    });
+    router.replace(`/productos?${params.toString()}`, { scroll: false });
+  };
 
   // Sync state when URL params change
   useEffect(() => {
@@ -405,12 +427,16 @@ function ProductsContent() {
     if (searchParams.get("category") !== null) {
       setSelectedCategory(searchParams.get("category") || "all");
     }
-    const detectedBrand = parseBrandParam(searchParams);
-    setSelectedBrand(detectedBrand);
-    if (searchParams.get("sxs") !== null) {
-      setSelectedSxs(searchParams.get("sxs") || "");
-    }
-    const sxsParam = (searchParams.get("sxs") || "").toLowerCase().trim();
+    const vb = searchParams.get("vehicleBrand") || searchParams.get("sxs");
+    setSelectedVehicleBrand(vb || "all");
+
+    const db = searchParams.get("distributorBrand") || parseBrandParam(searchParams);
+    setSelectedDistributorBrand(db || "all");
+
+    setInStockOnly(searchParams.get("inStock") === "true");
+    setDiscountedOnly(searchParams.get("discounted") === "true");
+
+    const sxsParam = (vb || "").toLowerCase().trim();
     const isIntro = searchParams.get("intro") === "true";
     if (isIntro && (sxsParam === "cfmoto" || sxsParam === "can-am" || sxsParam === "polaris")) {
       setActiveIntroBrand(sxsParam);
@@ -432,8 +458,10 @@ function ProductsContent() {
     const params = new URLSearchParams();
     if (searchQuery.trim()) params.set("q", searchQuery.trim());
     if (selectedCategory && selectedCategory !== "all") params.set("category", selectedCategory);
-    if (selectedBrand && selectedBrand !== "all") params.set("brand", selectedBrand);
-    if (selectedSxs && selectedSxs !== "all") params.set("sxs", selectedSxs);
+    if (selectedVehicleBrand && selectedVehicleBrand !== "all") params.set("vehicleBrand", selectedVehicleBrand);
+    if (selectedDistributorBrand && selectedDistributorBrand !== "all") params.set("distributorBrand", selectedDistributorBrand);
+    if (inStockOnly) params.set("inStock", "true");
+    if (discountedOnly) params.set("discounted", "true");
     if (sortBy && sortBy !== "relevant") params.set("sort", sortBy);
     if (onlyCompatibleWithGarage && vehicle) {
       params.set("vehicleModel", `${vehicle.brandName} ${vehicle.modelName}`);
@@ -446,40 +474,27 @@ function ProductsContent() {
         if (data.success && Array.isArray(data.products)) {
           setProducts(data.products);
 
-          // Only show categories that exist in the matching products
-          const matchingCategories: string[] = Array.isArray(data.categories) ? data.categories : [];
-          setAvailableCategories(matchingCategories);
-
-          if (
-            selectedCategory !== "all" &&
-            !matchingCategories.map((c) => c.toLowerCase()).includes(selectedCategory.toLowerCase())
-          ) {
-            setSelectedCategory("all");
-          }
-
-          if (Array.isArray(data.brands)) {
-            setAvailableBrands(data.brands);
-            // Flexible match: do not reset selectedBrand if products were found
-            if (selectedBrand !== "all") {
-              const selLower = selectedBrand.toLowerCase();
-              const selAlpha = selLower.replace(/[^a-z0-9]/g, "");
-              const foundInList = data.brands.find((b: string) => {
-                const bLower = b.toLowerCase();
-                const bAlpha = bLower.replace(/[^a-z0-9]/g, "");
-                return (
-                  bLower === selLower ||
-                  bLower.includes(selLower) ||
-                  selLower.includes(bLower) ||
-                  (selAlpha.length >= 3 && (bAlpha.includes(selAlpha) || selAlpha.includes(bAlpha)))
-                );
-              });
-              if (foundInList && foundInList !== selectedBrand) {
-                setSelectedBrand(foundInList);
-              } else if (!foundInList && (!data.products || data.products.length === 0)) {
-                setSelectedBrand("all");
-              }
+          // Dynamic parameters strictly from backend response
+          if (Array.isArray(data.categories)) {
+            setAvailableCategories(data.categories);
+            if (
+              selectedCategory !== "all" &&
+              !data.categories.map((c: string) => c.toLowerCase()).includes(selectedCategory.toLowerCase())
+            ) {
+              setSelectedCategory("all");
             }
           }
+
+          if (Array.isArray(data.availableVehicleBrands)) {
+            setAvailableVehicleBrands(data.availableVehicleBrands);
+          }
+
+          if (Array.isArray(data.availableDistributorBrands)) {
+            setAvailableDistributorBrands(data.availableDistributorBrands);
+          }
+
+          setHasInStock(Boolean(data.hasInStock));
+          setHasDiscounted(Boolean(data.hasDiscounted));
 
           if (data.sxsBrandModels) {
             setSxsBrandModels(data.sxsBrandModels);
@@ -494,28 +509,34 @@ function ProductsContent() {
     return () => {
       isMounted = false;
     };
-  }, [searchQuery, selectedCategory, selectedBrand, selectedSxs, sortBy, onlyCompatibleWithGarage, vehicle]);
+  }, [
+    searchQuery,
+    selectedCategory,
+    selectedVehicleBrand,
+    selectedDistributorBrand,
+    inStockOnly,
+    discountedOnly,
+    sortBy,
+    onlyCompatibleWithGarage,
+    vehicle,
+  ]);
 
   // Handle Search Input Submission
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const params = new URLSearchParams(searchParams.toString());
-    if (searchQuery.trim()) {
-      params.set("q", searchQuery.trim());
-    } else {
-      params.delete("q");
-    }
-    router.replace(`/productos?${params.toString()}`);
+    updateUrlParams({ q: searchQuery.trim() || null });
   };
 
   const handleClearFilters = () => {
     setSearchQuery("");
     setSelectedCategory("all");
-    setSelectedBrand("all");
-    setSelectedSxs("");
+    setSelectedVehicleBrand("all");
+    setSelectedDistributorBrand("all");
+    setInStockOnly(false);
+    setDiscountedOnly(false);
     setOnlyCompatibleWithGarage(false);
     setSortBy("relevant");
-    router.replace("/productos");
+    router.replace("/productos", { scroll: false });
   };
 
   // Add product to cart with selected parameters and effective price
@@ -606,8 +627,10 @@ function ProductsContent() {
   const hasActiveFilters =
     searchQuery.trim() !== "" ||
     selectedCategory !== "all" ||
-    selectedBrand !== "all" ||
-    Boolean(selectedSxs) ||
+    selectedVehicleBrand !== "all" ||
+    selectedDistributorBrand !== "all" ||
+    inStockOnly ||
+    discountedOnly ||
     onlyCompatibleWithGarage;
 
   return (
@@ -654,7 +677,7 @@ function ProductsContent() {
 
               {/* Quick Model Chips */}
               {(() => {
-                const currentModels = sxsBrandModels[selectedSxs?.toLowerCase()] || [];
+                const currentModels = sxsBrandModels[selectedVehicleBrand?.toLowerCase()] || [];
                 if (loading && currentModels.length === 0) {
                   return (
                     <div className="pt-2 flex flex-wrap items-center gap-2 justify-center md:justify-start">
@@ -732,10 +755,8 @@ function ProductsContent() {
                 <button
                   type="button"
                   onClick={() => {
-                    setSelectedSxs("");
-                    const params = new URLSearchParams(searchParams.toString());
-                    params.delete("sxs");
-                    router.replace(`/productos?${params.toString()}`);
+                    setSelectedVehicleBrand("all");
+                    updateUrlParams({ vehicleBrand: null, sxs: null });
                   }}
                   className="inline-flex items-center gap-1.5 text-xs text-gray-500 hover:text-[#C02030] font-semibold transition-colors cursor-pointer"
                 >
@@ -829,85 +850,105 @@ function ProductsContent() {
             </div>
           </div>
 
-          {/* Secondary Controls: Dynamic Brands (Filtered by Search), Vehicle Filter & Sorting */}
-          <div className="flex flex-wrap items-center justify-between gap-3 pt-1 text-xs">
+          {/* Secondary Controls: Separated Filter Parameters (Vehicle Brand, Distributor Brand, In Stock, Discounted) & Sorting */}
+          <div className="space-y-2.5 pt-1 text-xs">
             <div className="flex flex-wrap items-center gap-2">
-              {/* Dynamic Brand Selector - shows brands present in matching search results */}
+              {/* 1. Vehicle Brand Selector (SxS Platform Brand - e.g. CFMOTO, Can-Am, Polaris, Kawasaki...) */}
               <div className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-xl px-3 py-1.5 shadow-xs max-w-full">
-                <span className="text-gray-500 font-medium shrink-0">{t.productsFilterBrand}:</span>
+                <span className="text-gray-500 font-medium shrink-0">{t.productsFilterVehicleBrand}:</span>
                 <select
-                  value={selectedBrand}
+                  value={selectedVehicleBrand}
                   onChange={(e) => {
-                    const newBrand = e.target.value;
-                    setSelectedBrand(newBrand);
-                    const params = new URLSearchParams(searchParams.toString());
-                    if (newBrand && newBrand !== "all") {
-                      params.set("brand", newBrand);
-                    } else {
-                      params.delete("brand");
-                      params.delete("marca");
-                    }
-                    for (const [k, v] of Array.from(params.entries())) {
-                      if (!v && !["q", "category", "sxs", "sort", "intro"].includes(k)) {
-                        params.delete(k);
-                      }
-                    }
-                    router.replace(`/productos?${params.toString()}`);
+                    const newVb = e.target.value;
+                    setSelectedVehicleBrand(newVb);
+                    updateUrlParams({ vehicleBrand: newVb, sxs: null });
                   }}
-                  className="bg-transparent text-gray-900 font-bold outline-none cursor-pointer text-xs max-w-[140px] sm:max-w-none truncate"
+                  className="bg-transparent text-gray-900 font-bold outline-none cursor-pointer text-xs max-w-[150px] sm:max-w-none truncate"
                 >
                   <option value="all">
-                    {availableBrands.length === 0
-                      ? t.productsAllBrands
-                      : `${t.productsAllBrands} (${availableBrands.length})`}
+                    {availableVehicleBrands.length === 0
+                      ? t.productsAllVehicleBrands
+                      : `${t.productsAllVehicleBrands} (${availableVehicleBrands.length})`}
                   </option>
-                  {Array.from(
-                    new Set([
-                      ...(selectedBrand !== "all" ? [selectedBrand] : []),
-                      ...availableBrands,
-                    ])
-                  ).map((b) => (
-                    <option key={b} value={b}>
-                      {b}
+                  {availableVehicleBrands.map((vb) => (
+                    <option key={vb.slug} value={vb.slug}>
+                      {vb.title} ({vb.count})
                     </option>
                   ))}
                 </select>
               </div>
 
-              {/* Active Brand Filter Pill */}
-              {selectedBrand !== "all" && (
-                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#111827] text-white text-xs font-semibold shadow-xs">
-                  <span>
-                    {lang === "es" ? "Marca:" : "Brand:"}{" "}
-                    <strong className="text-white font-bold">{selectedBrand}</strong>
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedBrand("all");
-                      const params = new URLSearchParams(searchParams.toString());
-                      params.delete("brand");
-                      params.delete("marca");
-                      for (const [k, v] of Array.from(params.entries())) {
-                        if (!v && !["q", "category", "sxs", "sort", "intro"].includes(k)) {
-                          params.delete(k);
-                        }
-                      }
-                      router.replace(`/productos?${params.toString()}`);
-                    }}
-                    className="ml-1 p-0.5 hover:bg-white/20 rounded-full transition cursor-pointer"
-                    title={lang === "es" ? "Quitar filtro de marca" : "Clear brand filter"}
-                  >
-                    <X className="w-3.5 h-3.5 text-white" />
-                  </button>
-                </div>
+              {/* 2. Distributor / Parts Manufacturer Brand Selector (e.g. EVP, Shock Therapy, Bikeman...) */}
+              <div className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-xl px-3 py-1.5 shadow-xs max-w-full">
+                <span className="text-gray-500 font-medium shrink-0">{t.productsFilterDistributorBrand}:</span>
+                <select
+                  value={selectedDistributorBrand}
+                  onChange={(e) => {
+                    const newDb = e.target.value;
+                    setSelectedDistributorBrand(newDb);
+                    updateUrlParams({ distributorBrand: newDb, brand: null, marca: null });
+                  }}
+                  className="bg-transparent text-gray-900 font-bold outline-none cursor-pointer text-xs max-w-[150px] sm:max-w-none truncate"
+                >
+                  <option value="all">
+                    {availableDistributorBrands.length === 0
+                      ? t.productsAllDistributorBrands
+                      : `${t.productsAllDistributorBrands} (${availableDistributorBrands.length})`}
+                  </option>
+                  {availableDistributorBrands.map((db) => (
+                    <option key={db.name} value={db.name}>
+                      {db.name} ({db.count})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* 3. In Stock Filter Toggle Button (Strictly only shown if in-stock products exist or filter active) */}
+              {(hasInStock || inStockOnly) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextVal = !inStockOnly;
+                    setInStockOnly(nextVal);
+                    updateUrlParams({ inStock: nextVal ? "true" : null });
+                  }}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all shadow-xs cursor-pointer ${
+                    inStockOnly
+                      ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
+                      : "bg-white text-gray-700 border-gray-200 hover:border-gray-400 hover:bg-gray-50"
+                  }`}
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  <span>{t.productsFilterInStock}</span>
+                </button>
               )}
 
-              {/* Compatible with My Garage Toggle */}
+              {/* 4. Discounted Filter Toggle Button (Strictly only shown if discounted products exist or filter active) */}
+              {(hasDiscounted || discountedOnly) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextVal = !discountedOnly;
+                    setDiscountedOnly(nextVal);
+                    updateUrlParams({ discounted: nextVal ? "true" : null });
+                  }}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all shadow-xs cursor-pointer ${
+                    discountedOnly
+                      ? "bg-[#C02030] text-white border-[#C02030] shadow-sm"
+                      : "bg-white text-gray-700 border-gray-200 hover:border-gray-400 hover:bg-gray-50"
+                  }`}
+                >
+                  <Percent className="w-3.5 h-3.5" />
+                  <span>{t.productsFilterDiscounted}</span>
+                </button>
+              )}
+
+              {/* 5. Compatible with My Garage Toggle */}
               {vehicle && (
                 <button
+                  type="button"
                   onClick={() => setOnlyCompatibleWithGarage(!onlyCompatibleWithGarage)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border font-semibold transition-all shadow-xs ${
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border font-semibold transition-all shadow-xs cursor-pointer ${
                     onlyCompatibleWithGarage
                       ? "bg-emerald-500 text-white border-emerald-600"
                       : "bg-white text-gray-700 border-gray-200 hover:border-gray-400"
@@ -919,21 +960,23 @@ function ProductsContent() {
                   </span>
                 </button>
               )}
-            </div>
 
-            {/* Sort Selector & Results Count (Responsive: No mobile edge cutoff) */}
-            <div className="flex flex-wrap items-center justify-between sm:justify-end gap-2.5 w-full sm:w-auto sm:ml-auto">
-              <span className="text-gray-500 font-medium text-xs whitespace-nowrap">
-                {products.length} {t.productsCount}
-              </span>
+              {/* Results count & Sort */}
+              <div className="flex flex-wrap items-center justify-between sm:justify-end gap-2.5 w-full sm:w-auto sm:ml-auto">
+                <span className="text-gray-500 font-medium text-xs whitespace-nowrap">
+                  {products.length} {t.productsCount}
+                </span>
 
-              <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
-                <div className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-xl px-3 py-1.5 shadow-xs">
-                  <SlidersHorizontal className="w-3 h-3 text-gray-400 shrink-0" />
+                <div className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-xl px-2.5 py-1.5 shadow-xs">
+                  <ArrowUpDown className="w-3.5 h-3.5 text-gray-400 shrink-0" />
                   <select
                     value={sortBy}
-                    onChange={(e) => setSortBy(e.target.value as any)}
-                    className="bg-transparent text-gray-900 font-bold outline-none cursor-pointer text-xs"
+                    onChange={(e) => {
+                      const newSort = e.target.value as any;
+                      setSortBy(newSort);
+                      updateUrlParams({ sort: newSort !== "relevant" ? newSort : null });
+                    }}
+                    className="bg-transparent text-gray-900 font-semibold outline-none cursor-pointer text-xs"
                   >
                     <option value="relevant">{t.productsSortRelevant}</option>
                     <option value="price-asc">{t.productsSortPriceAsc}</option>
@@ -941,18 +984,142 @@ function ProductsContent() {
                     <option value="stars">{t.productsSortRating}</option>
                   </select>
                 </div>
-
-                {hasActiveFilters && (
-                  <button
-                    onClick={handleClearFilters}
-                    className="text-xs text-[#C02030] hover:underline font-semibold flex items-center gap-1 shrink-0 px-1 py-0.5 whitespace-nowrap cursor-pointer"
-                  >
-                    <X className="w-3 h-3 shrink-0" />
-                    <span>{t.productsClearFilters}</span>
-                  </button>
-                )}
               </div>
             </div>
+
+            {/* Active Filter Pills Bar */}
+            {(selectedVehicleBrand !== "all" ||
+              selectedDistributorBrand !== "all" ||
+              inStockOnly ||
+              discountedOnly ||
+              selectedCategory !== "all" ||
+              searchQuery.trim() !== "" ||
+              onlyCompatibleWithGarage) && (
+              <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                <span className="text-[11px] text-gray-500 font-medium mr-1">
+                  {lang === "es" ? "Filtros activos:" : "Active filters:"}
+                </span>
+
+                {/* Vehicle Brand Pill */}
+                {selectedVehicleBrand !== "all" && (
+                  <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#111827] text-white text-[11px] font-semibold shadow-xs">
+                    <span>
+                      {t.productsFilterVehicleBrand}:{" "}
+                      <strong className="text-white">
+                        {availableVehicleBrands.find((b) => b.slug === selectedVehicleBrand)?.title || selectedVehicleBrand.toUpperCase()}
+                      </strong>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedVehicleBrand("all");
+                        updateUrlParams({ vehicleBrand: null, sxs: null });
+                      }}
+                      className="p-0.5 hover:bg-white/20 rounded-full transition cursor-pointer"
+                    >
+                      <X className="w-3 h-3 text-white" />
+                    </button>
+                  </div>
+                )}
+
+                {/* Distributor Brand Pill */}
+                {selectedDistributorBrand !== "all" && (
+                  <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#111827] text-white text-[11px] font-semibold shadow-xs">
+                    <span>
+                      {t.productsFilterDistributorBrand}:{" "}
+                      <strong className="text-white">{selectedDistributorBrand}</strong>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedDistributorBrand("all");
+                        updateUrlParams({ distributorBrand: null, brand: null, marca: null });
+                      }}
+                      className="p-0.5 hover:bg-white/20 rounded-full transition cursor-pointer"
+                    >
+                      <X className="w-3 h-3 text-white" />
+                    </button>
+                  </div>
+                )}
+
+                {/* In Stock Pill */}
+                {inStockOnly && (
+                  <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-700 text-white text-[11px] font-semibold shadow-xs">
+                    <span>{t.productsFilterInStock}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setInStockOnly(false);
+                        updateUrlParams({ inStock: null });
+                      }}
+                      className="p-0.5 hover:bg-white/20 rounded-full transition cursor-pointer"
+                    >
+                      <X className="w-3 h-3 text-white" />
+                    </button>
+                  </div>
+                )}
+
+                {/* Discounted Pill */}
+                {discountedOnly && (
+                  <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#C02030] text-white text-[11px] font-semibold shadow-xs">
+                    <span>{t.productsFilterDiscounted}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDiscountedOnly(false);
+                        updateUrlParams({ discounted: null });
+                      }}
+                      className="p-0.5 hover:bg-white/20 rounded-full transition cursor-pointer"
+                    >
+                      <X className="w-3 h-3 text-white" />
+                    </button>
+                  </div>
+                )}
+
+                {/* Category Pill */}
+                {selectedCategory !== "all" && (
+                  <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-gray-700 text-white text-[11px] font-semibold shadow-xs">
+                    <span>{getCategoryLabel(selectedCategory, lang)}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedCategory("all");
+                        updateUrlParams({ category: null });
+                      }}
+                      className="p-0.5 hover:bg-white/20 rounded-full transition cursor-pointer"
+                    >
+                      <X className="w-3 h-3 text-white" />
+                    </button>
+                  </div>
+                )}
+
+                {/* Search Query Pill */}
+                {searchQuery.trim() !== "" && (
+                  <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-gray-700 text-white text-[11px] font-semibold shadow-xs">
+                    <span>&quot;{searchQuery}&quot;</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearchQuery("");
+                        updateUrlParams({ q: null });
+                      }}
+                      className="p-0.5 hover:bg-white/20 rounded-full transition cursor-pointer"
+                    >
+                      <X className="w-3 h-3 text-white" />
+                    </button>
+                  </div>
+                )}
+
+                {/* Clear All Filters Button */}
+                <button
+                  type="button"
+                  onClick={handleClearFilters}
+                  className="text-[11px] text-[#C02030] hover:underline font-bold ml-1 cursor-pointer"
+                >
+                  {t.productsClearFilters}
+                </button>
+              </div>
+            )}
           </div>
         </div>
 

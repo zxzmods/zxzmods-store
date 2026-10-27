@@ -11,8 +11,11 @@ export const prisma =
     log: process.env.NODE_ENV === "development" ? ["warn", "error"] : ["error"],
   });
 
-// Configure SQLite pragmas for high concurrency, durability and busy timeout tolerance
-if (!globalForPrisma.sqlitePragmasConfigured) {
+// Configure SQLite pragmas for high concurrency, durability and busy timeout tolerance only on SQLite
+const dbUrl = process.env.DATABASE_URL || "";
+const isSqlite = !dbUrl.startsWith("postgres://") && !dbUrl.startsWith("postgresql://") && (dbUrl.startsWith("file:") || !dbUrl);
+
+if (isSqlite && !globalForPrisma.sqlitePragmasConfigured) {
   globalForPrisma.sqlitePragmasConfigured = true;
   (async () => {
     try {

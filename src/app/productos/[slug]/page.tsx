@@ -19,6 +19,7 @@ import { formatCRC, getCategoryLabel } from "@/lib/i18n";
 import { Skeleton } from "@/components/ui/Skeleton";
 import {
   ProductItem,
+  ParameterOption,
   normalizeBrandName,
   DescriptionSection,
   isPlatformOrVehicleMatch,
@@ -374,6 +375,18 @@ export default function ProductDetailPage() {
   // Selected Configurable Parameters State (parameterId -> optionId)
   const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>({});
   const [switchingLinkedProduct, setSwitchingLinkedProduct] = useState(false);
+  const [switchingTargetId, setSwitchingTargetId] = useState<string | null>(null);
+
+  const isCurrentProductOpt = (opt: any, currentProduct: ProductItem | null): boolean => {
+    if (!opt || !currentProduct) return false;
+    if (opt.isCurrentProduct) return true;
+    if (!opt.linkedProductId) return false;
+    const lId = String(opt.linkedProductId).trim().toLowerCase();
+    const pId = String(currentProduct.id || "").trim().toLowerCase();
+    const pSlug = String(currentProduct.slug || "").trim().toLowerCase();
+    const pSku = String(currentProduct.sku || "").trim().toLowerCase();
+    return (Boolean(pId) && lId === pId) || (Boolean(pSlug) && lId === pSlug) || (Boolean(pSku) && lId === pSku);
+  };
 
   const handleSelectOption = async (
     param: any,
@@ -384,16 +397,15 @@ export default function ProductDetailPage() {
       param.type === "product_link" ||
       Boolean(opt.linkedProductId);
 
-    // If this option is linked to another product and that product is NOT the current one:
-    if (
-      isProductLinking &&
-      opt.linkedProductId &&
-      product &&
-      opt.linkedProductId.toLowerCase() !== product.id.toLowerCase() &&
-      opt.linkedProductId.toLowerCase() !== (product.slug || "").toLowerCase() &&
-      opt.linkedProductId.toLowerCase() !== (product.sku || "").toLowerCase()
-    ) {
+    // If this option is linked to another product:
+    if (isProductLinking && opt.linkedProductId) {
+      if (isCurrentProductOpt(opt, product)) {
+        // Already viewing this product, nothing to do
+        return;
+      }
+
       setSwitchingLinkedProduct(true);
+      setSwitchingTargetId(opt.id);
       try {
         const res = await fetch(
           `/api/products?slug=${encodeURIComponent(opt.linkedProductId)}`
@@ -414,12 +426,20 @@ export default function ProductDetailPage() {
           const nextOpts: Record<string, string> = {};
           if (nextProd.parameters && Array.isArray(nextProd.parameters)) {
             nextProd.parameters.forEach((p: any) => {
+              const isPLinked =
+                p.type === "product_linking" ||
+                p.type === "product_link" ||
+                p.options?.some((o: any) => Boolean(o.linkedProductId));
+              if (isPLinked) {
+                const selfOpt = p.options?.find((o: any) => isCurrentProductOpt(o, nextProd));
+                if (selfOpt) {
+                  nextOpts[p.id] = selfOpt.id;
+                  return;
+                }
+              }
               const match = p.options?.find(
                 (o: any) =>
-                  (o.linkedProductId &&
-                    (o.linkedProductId.toLowerCase() === nextProd.id.toLowerCase() ||
-                      o.linkedProductId.toLowerCase() === (nextProd.slug || "").toLowerCase() ||
-                      o.linkedProductId.toLowerCase() === (nextProd.sku || "").toLowerCase())) ||
+                  isCurrentProductOpt(o, nextProd) ||
                   o.id === opt.id ||
                   o.labelEs?.toLowerCase() === opt.labelEs?.toLowerCase()
               );
@@ -436,6 +456,7 @@ export default function ProductDetailPage() {
         console.error("Error switching linked product:", err);
       } finally {
         setSwitchingLinkedProduct(false);
+        setSwitchingTargetId(null);
       }
       return;
     }
@@ -468,6 +489,17 @@ export default function ProductDetailPage() {
             const initialOpts: Record<string, string> = {};
             data.product.parameters.forEach((param: any) => {
               if (param.options && param.options.length > 0) {
+                const isLinked =
+                  param.type === "product_linking" ||
+                  param.type === "product_link" ||
+                  param.options.some((o: any) => Boolean(o.linkedProductId));
+                if (isLinked) {
+                  const selfOpt = param.options.find((o: any) => isCurrentProductOpt(o, data.product));
+                  if (selfOpt) {
+                    initialOpts[param.id] = selfOpt.id;
+                    return;
+                  }
+                }
                 initialOpts[param.id] = param.options[0].id;
               }
             });
@@ -667,8 +699,18 @@ export default function ProductDetailPage() {
     if (!product?.parameters || product.parameters.length === 0) return [];
     const list: SelectedParameterItem[] = [];
     product.parameters.forEach((param) => {
-      const selectedOptionId = selectedOptions[param.id] || param.options?.[0]?.id;
-      const option = param.options?.find((o) => o.id === selectedOptionId);
+      const isLinkedParam =
+        param.type === "product_linking" ||
+        param.type === "product_link" ||
+        param.options?.some((o) => Boolean(o.linkedProductId));
+
+      let option = null;
+      if (isLinkedParam) {
+        option = param.options?.find((o) => isCurrentProductOpt(o, product)) || param.options?.[0];
+      } else {
+        const selectedOptionId = selectedOptions[param.id] || param.options?.[0]?.id;
+        option = param.options?.find((o) => o.id === selectedOptionId);
+      }
       if (option) {
         list.push({
           parameterId: param.id,
@@ -1215,15 +1257,55 @@ export default function ProductDetailPage() {
                         <Sliders className="w-4 h-4 text-[#C02030]" />
                         <span>{t.productParametersTitle}</span>
                       </span>
-                      <span className="text-[11px] text-gray-500 font-medium">
-                        {t.productParametersDesc}
-                      </span>
                     </div>
 
                     <div className="space-y-3.5">
                       {product.parameters.map((param) => {
-                        const activeOptionId = selectedOptions[param.id] || param.options?.[0]?.id;
+                        const isLinkedParam =
+                          param.type === "product_linking" ||
+                          param.type === "product_link" ||
+                          param.options?.some((o) => Boolean(o.linkedProductId));
+
+                        // Find if any existing option represents THIS product
+                        const thisProdOpt = isLinkedParam
+                          ? param.options?.find((o) => isCurrentProductOpt(o, product))
+                          : null;
+
+                        // Guarantee that the current viewing product is included in the options list
+                        let displayOptions = [...(param.options || [])];
+                        if (isLinkedParam && !thisProdOpt && product) {
+                          const titleEs = product.nameEs || product.p_title;
+                          const titleEn = product.nameEn || titleEs;
+                          const dashMatchEs = titleEs.match(/-\s*([^-\n]+)$/);
+                          const dashMatchEn = titleEn.match(/-\s*([^-\n]+)$/);
+                          const viewingLabelEs = dashMatchEs ? dashMatchEs[1].trim() : titleEs;
+                          const viewingLabelEn = dashMatchEn ? dashMatchEn[1].trim() : (titleEn || viewingLabelEs);
+
+                          const syntheticOpt: ParameterOption = {
+                            id: `self-${product.id}`,
+                            labelEs: viewingLabelEs,
+                            labelEn: viewingLabelEn,
+                            priceDeltaCRC: 0,
+                            linkedProductId: product.slug || product.sku || product.id,
+                            imageUrl: product.imageUrl || undefined,
+                          };
+                          displayOptions = [syntheticOpt, ...displayOptions];
+                        }
+
+                        // Determine the active option for header label
+                        let activeOpt = null;
+                        if (isLinkedParam) {
+                          // For product linking: the active option label MUST be the viewing product
+                          activeOpt = displayOptions.find((o) => isCurrentProductOpt(o, product)) || displayOptions[0];
+                        } else {
+                          const activeOptionId = selectedOptions[param.id] || displayOptions[0]?.id;
+                          activeOpt = displayOptions.find((o) => o.id === activeOptionId) || displayOptions[0];
+                        }
+
                         const paramTitle = lang === "es" ? param.nameEs : (param.nameEn || param.nameEs);
+                        const activeOptLabel = activeOpt
+                          ? (lang === "es" ? activeOpt.labelEs : (activeOpt.labelEn || activeOpt.labelEs))
+                          : "";
 
                         return (
                           <div key={param.id} className="space-y-1.5">
@@ -1232,30 +1314,19 @@ export default function ProductDetailPage() {
                                 {paramTitle}:
                               </span>
                               <span className="font-semibold text-gray-600">
-                                {(() => {
-                                  const currentOpt = param.options.find((o) => o.id === activeOptionId);
-                                  if (!currentOpt) return "";
-                                  return lang === "es" ? currentOpt.labelEs : (currentOpt.labelEn || currentOpt.labelEs);
-                                })()}
+                                {activeOptLabel}
                               </span>
                             </div>
 
                             <div className="flex flex-wrap gap-2.5">
-                              {param.options.map((opt) => {
-                                const isCurrentLinkedProd = Boolean(
-                                  opt.linkedProductId &&
-                                    product &&
-                                    (opt.linkedProductId.toLowerCase() === product.id.toLowerCase() ||
-                                      opt.linkedProductId.toLowerCase() === (product.slug || "").toLowerCase() ||
-                                      opt.linkedProductId.toLowerCase() === (product.sku || "").toLowerCase())
-                                );
-                                const isSelected = isCurrentLinkedProd || opt.id === activeOptionId;
+                              {displayOptions.map((opt) => {
+                                const isViewing = isLinkedParam
+                                  ? isCurrentProductOpt(opt, product)
+                                  : opt.id === activeOpt?.id;
+                                const isSelected = isViewing;
                                 const optLabel = lang === "es" ? opt.labelEs : (opt.labelEn || opt.labelEs);
                                 const resolvedColor = resolveOptionColorHex(optLabel, opt.colorHex);
-                                const isLinkedParam =
-                                  param.type === "product_linking" ||
-                                  param.type === "product_link" ||
-                                  Boolean(opt.linkedProductId);
+                                const isTargetSwitching = switchingLinkedProduct && switchingTargetId === opt.id;
 
                                 return (
                                   <button
@@ -1266,11 +1337,11 @@ export default function ProductDetailPage() {
                                     className={`px-3.5 py-2.5 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer border shadow-2xs ${
                                       isSelected
                                         ? "bg-[#C02030] border-[#C02030] text-white shadow-md scale-[1.02] ring-2 ring-[#C02030]/25"
-                                        : "bg-white border-gray-200 text-gray-800 hover:border-gray-400 hover:bg-gray-50"
-                                    } ${switchingLinkedProduct ? "opacity-75 cursor-wait" : ""}`}
+                                        : "bg-white/80 backdrop-blur-md border border-gray-200/90 text-gray-800 hover:border-gray-400 hover:bg-white/95"
+                                    } ${switchingLinkedProduct ? "opacity-85 cursor-wait" : ""}`}
                                   >
-                                    {switchingLinkedProduct && isSelected ? (
-                                      <Loader2 className="w-3.5 h-3.5 animate-spin text-white shrink-0" />
+                                    {isTargetSwitching ? (
+                                      <Loader2 className="w-3.5 h-3.5 animate-spin text-[#C02030] shrink-0" />
                                     ) : (
                                       <>
                                         {opt.imageUrl && (
@@ -1291,7 +1362,7 @@ export default function ProductDetailPage() {
                                         {isLinkedParam && !opt.imageUrl && (
                                           <Link2
                                             className={`w-3.5 h-3.5 shrink-0 ${
-                                              isSelected ? "text-white" : "text-blue-500"
+                                              isSelected ? "text-white" : "text-gray-500"
                                             }`}
                                           />
                                         )}

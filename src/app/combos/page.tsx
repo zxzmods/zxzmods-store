@@ -25,6 +25,8 @@ import {
   AlertTriangle,
   AlertCircle,
   Calendar,
+  Check,
+  Percent,
 } from "lucide-react";
 
 interface ComboItem {
@@ -60,21 +62,61 @@ export default function CombosPage() {
   const [combos, setCombos] = useState<ComboItem[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [selectedVehicleBrand, setSelectedVehicleBrand] = useState<string>("all");
+  const [selectedDistributorBrand, setSelectedDistributorBrand] = useState<string>("all");
+  const [inStockOnly, setInStockOnly] = useState<boolean>(false);
+  const [discountedOnly, setDiscountedOnly] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [loading, setLoading] = useState(true);
 
+  const [availableVehicleBrands, setAvailableVehicleBrands] = useState<Array<{ slug: string; title: string; count: number }>>([]);
+  const [availableDistributorBrands, setAvailableDistributorBrands] = useState<Array<{ name: string; count: number }>>([]);
+  const [hasInStock, setHasInStock] = useState(false);
+  const [hasDiscounted, setHasDiscounted] = useState(false);
+
   useEffect(() => {
-    fetch("/api/combos")
+    let isMounted = true;
+    setLoading(true);
+
+    const params = new URLSearchParams();
+    if (searchQuery.trim()) params.set("search", searchQuery.trim());
+    if (selectedCategory && selectedCategory !== "all") params.set("category", selectedCategory);
+    if (selectedVehicleBrand && selectedVehicleBrand !== "all") params.set("vehicleBrand", selectedVehicleBrand);
+    if (selectedDistributorBrand && selectedDistributorBrand !== "all") params.set("distributorBrand", selectedDistributorBrand);
+    if (inStockOnly) params.set("inStock", "true");
+    if (discountedOnly) params.set("discounted", "true");
+
+    fetch(`/api/combos?${params.toString()}`)
       .then((res) => res.json())
       .then((res) => {
+        if (!isMounted) return;
         if (res.success && res.data) {
           setCombos(res.data.combos || []);
-          setCategories(res.data.categories || []);
+          if (Array.isArray(res.data.categories)) setCategories(res.data.categories);
+          if (Array.isArray(res.data.availableVehicleBrands)) setAvailableVehicleBrands(res.data.availableVehicleBrands);
+          if (Array.isArray(res.data.availableDistributorBrands)) setAvailableDistributorBrands(res.data.availableDistributorBrands);
+          setHasInStock(Boolean(res.data.hasInStock));
+          setHasDiscounted(Boolean(res.data.hasDiscounted));
         }
       })
       .catch((err) => console.error("Error loading combos:", err))
-      .finally(() => setLoading(false));
-  }, []);
+      .finally(() => {
+        if (isMounted) setLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [searchQuery, selectedCategory, selectedVehicleBrand, selectedDistributorBrand, inStockOnly, discountedOnly]);
+
+  const handleClearFilters = () => {
+    setSearchQuery("");
+    setSelectedCategory("all");
+    setSelectedVehicleBrand("all");
+    setSelectedDistributorBrand("all");
+    setInStockOnly(false);
+    setDiscountedOnly(false);
+  };
 
   // Helper to get friendly bilingual label for any category (dynamic)
   const getCategoryLabel = (cat: string) => {
@@ -86,29 +128,7 @@ export default function CombosPage() {
   };
 
   // Filter combos based on active category & search query
-  const filteredCombos = useMemo(() => {
-    return combos.filter((combo) => {
-      const matchesCategory =
-        selectedCategory === "all" || combo.category === selectedCategory;
-
-      if (!matchesCategory) return false;
-
-      if (!searchQuery.trim()) return true;
-
-      const q = searchQuery.toLowerCase().trim();
-      const title = (lang === "es" ? combo.titleEs : combo.titleEn).toLowerCase();
-      const desc = (lang === "es" ? combo.descriptionEs : combo.descriptionEn).toLowerCase();
-      const badge = (lang === "es" ? combo.badgeEs : combo.badgeEn).toLowerCase();
-      const itemsText = (combo.items || []).join(" ").toLowerCase();
-
-      return (
-        title.includes(q) ||
-        desc.includes(q) ||
-        badge.includes(q) ||
-        itemsText.includes(q)
-      );
-    });
-  }, [combos, selectedCategory, searchQuery, lang]);
+  const filteredCombos = combos;
 
   // Compute counts per category dynamically
   const categoryCounts = useMemo(() => {
@@ -234,6 +254,208 @@ export default function CombosPage() {
                 </button>
               );
             })}
+          </div>
+
+          {/* Secondary Controls: Separated Filter Parameters (Vehicle Brand, Distributor Brand, In Stock, Discounted) */}
+          <div className="space-y-2.5 pt-2 border-t border-gray-100 text-xs">
+            <div className="flex flex-wrap items-center gap-2">
+              {/* 1. Vehicle Brand Selector (Strictly only brands present in combos) */}
+              <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5 shadow-xs max-w-full">
+                <span className="text-gray-500 font-medium shrink-0">{t.productsFilterVehicleBrand}:</span>
+                <select
+                  value={selectedVehicleBrand}
+                  onChange={(e) => setSelectedVehicleBrand(e.target.value)}
+                  className="bg-transparent text-gray-900 font-bold outline-none cursor-pointer text-xs max-w-[150px] sm:max-w-none truncate"
+                >
+                  <option value="all">
+                    {availableVehicleBrands.length === 0
+                      ? t.productsAllVehicleBrands
+                      : `${t.productsAllVehicleBrands} (${availableVehicleBrands.length})`}
+                  </option>
+                  {availableVehicleBrands.map((vb) => (
+                    <option key={vb.slug} value={vb.slug}>
+                      {vb.title} ({vb.count})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* 2. Distributor Brand Selector (Strictly only distributor brands present in combos) */}
+              <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5 shadow-xs max-w-full">
+                <span className="text-gray-500 font-medium shrink-0">{t.productsFilterDistributorBrand}:</span>
+                <select
+                  value={selectedDistributorBrand}
+                  onChange={(e) => setSelectedDistributorBrand(e.target.value)}
+                  className="bg-transparent text-gray-900 font-bold outline-none cursor-pointer text-xs max-w-[150px] sm:max-w-none truncate"
+                >
+                  <option value="all">
+                    {availableDistributorBrands.length === 0
+                      ? t.productsAllDistributorBrands
+                      : `${t.productsAllDistributorBrands} (${availableDistributorBrands.length})`}
+                  </option>
+                  {availableDistributorBrands.map((db) => (
+                    <option key={db.name} value={db.name}>
+                      {db.name} ({db.count})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* 3. In Stock Filter Toggle */}
+              {(hasInStock || inStockOnly) && (
+                <button
+                  type="button"
+                  onClick={() => setInStockOnly(!inStockOnly)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all shadow-xs cursor-pointer ${
+                    inStockOnly
+                      ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
+                      : "bg-white text-gray-700 border-gray-200 hover:border-gray-400 hover:bg-gray-50"
+                  }`}
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  <span>{t.productsFilterInStock}</span>
+                </button>
+              )}
+
+              {/* 4. Discounted Filter Toggle */}
+              {(hasDiscounted || discountedOnly) && (
+                <button
+                  type="button"
+                  onClick={() => setDiscountedOnly(!discountedOnly)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all shadow-xs cursor-pointer ${
+                    discountedOnly
+                      ? "bg-[#C02030] text-white border-[#C02030] shadow-sm"
+                      : "bg-white text-gray-700 border-gray-200 hover:border-gray-400 hover:bg-gray-50"
+                  }`}
+                >
+                  <Percent className="w-3.5 h-3.5" />
+                  <span>{t.productsFilterDiscounted}</span>
+                </button>
+              )}
+
+              {/* Count indicator */}
+              <div className="ml-auto text-xs text-gray-500 font-mono whitespace-nowrap">
+                <span>{filteredCombos.length}</span>
+                <span className="ml-1">
+                  {filteredCombos.length === 1 ? "combo" : "combos"}
+                </span>
+              </div>
+            </div>
+
+            {/* Active Filter Pills Bar */}
+            {(selectedVehicleBrand !== "all" ||
+              selectedDistributorBrand !== "all" ||
+              inStockOnly ||
+              discountedOnly ||
+              selectedCategory !== "all" ||
+              searchQuery.trim() !== "") && (
+              <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                <span className="text-[11px] text-gray-500 font-medium mr-1">
+                  {lang === "es" ? "Filtros activos:" : "Active filters:"}
+                </span>
+
+                {/* Vehicle Brand Pill */}
+                {selectedVehicleBrand !== "all" && (
+                  <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#111827] text-white text-[11px] font-semibold shadow-xs">
+                    <span>
+                      {t.productsFilterVehicleBrand}:{" "}
+                      <strong className="text-white">
+                        {availableVehicleBrands.find((b) => b.slug === selectedVehicleBrand)?.title || selectedVehicleBrand.toUpperCase()}
+                      </strong>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedVehicleBrand("all")}
+                      className="p-0.5 hover:bg-white/20 rounded-full transition cursor-pointer"
+                    >
+                      <X className="w-3 h-3 text-white" />
+                    </button>
+                  </div>
+                )}
+
+                {/* Distributor Brand Pill */}
+                {selectedDistributorBrand !== "all" && (
+                  <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#111827] text-white text-[11px] font-semibold shadow-xs">
+                    <span>
+                      {t.productsFilterDistributorBrand}:{" "}
+                      <strong className="text-white">{selectedDistributorBrand}</strong>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedDistributorBrand("all")}
+                      className="p-0.5 hover:bg-white/20 rounded-full transition cursor-pointer"
+                    >
+                      <X className="w-3 h-3 text-white" />
+                    </button>
+                  </div>
+                )}
+
+                {/* In Stock Pill */}
+                {inStockOnly && (
+                  <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-700 text-white text-[11px] font-semibold shadow-xs">
+                    <span>{t.productsFilterInStock}</span>
+                    <button
+                      type="button"
+                      onClick={() => setInStockOnly(false)}
+                      className="p-0.5 hover:bg-white/20 rounded-full transition cursor-pointer"
+                    >
+                      <X className="w-3 h-3 text-white" />
+                    </button>
+                  </div>
+                )}
+
+                {/* Discounted Pill */}
+                {discountedOnly && (
+                  <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#C02030] text-white text-[11px] font-semibold shadow-xs">
+                    <span>{t.productsFilterDiscounted}</span>
+                    <button
+                      type="button"
+                      onClick={() => setDiscountedOnly(false)}
+                      className="p-0.5 hover:bg-white/20 rounded-full transition cursor-pointer"
+                    >
+                      <X className="w-3 h-3 text-white" />
+                    </button>
+                  </div>
+                )}
+
+                {/* Category Pill */}
+                {selectedCategory !== "all" && (
+                  <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-gray-700 text-white text-[11px] font-semibold shadow-xs">
+                    <span>{getCategoryLabel(selectedCategory)}</span>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCategory("all")}
+                      className="p-0.5 hover:bg-white/20 rounded-full transition cursor-pointer"
+                    >
+                      <X className="w-3 h-3 text-white" />
+                    </button>
+                  </div>
+                )}
+
+                {/* Search Query Pill */}
+                {searchQuery.trim() !== "" && (
+                  <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-gray-700 text-white text-[11px] font-semibold shadow-xs">
+                    <span>&quot;{searchQuery}&quot;</span>
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery("")}
+                      className="p-0.5 hover:bg-white/20 rounded-full transition cursor-pointer"
+                    >
+                      <X className="w-3 h-3 text-white" />
+                    </button>
+                  </div>
+                )}
+
+                {/* Clear All Filters Button */}
+                <button
+                  type="button"
+                  onClick={handleClearFilters}
+                  className="text-[11px] text-[#C02030] hover:underline font-bold ml-1 cursor-pointer"
+                >
+                  {t.productsClearFilters}
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
