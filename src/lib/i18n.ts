@@ -1007,6 +1007,8 @@ export interface Translations {
   devCategorySelectorLabel: string;
   devSelectCategoryPrompt: string;
   devAddCategoryBtn: string;
+  devNewCategoryBtn: string;
+  devComboCategoryLabel: string;
   devAddCategoryModalTitle: string;
   devAddCategoryModalDesc: string;
   devCategoryNameEsLabel: string;
@@ -2964,6 +2966,8 @@ export const translations: Record<Language, Translations> = {
     devCategorySelectorLabel: "Categoría de Producto",
     devSelectCategoryPrompt: "-- Seleccionar Categoría --",
     devAddCategoryBtn: "Agregar Categoría",
+    devNewCategoryBtn: "+ Nueva Categoría",
+    devComboCategoryLabel: "Categoría del Combo",
     devAddCategoryModalTitle: "Crear Nueva Categoría",
     devAddCategoryModalDesc: "Agrega una nueva categoría al catálogo. La primera letra siempre se mantendrá en mayúscula.",
     devCategoryNameEsLabel: "Nombre de la Categoría (Español)",
@@ -4881,6 +4885,8 @@ export const translations: Record<Language, Translations> = {
     devCategorySelectorLabel: "Product Category",
     devSelectCategoryPrompt: "-- Select Category --",
     devAddCategoryBtn: "Add Category",
+    devNewCategoryBtn: "+ New Category",
+    devComboCategoryLabel: "Combo Category",
     devAddCategoryModalTitle: "Create New Category",
     devAddCategoryModalDesc: "Add a new category to the catalog. First letter will always be capitalized.",
     devCategoryNameEsLabel: "Category Name (Spanish)",
