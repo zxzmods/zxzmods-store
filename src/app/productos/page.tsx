@@ -143,9 +143,12 @@ function ProductCatalogCard({
   const selectedParametersList: SelectedParameterItem[] = useMemo(() => {
     if (!product.parameters || product.parameters.length === 0) return [];
     return product.parameters.map((param) => {
-      const matchingLinkedOption = (param as any).type === "product_linking"
+      const isLinked = (param as any).type === "product_linking" || (param as any).type === "product_link";
+      const matchingLinkedOption = isLinked
         ? param.options?.find(
             (o: any) =>
+              !o.linkedProductId ||
+              o.isCurrentProduct ||
               o.linkedProductId === product.id ||
               o.linkedProductId === product.slug ||
               o.linkedProductId === (product as any).sku
@@ -157,7 +160,7 @@ function ProductCatalogCard({
         parameterName: lang === "es" ? param.nameEs : (param.nameEn || param.nameEs),
         optionId: def?.id || "",
         optionLabel: def ? (lang === "es" ? def.labelEs : (def.labelEn || def.labelEs)) : "",
-        priceDeltaCRC: def?.priceDeltaCRC || 0,
+        priceDeltaCRC: isLinked ? 0 : (def?.priceDeltaCRC || 0),
         colorHex: def?.colorHex,
         imageUrl: def?.imageUrl,
       };
@@ -309,11 +312,6 @@ function ProductCatalogCard({
             ) : (
               <div className="flex flex-col items-end">
                 <div className="flex items-baseline justify-end">
-                  {totalDeltaCRC !== 0 && (
-                    <span className="text-xs text-gray-400 line-through mr-2 font-mono">
-                      {formatCRC(product.price?.T_price ?? 0)}
-                    </span>
-                  )}
                   <span className="text-xl font-black text-[#111827]">
                     {formatCRC(effectivePriceCRC)}
                   </span>

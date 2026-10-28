@@ -381,12 +381,43 @@ export default function ProductDetailPage() {
   const isCurrentProductOpt = (opt: any, currentProduct: ProductItem | null): boolean => {
     if (!opt || !currentProduct) return false;
     if (opt.isCurrentProduct) return true;
-    if (!opt.linkedProductId) return false;
+    if (opt.id && String(opt.id).startsWith(`self-${currentProduct.id}`)) return true;
+    if (!opt.linkedProductId) return true;
     const lId = String(opt.linkedProductId).trim().toLowerCase();
     const pId = String(currentProduct.id || "").trim().toLowerCase();
     const pSlug = String(currentProduct.slug || "").trim().toLowerCase();
     const pSku = String(currentProduct.sku || "").trim().toLowerCase();
     return (Boolean(pId) && lId === pId) || (Boolean(pSlug) && lId === pSlug) || (Boolean(pSku) && lId === pSku);
+  };
+
+  const deriveCleanVariantLabel = (prod: ProductItem, otherOpts: ParameterOption[]) => {
+    const title = (prod.nameEs || prod.p_title || "").trim();
+    const titleLower = title.toLowerCase();
+    const skuLower = (prod.sku || "").toLowerCase();
+
+    const has4SeaterSibling = otherOpts.some((o) => {
+      const s = `${o.labelEs || ""} ${o.labelEn || ""} ${o.linkedProductId || ""}`.toLowerCase();
+      return s.includes("z10-4") || s.includes("4-seater") || s.includes("4 seater") || s.includes("4 plazas") || s.includes("4-seat");
+    });
+
+    const is4Seater = titleLower.includes("z10-4") || skuLower.includes("z10-4") || /\b4[- ]?(seater|seat|plazas|asientos)\b/i.test(titleLower);
+    const is2Seater = !is4Seater && (has4SeaterSibling || titleLower.includes("z10") || skuLower.includes("z10") || /\b2[- ]?(seater|seat|plazas|asientos)\b/i.test(titleLower));
+
+    if (is4Seater) {
+      return { es: "Z10-4", en: "Z10-4" };
+    }
+    if (is2Seater) {
+      return { es: "2 Seater", en: "2 Seater" };
+    }
+
+    const modelMatch = title.match(/(?:CFMoto|Polaris|Can-Am|Honda|Yamaha|Kawasaki)\s+([A-Za-z0-9_-]+(?:\s+[A-Za-z0-9_-]+)?)/i);
+    if (modelMatch) {
+      return { es: modelMatch[1], en: modelMatch[1] };
+    }
+
+    const dashMatch = title.match(/-\s*([^-\n]+)$/);
+    const viewingLabel = dashMatch ? dashMatch[1].trim() : title;
+    return { es: viewingLabel, en: prod.nameEn || viewingLabel };
   };
 
   const handleSelectOption = async (
@@ -774,7 +805,7 @@ export default function ProductDetailPage() {
           parameterName: lang === "es" ? param.nameEs : (param.nameEn || param.nameEs),
           optionId: option.id,
           optionLabel: lang === "es" ? option.labelEs : (option.labelEn || option.labelEs),
-          priceDeltaCRC: option.priceDeltaCRC || 0,
+          priceDeltaCRC: isLinkedParam ? 0 : (option.priceDeltaCRC || 0),
           colorHex: option.colorHex,
           imageUrl: option.imageUrl,
           supplierUrl: option.supplierUrl,
@@ -1436,23 +1467,31 @@ export default function ProductDetailPage() {
 
                         // Guarantee that the current viewing product is included in the options list
                         let displayOptions = [...(param.options || [])];
-                        if (isLinkedParam && !thisProdOpt && product) {
-                          const titleEs = product.nameEs || product.p_title;
-                          const titleEn = product.nameEn || titleEs;
-                          const dashMatchEs = titleEs.match(/-\s*([^-\n]+)$/);
-                          const dashMatchEn = titleEn.match(/-\s*([^-\n]+)$/);
-                          const viewingLabelEs = dashMatchEs ? dashMatchEs[1].trim() : titleEs;
-                          const viewingLabelEn = dashMatchEn ? dashMatchEn[1].trim() : (titleEn || viewingLabelEs);
-
-                          const syntheticOpt: ParameterOption = {
-                            id: `self-${product.id}`,
-                            labelEs: viewingLabelEs,
-                            labelEn: viewingLabelEn,
-                            priceDeltaCRC: 0,
-                            linkedProductId: product.slug || product.sku || product.id,
-                            imageUrl: product.imageUrl || undefined,
-                          };
-                          displayOptions = [syntheticOpt, ...displayOptions];
+                        if (isLinkedParam) {
+                          if (!thisProdOpt && product) {
+                            const derived = deriveCleanVariantLabel(product, param.options || []);
+                            const syntheticOpt: ParameterOption = {
+                              id: `self-${product.id}`,
+                              labelEs: derived.es,
+                              labelEn: derived.en,
+                              priceDeltaCRC: 0,
+                              linkedProductId: product.slug || product.sku || product.id,
+                              imageUrl: product.imageUrl || undefined,
+                              isCurrentProduct: true,
+                            };
+                            displayOptions = [syntheticOpt, ...displayOptions];
+                          } else if (thisProdOpt && product) {
+                            const fullTitle = (product.nameEs || product.p_title || "").trim().toLowerCase();
+                            const optLabel = (thisProdOpt.labelEs || "").trim().toLowerCase();
+                            const isDirty = !thisProdOpt.labelEs || optLabel === fullTitle || optLabel.includes("skid plate") || optLabel.includes("hdpe") || optLabel === "estándar / base";
+                            if (isDirty) {
+                              const derived = deriveCleanVariantLabel(product, param.options || []);
+                              thisProdOpt.labelEs = derived.es;
+                              thisProdOpt.labelEn = derived.en;
+                            }
+                            thisProdOpt.priceDeltaCRC = 0;
+                            thisProdOpt.isCurrentProduct = true;
+                          }
                         }
 
                         // Determine the active option for header label
@@ -1532,14 +1571,8 @@ export default function ProductDetailPage() {
                                       </>
                                     )}
                                     <span>{optLabel}</span>
-                                    {opt.priceDeltaCRC !== 0 && (
-                                      <span
-                                        className={`text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded-md ${
-                                          isSelected
-                                            ? "bg-black/25 text-white"
-                                            : "bg-gray-100 text-[#C02030]"
-                                        }`}
-                                      >
+                                    {!isSelected && opt.priceDeltaCRC !== 0 && (
+                                      <span className="text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded-md bg-gray-100 text-[#C02030]">
                                         {opt.priceDeltaCRC > 0
                                           ? `+${formatCRC(opt.priceDeltaCRC)}`
                                           : `-${formatCRC(Math.abs(opt.priceDeltaCRC))}`}
@@ -1566,7 +1599,7 @@ export default function ProductDetailPage() {
                       <span className={`text-3xl sm:text-4xl font-black ${product.discountPercent && product.discountPercent > 0 ? "text-[#C02030]" : "text-[#111827]"}`}>
                         {formatCRC(effectivePriceCRC)}
                       </span>
-                      {Boolean(product.discountPercent && product.discountPercent > 0 && product.originalPriceCRC && product.originalPriceCRC > 0) ? (
+                      {Boolean(product.discountPercent && product.discountPercent > 0 && product.originalPriceCRC && product.originalPriceCRC > 0) && (
                         <>
                           <span className="text-sm font-mono font-bold text-gray-400 line-through">
                             {formatCRC((product.originalPriceCRC || 0) + totalDeltaCRC)}
@@ -1575,12 +1608,6 @@ export default function ProductDetailPage() {
                             -{product.discountPercent}% {lang === "es" ? "DESCUENTO" : "OFF"}
                           </span>
                         </>
-                      ) : (
-                        totalDeltaCRC !== 0 && (
-                          <span className="text-sm font-mono font-bold text-gray-400 line-through">
-                            {formatCRC(product.price.T_price)}
-                          </span>
-                        )
                       )}
                     </div>
                     <span className="text-xs text-gray-500 font-semibold block mt-1">

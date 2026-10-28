@@ -98,6 +98,7 @@ export interface ParameterOption {
   supplierUrl?: string;  // Dedicated supplier URL for this specific variant option (User Requirement 1)
   linkedProductId?: string; // ID, SKU or slug of the linked product for product linking (User Requirement 3)
   isDefault?: boolean;
+  isCurrentProduct?: boolean;
 }
 
 export interface ComboUniqueProductField {

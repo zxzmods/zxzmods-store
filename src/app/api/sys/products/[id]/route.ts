@@ -584,6 +584,114 @@ export async function PATCH(
       details: `Product ${existingProduct.sku} updated by ${auth.session.role} ${auth.session.email}`,
     });
 
+    // Bidirectional sync for product linking parameters
+    try {
+      let paramsArr: any[] = [];
+      if (body.parameters && Array.isArray(body.parameters)) paramsArr = body.parameters;
+      else if (typeof body.parametersJson === "string") {
+        try { paramsArr = JSON.parse(body.parametersJson); } catch {}
+      }
+
+      for (const p of paramsArr) {
+        const isPLink = p.type === "product_linking" || p.type === "product_link" || p.options?.some((o: any) => Boolean(o.linkedProductId));
+        if (!isPLink || !Array.isArray(p.options)) continue;
+
+        // Find this product's self option
+        const thisProductOpt = p.options.find((o: any) => {
+          if (!o.linkedProductId) return true;
+          const lid = String(o.linkedProductId).toLowerCase().trim();
+          return lid === updatedProduct.id.toLowerCase() || lid === updatedProduct.sku.toLowerCase() || lid === (updatedProduct.slug || "").toLowerCase();
+        });
+        const thisOptLabelEs = thisProductOpt?.labelEs || "2 Seater";
+        const thisOptLabelEn = thisProductOpt?.labelEn || thisOptLabelEs;
+
+        // For each linked product option:
+        for (const opt of p.options) {
+          if (!opt.linkedProductId) continue;
+          const targetId = String(opt.linkedProductId).trim();
+          if (targetId.toLowerCase() === updatedProduct.id.toLowerCase() || targetId.toLowerCase() === updatedProduct.sku.toLowerCase() || targetId.toLowerCase() === (updatedProduct.slug || "").toLowerCase()) continue;
+
+          const targetProd = await prisma.product.findFirst({
+            where: {
+              OR: [
+                { id: targetId },
+                { sku: targetId },
+                { slug: targetId },
+              ],
+              isArchived: false,
+            },
+          });
+          if (!targetProd) continue;
+
+          let targetParams: any[] = [];
+          if (targetProd.parametersJson) {
+            try { targetParams = JSON.parse(targetProd.parametersJson); } catch {}
+          }
+          if (!Array.isArray(targetParams)) targetParams = [];
+
+          let targetLinkParam = targetParams.find((tp: any) => tp.type === "product_linking" || tp.type === "product_link" || tp.nameEs === p.nameEs);
+          if (!targetLinkParam) {
+            targetLinkParam = {
+              id: `param-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+              nameEs: p.nameEs || "Versión / Edición",
+              nameEn: p.nameEn || "Edition / Version",
+              type: "product_linking",
+              options: [],
+            };
+            targetParams.push(targetLinkParam);
+          }
+          if (!Array.isArray(targetLinkParam.options)) targetLinkParam.options = [];
+
+          // Option in target product pointing back to this product
+          const recipLid = updatedProduct.slug || updatedProduct.sku || updatedProduct.id;
+          const recipDelta = opt.priceDeltaCRC ? -opt.priceDeltaCRC : (Math.round((updatedProduct.priceCRC || 0) - (targetProd.priceCRC || 0)));
+          const recipOpt = targetLinkParam.options.find((to: any) => {
+            const l = String(to.linkedProductId || "").toLowerCase().trim();
+            return l === updatedProduct.id.toLowerCase() || l === updatedProduct.sku.toLowerCase() || l === (updatedProduct.slug || "").toLowerCase();
+          });
+
+          if (recipOpt) {
+            recipOpt.labelEs = thisOptLabelEs;
+            recipOpt.labelEn = thisOptLabelEn;
+            recipOpt.priceDeltaCRC = recipDelta;
+            recipOpt.linkedProductId = recipLid;
+          } else {
+            targetLinkParam.options.push({
+              id: `opt-${Date.now()}-recip`,
+              labelEs: thisOptLabelEs,
+              labelEn: thisOptLabelEn,
+              priceDeltaCRC: recipDelta,
+              linkedProductId: recipLid,
+            });
+          }
+
+          // Option in target product representing target product itself
+          const targetSelfOpt = targetLinkParam.options.find((to: any) => !to.linkedProductId || to.linkedProductId === targetProd.id || to.linkedProductId === targetProd.sku || to.linkedProductId === targetProd.slug);
+          const targetSelfLabel = opt.labelEs || "4 Seater";
+          if (targetSelfOpt) {
+            targetSelfOpt.labelEs = targetSelfLabel;
+            targetSelfOpt.labelEn = opt.labelEn || targetSelfLabel;
+            targetSelfOpt.priceDeltaCRC = 0;
+          } else {
+            targetLinkParam.options.unshift({
+              id: `opt-${Date.now()}-self`,
+              labelEs: targetSelfLabel,
+              labelEn: opt.labelEn || targetSelfLabel,
+              priceDeltaCRC: 0,
+              linkedProductId: "",
+            });
+          }
+
+          await prisma.product.update({
+            where: { id: targetProd.id },
+            data: { parametersJson: JSON.stringify(targetParams) },
+          });
+        }
+      }
+    } catch (syncErr) {
+      console.error("[AUTO_SYNC_PRODUCT_LINKING_ERROR]:", syncErr);
+    }
+
     return NextResponse.json({ success: true, product: updatedProduct });
   } catch (error) {
     console.error("[SYS_PRODUCT_PATCH_ERROR]:", error);

@@ -329,6 +329,159 @@ export async function GET(request: Request) {
 
       const finalProduct = dbProductToProductItem(dbProd, null, isStaff);
 
+      // Enrich and resolve product linking variants (Amazon-style)
+      if (finalProduct.parameters && Array.isArray(finalProduct.parameters)) {
+        const currentProdKeys = [
+          (finalProduct.id || "").toLowerCase(),
+          (finalProduct.sku || "").toLowerCase(),
+          (finalProduct.slug || "").toLowerCase(),
+        ].filter(Boolean);
+
+        for (const param of finalProduct.parameters) {
+          const isLinkedParam =
+            (param as any).type === "product_linking" ||
+            (param as any).type === "product_link" ||
+            (param as any).options?.some((o: any) => Boolean(o.linkedProductId));
+
+          if (!isLinkedParam) continue;
+
+          // Collect all linked product targets in this parameter
+          const targetIds = ((param as any).options || [])
+            .map((o: any) => (o.linkedProductId ? String(o.linkedProductId).trim() : ""))
+            .filter(Boolean);
+
+          let linkedDbProds: any[] = [];
+          if (targetIds.length > 0) {
+            linkedDbProds = await prisma.product.findMany({
+              where: {
+                OR: [
+                  { id: { in: targetIds } },
+                  { sku: { in: targetIds } },
+                  { slug: { in: targetIds } },
+                ],
+                isArchived: false,
+              },
+              select: {
+                id: true,
+                sku: true,
+                slug: true,
+                nameEs: true,
+                nameEn: true,
+                priceCRC: true,
+                parametersJson: true,
+                imageUrl: true,
+              },
+            });
+          }
+
+          // Check if any linked product contains a reciprocal label for finalProduct
+          let reciprocalLabelEs = "";
+          let reciprocalLabelEn = "";
+
+          for (const lp of linkedDbProds) {
+            if (lp.parametersJson) {
+              try {
+                const parsed = JSON.parse(lp.parametersJson);
+                if (Array.isArray(parsed)) {
+                  for (const p of parsed) {
+                    const match = p.options?.find((o: any) => {
+                      if (!o.linkedProductId) return false;
+                      const l = String(o.linkedProductId).trim().toLowerCase();
+                      return currentProdKeys.includes(l);
+                    });
+                    if (match && (match.labelEs || match.labelEn)) {
+                      reciprocalLabelEs = match.labelEs || match.labelEn || "";
+                      reciprocalLabelEn = match.labelEn || match.labelEs || "";
+                      break;
+                    }
+                  }
+                }
+              } catch {}
+            }
+            if (reciprocalLabelEs) break;
+          }
+
+          // Check if current product is a 2-seater or 4-seater SXS edition
+          const curTitleLower = `${finalProduct.nameEs || ""} ${finalProduct.nameEn || ""} ${finalProduct.p_title || ""} ${finalProduct.sku || ""}`.toLowerCase();
+          const hasLinked4 = linkedDbProds.some((lp) => {
+            const s = `${lp.nameEs || ""} ${lp.nameEn || ""} ${lp.sku || ""}`.toLowerCase();
+            return s.includes("z10-4") || /\b4[- ]?(seater|seat|plazas)\b/i.test(s);
+          });
+
+          const is4Seater = curTitleLower.includes("z10-4") || /\b4[- ]?(seater|seat|plazas)\b/i.test(curTitleLower);
+          const is2Seater = !is4Seater && (hasLinked4 || curTitleLower.includes("z10") || /\b2[- ]?(seater|seat|plazas)\b/i.test(curTitleLower));
+
+          const cleanSelfLabelEs = reciprocalLabelEs || (is4Seater ? "Z10-4" : is2Seater ? "2 Seater" : (finalProduct.nameEs || finalProduct.p_title || "Base"));
+          const cleanSelfLabelEn = reciprocalLabelEn || (is4Seater ? "Z10-4" : is2Seater ? "2 Seater" : (finalProduct.nameEn || cleanSelfLabelEs));
+
+          // Ensure options list contains the current viewing product
+          const opts: any[] = [...((param as any).options || [])];
+          let selfOpt = opts.find((o: any) => {
+            if (o.isCurrentProduct) return true;
+            if (!o.linkedProductId) return true;
+            const l = String(o.linkedProductId).trim().toLowerCase();
+            return currentProdKeys.includes(l);
+          });
+
+          if (!selfOpt) {
+            selfOpt = {
+              id: `self-${finalProduct.id}`,
+              labelEs: cleanSelfLabelEs,
+              labelEn: cleanSelfLabelEn,
+              priceDeltaCRC: 0,
+              linkedProductId: finalProduct.slug || finalProduct.sku || finalProduct.id,
+              imageUrl: finalProduct.imageUrl || undefined,
+              isCurrentProduct: true,
+            };
+            opts.unshift(selfOpt);
+          } else {
+            // Clean up self option label if it was empty or matched the full product title
+            const fullTitle = (finalProduct.nameEs || finalProduct.p_title || "").toLowerCase();
+            const currLabel = (selfOpt.labelEs || "").toLowerCase();
+            if (!selfOpt.labelEs || currLabel === fullTitle || currLabel.includes("skid plate") || currLabel.includes("hdpe") || currLabel === "estándar / base") {
+              selfOpt.labelEs = cleanSelfLabelEs;
+              selfOpt.labelEn = cleanSelfLabelEn;
+            }
+            selfOpt.priceDeltaCRC = 0;
+            selfOpt.isCurrentProduct = true;
+          }
+
+          // Dynamically compute real price delta for linked products relative to this product
+          for (const opt of opts) {
+            if (opt === selfOpt || !opt.linkedProductId || currentProdKeys.includes(String(opt.linkedProductId).trim().toLowerCase())) {
+              opt.priceDeltaCRC = 0;
+              opt.isCurrentProduct = true;
+              continue;
+            }
+            const matchRow = linkedDbProds.find((lp) => {
+              const lid = String(opt.linkedProductId).trim().toLowerCase();
+              return lp.id.toLowerCase() === lid || lp.sku?.toLowerCase() === lid || lp.slug?.toLowerCase() === lid;
+            });
+            if (matchRow) {
+              const targetPrice = matchRow.priceCRC || 0;
+              const currentPrice = finalProduct.price?.T_price || finalProduct.priceCRC || 0;
+              if (targetPrice > 0 && currentPrice > 0) {
+                opt.priceDeltaCRC = Math.round(targetPrice - currentPrice);
+              }
+              // Clean up linked option label if it was full title
+              const rowTitle = (matchRow.nameEs || matchRow.nameEn || "").toLowerCase();
+              const optL = (opt.labelEs || "").toLowerCase();
+              if (optL === rowTitle || optL.includes("skid plate") || optL.includes("hdpe")) {
+                if (rowTitle.includes("z10-4") || /\b4[- ]?(seater|seat|plazas)\b/i.test(rowTitle)) {
+                  opt.labelEs = "Z10-4";
+                  opt.labelEn = "Z10-4";
+                } else if (rowTitle.includes("z10") || /\b2[- ]?(seater|seat|plazas)\b/i.test(rowTitle)) {
+                  opt.labelEs = "2 Seater";
+                  opt.labelEn = "2 Seater";
+                }
+              }
+            }
+          }
+
+          (param as any).options = opts;
+        }
+      }
+
       // 1. Explicit related products from configured IDs
       let explicitRelated: ProductItem[] = [];
       if (finalProduct.relatedProductIds && finalProduct.relatedProductIds.length > 0) {

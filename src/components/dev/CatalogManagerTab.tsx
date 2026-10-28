@@ -196,12 +196,16 @@ function ParametersEditorSection({
   t,
   availableProducts = [],
   currentProductPrice = 0,
+  currentProductName = "",
+  currentProductSku = "",
 }: {
   parameters: ConfigurableParameter[];
   onChange: (newParams: ConfigurableParameter[]) => void;
   t: any;
   availableProducts?: Product[];
   currentProductPrice?: number;
+  currentProductName?: string;
+  currentProductSku?: string;
 }) {
   const [activeColorPaletteOpt, setActiveColorPaletteOpt] = useState<string | null>(null);
   const [uploadingOptId, setUploadingOptId] = useState<string | null>(null);
@@ -625,14 +629,52 @@ function ParametersEditorSection({
                                     currentProductPrice > 0 && targetPrice > 0
                                       ? Math.round(targetPrice - currentProductPrice)
                                       : opt.priceDeltaCRC;
+                                  const targetTitleEs = targetProd.nameEs || targetProd.p_title || "";
+                                  const targetTitleEn = targetProd.nameEn || targetTitleEs;
+                                  let candidateLabelEs = opt.labelEs?.trim();
+                                  let candidateLabelEn = opt.labelEn?.trim();
+                                  if (!candidateLabelEs) {
+                                    if (/z10-4|\b4[- ]?(seater|seat|plazas)\b/i.test(targetTitleEs) || targetProd.sku?.toLowerCase().includes("z10-4")) {
+                                      candidateLabelEs = "Z10-4";
+                                      candidateLabelEn = "Z10-4";
+                                    } else if (/z10\b|\b2[- ]?(seater|seat|plazas)\b/i.test(targetTitleEs) || targetProd.sku?.toLowerCase().includes("z10")) {
+                                      candidateLabelEs = "2 Seater";
+                                      candidateLabelEn = "2 Seater";
+                                    } else {
+                                      candidateLabelEs = targetTitleEs;
+                                      candidateLabelEn = targetTitleEn;
+                                    }
+                                  }
+
                                   handleUpdateOptionMulti(pIdx, oIdx, {
                                     linkedProductId: targetProd.slug || targetProd.sku || targetProd.id,
-                                    labelEs: opt.labelEs || targetProd.nameEs || targetProd.p_title || "",
-                                    labelEn: opt.labelEn || targetProd.nameEn || targetProd.p_title || "",
+                                    labelEs: candidateLabelEs || targetTitleEs,
+                                    labelEn: candidateLabelEn || targetTitleEn,
                                     imageUrl: opt.imageUrl || targetProd.imageUrl || targetProd.imgs?.[0] || "",
                                     supplierUrl: opt.supplierUrl || targetProd.supplierUrl || "",
                                     priceDeltaCRC: delta,
                                   });
+
+                                  // If the complementary option (e.g. self/base option) still has default/empty label, intelligently suggest "2 Seater" or counterpart
+                                  const currentParam = (parameters || [])[pIdx];
+                                  if (currentParam && currentParam.options) {
+                                    const otherIdx = currentParam.options.findIndex((_, idx) => idx !== oIdx && !_.linkedProductId);
+                                    if (otherIdx !== -1) {
+                                      const otherOpt = currentParam.options[otherIdx];
+                                      if (!otherOpt.labelEs || otherOpt.labelEs === "Estándar / Base" || otherOpt.labelEs.includes("Skid Plate")) {
+                                        const curTitle = (currentProductName || "").toLowerCase();
+                                        const curSku = (currentProductSku || "").toLowerCase();
+                                        if (candidateLabelEs === "Z10-4" || /z10-4|\b4[- ]?(seater|seat|plazas)\b/i.test(targetTitleEs)) {
+                                          handleUpdateOption(pIdx, otherIdx, "labelEs", "2 Seater");
+                                          handleUpdateOption(pIdx, otherIdx, "labelEn", "2 Seater");
+                                        } else if (candidateLabelEs === "2 Seater" || /z10\b|\b2[- ]?(seater|seat|plazas)\b/i.test(targetTitleEs)) {
+                                          const is4 = curTitle.includes("z10-4") || curSku.includes("z10-4");
+                                          handleUpdateOption(pIdx, otherIdx, "labelEs", is4 ? "Z10-4" : "4 Seater");
+                                          handleUpdateOption(pIdx, otherIdx, "labelEn", is4 ? "Z10-4" : "4 Seater");
+                                        }
+                                      }
+                                    }
+                                  }
                                 } else {
                                   handleUpdateOption(pIdx, oIdx, "linkedProductId", selectedId);
                                 }
@@ -2128,8 +2170,8 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       voidsWarranty: false,
       relatedProductIds: [] as string[],
       compText: "",
-      warrantyCategory: "",
-      stockStatus: "",
+      warrantyCategory: "BOLT_ON_ELECTRICAL",
+      stockStatus: "IN_STOCK_US",
       featured: false,
       inHome_install: false,
       homeInstallationAvailable: false,
@@ -2435,8 +2477,8 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       : (productForm.category ? [productForm.category] : []);
     if (effectiveCategories.length === 0) missing.push("Categorías (category)");
     if (productForm.T_price <= 0) missing.push("Precio Total (T_price > 0)");
-    if (!productForm.stockStatus.trim()) missing.push("Estado de Stock");
-    if (!productForm.warrantyCategory.trim()) missing.push("Términos de Garantía");
+    const effectiveStockStatus = productForm.stockStatus?.trim() || "IN_STOCK_US";
+    const effectiveWarranty = productForm.warrantyCategory?.trim() || "BOLT_ON_ELECTRICAL";
     if (!productForm.imgsText.trim() && !productForm.imageUrl.trim()) missing.push("Imágenes (imgs)");
     if (!productForm.descriptionEs.trim()) missing.push("Descripción en Español");
     if (!productForm.descriptionEn.trim()) missing.push("Descripción en Inglés");
@@ -2597,8 +2639,8 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       category: effectiveCategories,
       categoryJson: JSON.stringify(effectiveCategories),
       comp: parsedComp,
-      warrantyCategory: productForm.warrantyCategory,
-      stockStatus: productForm.stockStatus,
+      warrantyCategory: effectiveWarranty,
+      stockStatus: effectiveStockStatus,
       featured: productForm.featured,
       inHome_install: productForm.inHome_install,
       homeInstallationAvailable: productForm.inHome_install,
@@ -5373,6 +5415,8 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                 t={t}
                 availableProducts={products.filter((p) => (p.sku || p.id) !== (productForm.sku || productForm.slug))}
                 currentProductPrice={productForm.T_price || productForm.priceCRC}
+                currentProductName={productForm.nameEs || productForm.p_title}
+                currentProductSku={productForm.sku}
               />
 
               {/* Services & Toggles (inHome_install & featured) */}
