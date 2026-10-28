@@ -212,8 +212,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.error("[SOCIAL_SYNC_ERROR]:", syncData, "HTTP Status:", syncRes.status);
         const serverError =
           syncData.error ||
+          syncData.message ||
           (syncRes.status >= 500
-            ? "Error interno del servidor al procesar la sesión (500). Por favor verifica los registros de Vercel."
+            ? `Error interno del servidor al procesar la sesión (${syncRes.status}).`
             : undefined);
         return {
           success: false,

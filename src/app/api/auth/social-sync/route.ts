@@ -51,8 +51,10 @@ export async function POST(request: Request) {
     const cleanEmail = verifiedEmail.trim().toLowerCase();
 
     // Check if user is banned
-    const existing = await prisma.user.findUnique({
-      where: { email: cleanEmail },
+    const existing = await prisma.user.findFirst({
+      where: {
+        OR: [{ email: cleanEmail }, { firebaseUid: verifiedUid }],
+      },
       select: { isBanned: true, bannedReason: true },
     });
     if (existing?.isBanned) {
@@ -67,23 +69,35 @@ export async function POST(request: Request) {
       );
     }
 
-    // Upsert user in database (preserving default avatar)
-    const user = await prisma.user.upsert({
-      where: { email: cleanEmail },
-      update: {
-        firebaseUid: verifiedUid,
-        displayName: displayName || undefined,
-        phoneNumber: phoneNumber || undefined,
-      },
-      create: {
-        firebaseUid: verifiedUid,
-        email: cleanEmail,
-        displayName: displayName || null,
-        photoUrl: null,
-        phoneNumber: phoneNumber || null,
-        role: "CUSTOMER",
+    // Find existing user by either email or firebaseUid to avoid unique constraint collisions
+    let user = await prisma.user.findFirst({
+      where: {
+        OR: [{ email: cleanEmail }, { firebaseUid: verifiedUid }],
       },
     });
+
+    if (user) {
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          email: cleanEmail,
+          firebaseUid: verifiedUid,
+          displayName: displayName || user.displayName,
+          phoneNumber: phoneNumber || user.phoneNumber,
+        },
+      });
+    } else {
+      user = await prisma.user.create({
+        data: {
+          firebaseUid: verifiedUid,
+          email: cleanEmail,
+          displayName: displayName || null,
+          photoUrl: null,
+          phoneNumber: phoneNumber || null,
+          role: "CUSTOMER",
+        },
+      });
+    }
 
     // Associate garage vehicles from cookie session to user
     try {
@@ -128,10 +142,14 @@ export async function POST(request: Request) {
     });
 
     return response;
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error in /api/auth/social-sync:", error);
     return NextResponse.json(
-      { success: false, error: "Error al sincronizar autenticación social" },
+      {
+        success: false,
+        error: "Error al sincronizar autenticación social",
+        message: error?.message || String(error),
+      },
       { status: 500 }
     );
   }
