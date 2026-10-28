@@ -57,7 +57,7 @@ export async function POST(request: Request) {
     const prof = body.profitCRC !== undefined ? body.profitCRC : body.price?.profit;
     const tD = body.totalPriceD !== undefined ? body.totalPriceD : body.price?.T_price_D;
 
-    const compArr = body.comp !== undefined ? (Array.isArray(body.comp) ? body.comp : [body.comp]) : ["z10", "z10-4"];
+    const compArr = body.comp !== undefined ? (Array.isArray(body.comp) ? body.comp : [body.comp]) : ["zforce-z10"];
     const catArr = body.category !== undefined ? (Array.isArray(body.category) ? body.category : [body.category]) : ["performance"];
     const brandArr = body.brand !== undefined ? (Array.isArray(body.brand) ? body.brand : [body.brand]) : [brandName || "Bikeman Performance"];
     const explicitImageUrl = typeof imageUrl === "string" && imageUrl.trim() ? imageUrl.trim() : (typeof body.imageUrl === "string" && body.imageUrl.trim() ? body.imageUrl.trim() : null);

@@ -50,7 +50,7 @@ export async function GET() {
     const enrichedProducts = products.map((p) => {
       const jsonP = productsJsonMap[p.sku.toLowerCase()] || productsJsonMap[p.slug.toLowerCase()] || null;
 
-      let comp: string[] = ["z10", "z10-4"];
+      let comp: string[] = [];
       if (p.compJson) {
         try {
           const parsed = JSON.parse(p.compJson);
@@ -59,6 +59,10 @@ export async function GET() {
       } else if (jsonP?.comp && Array.isArray(jsonP.comp)) {
         comp = jsonP.comp;
       }
+      if (comp.length === 0 && Array.isArray(p.compatibilities) && p.compatibilities.length > 0) {
+        comp = p.compatibilities.map((c: any) => c.modelSlug);
+      }
+      if (comp.length === 0) comp = ["zforce-z10"];
 
       let category: string[] = ["performance"];
       if (jsonP?.category && Array.isArray(jsonP.category)) category = jsonP.category;

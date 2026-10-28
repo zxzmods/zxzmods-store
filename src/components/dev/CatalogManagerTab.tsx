@@ -1907,7 +1907,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
     const audiosText = audiosList.join("\n");
 
     // 5. Comp & Category & Brand
-    const compText = Array.isArray(prod.comp) ? prod.comp.join(", ") : "z10, z10-4";
+    const compText = Array.isArray(prod.comp) ? prod.comp.join(", ") : (typeof prod.comp === "string" ? prod.comp : "");
     let initialCategories: string[] = [];
     if (Array.isArray(prod.category)) {
       initialCategories = prod.category.filter(Boolean);

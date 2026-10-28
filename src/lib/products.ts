@@ -396,19 +396,39 @@ export function detectVehiclePlatform(token: string): string | null {
     return "z950";
   }
 
-  // 3. Z10 / ZForce Z10 / Z10-4
+  // 3. Z10-4 / ZForce Z10-4 (4-seater)
+  // Must check Z10-4 before Z10 so 4-seater is never merged into 2-seater platform!
   if (
-    t === "z10" ||
     t === "z10-4" ||
-    t === "zforce-z10" ||
+    t === "z10 4" ||
     t === "zforce-z10-4" ||
-    t === "zforce z10" ||
     t === "zforce z10-4" ||
-    t.includes("zforce z10") ||
+    t === "zforce z10 4" ||
+    t === "cfmoto z10-4" ||
+    t === "cfmoto z10 4" ||
+    t.includes("zforce-z10-4") ||
+    t.includes("zforce z10-4") ||
+    t.includes("zforce z10 4") ||
     t.includes("z10-4") ||
-    t.includes("zforce-z10") ||
-    /\b(zforce\s+)?z10(-4)?\b/i.test(t) ||
-    /\bcfmoto\s+z10\b/i.test(t)
+    /\b(zforce\s+)?z10[-_\s]?4\b/i.test(t) ||
+    /\bcfmoto\s+z10[-_\s]?4\b/i.test(t)
+  ) {
+    return "z10-4";
+  }
+
+  // 4. Z10 / ZForce Z10 (2-seater)
+  if (
+    (t === "z10" ||
+      t === "zforce-z10" ||
+      t === "zforce z10" ||
+      t === "cfmoto z10" ||
+      t.includes("zforce-z10") ||
+      t.includes("zforce z10") ||
+      /\b(zforce\s+)?z10\b/i.test(t) ||
+      /\bcfmoto\s+z10\b/i.test(t)) &&
+    !t.includes("-4") &&
+    !t.includes(" 4") &&
+    !/\bz10[-_\s]?4\b/i.test(t)
   ) {
     return "z10";
   }
@@ -452,6 +472,30 @@ export function isPlatformOrVehicleMatch(compItem: string, targetToken: string):
   if (c.includes("universal") || target.includes("universal")) return true;
   if (c === target) return true;
 
+  // STRICT SEPARATION: Z10 (2-seater) vs Z10-4 (4-seater)
+  // A product that fits Z10 does NOT automatically fit Z10-4, and vice-versa.
+  const isZ10_4 = (s: string) =>
+    s === "z10-4" ||
+    s === "zforce-z10-4" ||
+    s === "zforce z10-4" ||
+    s.includes("z10-4") ||
+    s.includes("zforce-z10-4") ||
+    s.includes("zforce z10-4") ||
+    /\b(zforce\s+)?z10[-_\s]?4\b/i.test(s);
+
+  const isZ10_2 = (s: string) =>
+    (s === "z10" ||
+      s === "zforce-z10" ||
+      s === "zforce z10" ||
+      s.includes("zforce-z10") ||
+      s.includes("zforce z10") ||
+      /\b(zforce\s+)?z10\b/i.test(s)) &&
+    !isZ10_4(s);
+
+  if ((isZ10_4(c) && isZ10_2(target)) || (isZ10_2(c) && isZ10_4(target))) {
+    return false;
+  }
+
   const platC = detectVehiclePlatform(c);
   const platTarget = detectVehiclePlatform(target);
 
@@ -462,7 +506,10 @@ export function isPlatformOrVehicleMatch(compItem: string, targetToken: string):
 
   // Cross-platform negative check: if one is explicitly one platform and other explicitly mentions an incompatible one
   if (platC && !platTarget) {
-    if (platC === "z10" && (target.includes("1000") || target.includes("z1000") || target.includes("950") || target.includes("x3"))) {
+    if (platC === "z10" && (target.includes("1000") || target.includes("z1000") || target.includes("950") || target.includes("x3") || isZ10_4(target))) {
+      return false;
+    }
+    if (platC === "z10-4" && (target.includes("1000") || target.includes("z1000") || target.includes("950") || target.includes("x3") || isZ10_2(target))) {
       return false;
     }
     if (platC === "z1000" && (/\bz10(-4)?\b/i.test(target) || target.includes("950") || target.includes("x3"))) {
@@ -474,7 +521,10 @@ export function isPlatformOrVehicleMatch(compItem: string, targetToken: string):
   }
 
   if (platTarget && !platC) {
-    if (platTarget === "z10" && (c.includes("1000") || c.includes("z1000") || c.includes("950") || c.includes("x3"))) {
+    if (platTarget === "z10" && (c.includes("1000") || c.includes("z1000") || c.includes("950") || c.includes("x3") || isZ10_4(c))) {
+      return false;
+    }
+    if (platTarget === "z10-4" && (c.includes("1000") || c.includes("z1000") || c.includes("950") || c.includes("x3") || isZ10_2(c))) {
       return false;
     }
     if (platTarget === "z1000" && (/\bz10(-4)?\b/i.test(c) || c.includes("950") || c.includes("x3"))) {
@@ -604,7 +654,7 @@ export async function getAllProducts(): Promise<ProductItem[]> {
                 comp = JSON.parse(p.compJson);
               } catch {}
             }
-            if (comp.length === 0) comp = ["z10", "z10-4"];
+            if (comp.length === 0) comp = ["all"];
 
             let cat: string[] = [];
             if (p.categoryJson) {

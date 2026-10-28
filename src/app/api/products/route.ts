@@ -98,7 +98,7 @@ function dbProductToProductItem(dbProd: any, jsonProd?: ProductItem | null, isSt
   if (comp.length === 0 && Array.isArray(dbProd.compatibilities) && dbProd.compatibilities.length > 0) {
     comp = dbProd.compatibilities.map((c: any) => c.modelSlug);
   }
-  if (comp.length === 0) comp = ["z10", "z10-4"];
+  if (comp.length === 0) comp = ["all"];
 
   // Audio & Video
   let rawAudios: string[] = [];

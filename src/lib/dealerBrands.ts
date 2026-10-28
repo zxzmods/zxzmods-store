@@ -138,7 +138,7 @@ export function computeAutoProductSku({
       vehicleSkuParts.push(foundModel.code.trim().toUpperCase());
     } else if (v === "z10" || v === "zforce-z10") {
       vehicleSkuParts.push("Z10");
-    } else if (v === "z10-4") {
+    } else if (v === "z10-4" || v === "zforce-z10-4") {
       vehicleSkuParts.push("Z10-4");
     } else {
       const fallbackCode = v.replace(/[^a-z0-9]/gi, "").slice(0, 6).toUpperCase();

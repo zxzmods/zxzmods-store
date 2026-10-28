@@ -434,6 +434,14 @@ function ProductsContent() {
           if (qNorm === modNameNorm || (modCodeNorm && qNorm === modCodeNorm) || qNorm === modSlugNorm) {
             return mod;
           }
+
+          // Strict 2-seater (Z10) vs 4-seater (Z10-4) isolation
+          const qIs4 = qNorm.includes("-4") || qNorm.includes(" 4") || /\bz10[-_\s]?4\b/i.test(qNorm);
+          const modIs4 = modNameNorm.includes("-4") || modNameNorm.includes(" 4") || modSlugNorm.includes("-4") || (Boolean(modCodeNorm) && modCodeNorm.includes("4"));
+          if (qIs4 !== modIs4) {
+            continue;
+          }
+
           const qPlat = detectVehiclePlatform(qNorm);
           const modPlat = detectVehiclePlatform(mod.code || mod.name || mod.slug);
           if (qPlat && modPlat && qPlat === modPlat) {
@@ -790,11 +798,19 @@ function ProductsContent() {
                       const modSlugNorm = mod.slug.toLowerCase().trim();
                       const escapeRegex = (s: string) => s.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
 
-                      // Strict model chip selection: NEVER allow Z1000 to highlight Z10 or vice versa
+                      // Strict model chip selection: NEVER allow Z1000 to highlight Z10, or Z10 to highlight Z10-4
                       const isSelected = Boolean(qNorm) && (() => {
                         if (qNorm === modNameNorm || (Boolean(modCodeNorm) && qNorm === modCodeNorm) || qNorm === modSlugNorm) {
                           return true;
                         }
+
+                        // Prevent 2-seater (Z10) vs 4-seater (Z10-4) cross-highlighting
+                        const qIs4 = qNorm.includes("-4") || qNorm.includes(" 4") || /\bz10[-_\s]?4\b/i.test(qNorm);
+                        const modIs4 = modNameNorm.includes("-4") || modNameNorm.includes(" 4") || modSlugNorm.includes("-4") || (Boolean(modCodeNorm) && modCodeNorm.includes("4"));
+                        if (qIs4 !== modIs4) {
+                          return false;
+                        }
+
                         const qPlat = detectVehiclePlatform(qNorm);
                         const modPlat = detectVehiclePlatform(mod.code || mod.name || mod.slug);
                         if (qPlat && modPlat) {
