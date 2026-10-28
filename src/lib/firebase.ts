@@ -12,11 +12,11 @@ export const isFirebaseConfigured = Boolean(
 
 const firebaseConfig = {
   apiKey,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "zxzmods-ac591.firebaseapp.com",
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "zxzmods-ac591",
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "zxzmods-ac591.firebasestorage.app",
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "171438426786",
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "1:171438426786:web:c04eb25bbda2dbc6c265fb",
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "zxzmods-34a69.firebaseapp.com",
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "zxzmods-34a69",
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "zxzmods-34a69.firebasestorage.app",
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "185513756703",
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "1:185513756703:web:bbad1c3d48cf538ad42d2a",
 };
 
 let app: FirebaseApp | undefined;

@@ -142,7 +142,7 @@ const nextConfig = {
     return [
       {
         source: "/__/auth/:path*",
-        destination: "https://zxzmods-ac591.firebaseapp.com/__/auth/:path*",
+        destination: "https://zxzmods-34a69.firebaseapp.com/__/auth/:path*",
       },
     ];
   },

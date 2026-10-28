@@ -7,8 +7,8 @@
   "date": "2026-10-27",
   "override": false,
   "cached": false,
-  "updatedAt": "2026-10-27T22:08:33.495Z",
-  "lastSyncAt": "2026-10-27T22:08:33.495Z",
+  "updatedAt": "2026-10-28T00:25:55.642Z",
+  "lastSyncAt": "2026-10-28T00:25:55.642Z",
   "diagnostics": [
     {
       "name": "Ministerio de Hacienda / BCCR Dólar",
@@ -17,7 +17,7 @@
       "sellRate": 455.53,
       "buyRate": 451.24,
       "date": "2026-10-27",
-      "latencyMs": 390
+      "latencyMs": 351
     },
     {
       "name": "PaginasWeb CR (BCCR Feed Oficial)",
@@ -26,7 +26,7 @@
       "sellRate": 455.53,
       "buyRate": 451.24,
       "date": "2026-10-27",
-      "latencyMs": 324
+      "latencyMs": 338
     },
     {
       "name": "Ministerio de Hacienda General",
@@ -35,7 +35,7 @@
       "sellRate": 455.53,
       "buyRate": 451.24,
       "date": "2026-10-27",
-      "latencyMs": 226
+      "latencyMs": 173
     }
   ]
 }
