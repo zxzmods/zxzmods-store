@@ -617,12 +617,12 @@ export default function ProductDetailPage() {
       .finally(() => setCombosLoading(false));
   }, [product?.id]);
 
-  // Fetch related & suggested products (LE-03)
+  // Fetch related & suggested products (up to 10 products, dynamically filled by category or brand)
   useEffect(() => {
     if (!product) return;
 
-    if (product.relatedProducts && product.relatedProducts.length > 0) {
-      setRelatedProducts(product.relatedProducts);
+    if (product.relatedProducts && product.relatedProducts.length >= 10) {
+      setRelatedProducts(product.relatedProducts.slice(0, 10));
       setRelatedLoading(false);
       return;
     }
@@ -633,47 +633,99 @@ export default function ProductDetailPage() {
       .then((res) => res.json())
       .then((data) => {
         if (data.success && Array.isArray(data.products)) {
-          // If explicit related product IDs were configured on this product, prioritize them!
-          if (Array.isArray(product.relatedProductIds) && product.relatedProductIds.length > 0) {
+          const list: ProductItem[] = [];
+          const seen = new Set<string>([product.id]);
+
+          // 1. Initial seeds from product.relatedProducts
+          if (product.relatedProducts && product.relatedProducts.length > 0) {
+            for (const p of product.relatedProducts) {
+              if (p && p.id && !seen.has(p.id)) {
+                seen.add(p.id);
+                list.push(p);
+              }
+            }
+          }
+
+          // 2. Explicit relatedProductIds if present
+          if (list.length < 10 && Array.isArray(product.relatedProductIds) && product.relatedProductIds.length > 0) {
             const explicit = data.products.filter((p: ProductItem) =>
-              p.id !== product.id && (
+              !seen.has(p.id) && (
                 product.relatedProductIds?.includes(p.id) ||
                 ((p as any).sku && product.relatedProductIds?.includes((p as any).sku)) ||
                 (p.slug && product.relatedProductIds?.includes(p.slug))
               )
             );
-            if (explicit.length > 0) {
-              setRelatedProducts(explicit);
-              return;
+            for (const p of explicit) {
+              if (list.length >= 10) break;
+              if (!seen.has(p.id)) {
+                seen.add(p.id);
+                list.push(p);
+              }
             }
           }
 
-          // Fallback 1: Filter products for same platform (matching comp) excluding current item
-          let filtered = data.products.filter((p: ProductItem) => {
-            if (p.id === product.id) return false;
-            const hasCommonComp = p.comp?.some((c) =>
-              c.toLowerCase() === "all" ||
-              product.comp?.some((target) => isPlatformOrVehicleMatch(target, c))
+          const primaryCat = product.category?.[0];
+          const primaryBrand = product.brand?.[0];
+
+          // 3. Fill missing up to 10 with same category and same platform fitment
+          for (const p of data.products) {
+            if (list.length >= 10) break;
+            if (seen.has(p.id)) continue;
+            const sameCat = primaryCat && p.category?.some((c: string) => c.toLowerCase() === primaryCat.toLowerCase());
+            const samePlat = product.comp?.some((c) =>
+              p.comp?.some((candC: string) => isPlatformOrVehicleMatch(candC, c))
             );
-            return hasCommonComp;
-          });
-
-          // Fallback 2: Same category or same brand
-          if (filtered.length === 0) {
-            filtered = data.products.filter((p: ProductItem) => {
-              if (p.id === product.id) return false;
-              const sameCat = Boolean(product.category?.[0] && p.category?.includes(product.category[0]));
-              const sameBrand = Boolean(product.brand?.[0] && p.brand?.includes(product.brand[0]));
-              return sameCat || sameBrand;
-            });
+            if (sameCat && samePlat) {
+              seen.add(p.id);
+              list.push(p);
+            }
           }
 
-          // Fallback 3: Any other active catalog items
-          if (filtered.length === 0) {
-            filtered = data.products.filter((p: ProductItem) => p.id !== product.id);
+          // 4. Fill missing up to 10 with same category
+          for (const p of data.products) {
+            if (list.length >= 10) break;
+            if (seen.has(p.id)) continue;
+            const sameCat = primaryCat && p.category?.some((c: string) => c.toLowerCase() === primaryCat.toLowerCase());
+            if (sameCat) {
+              seen.add(p.id);
+              list.push(p);
+            }
           }
 
-          setRelatedProducts(filtered.slice(0, 8));
+          // 5. Fill missing up to 10 with same brand
+          for (const p of data.products) {
+            if (list.length >= 10) break;
+            if (seen.has(p.id)) continue;
+            const sameBrand = primaryBrand && p.brand?.some((b: string) => b.toLowerCase() === primaryBrand.toLowerCase());
+            if (sameBrand) {
+              seen.add(p.id);
+              list.push(p);
+            }
+          }
+
+          // 6. Fill missing up to 10 with same vehicle platform
+          for (const p of data.products) {
+            if (list.length >= 10) break;
+            if (seen.has(p.id)) continue;
+            const samePlat = product.comp?.some((c) =>
+              p.comp?.some((candC: string) => isPlatformOrVehicleMatch(candC, c))
+            );
+            if (samePlat) {
+              seen.add(p.id);
+              list.push(p);
+            }
+          }
+
+          // 7. Fill missing up to 10 with any other active products
+          for (const p of data.products) {
+            if (list.length >= 10) break;
+            if (!seen.has(p.id)) {
+              seen.add(p.id);
+              list.push(p);
+            }
+          }
+
+          setRelatedProducts(list.slice(0, 10));
         }
       })
       .catch((err) => console.error("Error fetching related products:", err))
@@ -2059,22 +2111,25 @@ export default function ProductDetailPage() {
                   ))}
                 </div>
               ) : relatedProducts.length > 0 ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-5">
                   {relatedProducts.slice(0, 10).map((rel) => {
-                    const isFree = rel.price?.I_price?.includes ?? false;
+                    const isFree = rel.price?.I_price?.includes ?? (rel as any).isInstallationIncluded ?? false;
                     const brandDisplay = normalizeBrandName(
-                      rel.brand?.[0] || ""
+                      rel.brand?.[0] || (rel as any).brandName || ""
                     );
+                    const relPriceDisplay = currency === "USD"
+                      ? formatUSD(convertCRCToUSD(rel.price?.T_price ?? (rel as any).priceCRC ?? 0, sellRate))
+                      : formatCRC(rel.price?.T_price ?? (rel as any).priceCRC ?? 0);
                     return (
                       <Link
                         key={rel.id}
-                        href={`/productos/${rel.id}`}
+                        href={`/productos/${rel.slug || rel.id}`}
                         className="group flex flex-col bg-white rounded-3xl border border-gray-200 overflow-hidden hover:shadow-xl hover:border-gray-300 transition-all duration-300 p-4"
                       >
                         <div className="relative h-44 w-full bg-gradient-to-b from-[#FBFBFC] to-[#F1F3F5] rounded-2xl overflow-hidden mb-3">
                           <Image
-                            src={rel.imgs?.[0] || "/images/logo.png"}
-                            alt={rel.p_title}
+                            src={rel.imgs?.[0] || (rel as any).imageUrl || "/images/logo.png"}
+                            alt={rel.p_title || (rel as any).nameEs || "Product"}
                             fill
                             className="object-contain p-3 group-hover:scale-105 transition-transform duration-300"
                           />
@@ -2082,9 +2137,11 @@ export default function ProductDetailPage() {
                         <div className="flex-1 flex flex-col justify-between space-y-2">
                           <div className="space-y-1">
                             <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="text-[10px] font-bold text-gray-600 bg-gray-100 px-2 py-0.5 rounded-full">
-                                {brandDisplay}
-                              </span>
+                              {brandDisplay && (
+                                <span className="text-[10px] font-bold text-gray-600 bg-gray-100 px-2 py-0.5 rounded-full">
+                                  {brandDisplay}
+                                </span>
+                              )}
                               {rel.category?.[0] && (
                                 <span className="text-[10px] font-bold text-[#C02030] bg-[#C02030]/10 px-2 py-0.5 rounded-full">
                                   {getCategoryLabel(rel.category[0], lang)}
@@ -2092,14 +2149,14 @@ export default function ProductDetailPage() {
                               )}
                             </div>
                             <h3 className="font-bold text-xs text-gray-900 group-hover:text-[#C02030] transition-colors line-clamp-2">
-                              {rel.p_title}
+                              {rel.p_title || (rel as any).nameEs}
                             </h3>
                           </div>
 
                           <div className="pt-2 border-t border-gray-100 space-y-1">
                             <StarRating stars={rel.reviews?.stars} />
-                            <div className="text-base font-black text-gray-900">
-                              {formatCRC(rel.price.T_price)}
+                            <div className="text-base font-black text-gray-900 font-mono">
+                              {relPriceDisplay}
                             </div>
                             {isFree && (
                               <span className="text-[10px] font-bold text-emerald-700 block">

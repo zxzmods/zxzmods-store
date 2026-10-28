@@ -189,6 +189,7 @@ export async function GET(request: NextRequest) {
 
     // Fetch all catalog products for live stock calculations and image resolution
     const catalogProducts = await prisma.product.findMany({
+      where: { isArchived: false },
       select: {
         id: true,
         sku: true,
@@ -197,8 +198,11 @@ export async function GET(request: NextRequest) {
         nameEn: true,
         brandName: true,
         brandJson: true,
+        categoryJson: true,
         compJson: true,
         priceCRC: true,
+        originalPriceCRC: true,
+        discountPercent: true,
         imageUrl: true,
         imagesJson: true,
         additionalImagesJson: true,
@@ -245,28 +249,74 @@ export async function GET(request: NextRequest) {
       })();
 
       let suggestedProducts: any[] = [];
+      const seenProdIds = new Set<string>();
+
       if (sugProdIds.length > 0) {
         const idSet = new Set(sugProdIds.map((s) => s.toLowerCase()));
-        const fullProds = await prisma.product.findMany({
-          where: { isArchived: false },
-          select: {
-            id: true,
-            sku: true,
-            slug: true,
-            nameEs: true,
-            nameEn: true,
-            priceCRC: true,
-            originalPriceCRC: true,
-            discountPercent: true,
-            imageUrl: true,
-            supplierStockStatus: true,
-            stockStatus: true,
-          },
-        });
-        suggestedProducts = fullProds.filter((p) =>
-          idSet.has(p.id.toLowerCase()) || idSet.has(p.sku.toLowerCase()) || idSet.has(p.slug.toLowerCase())
-        );
+        for (const p of catalogProducts) {
+          if (idSet.has(p.id.toLowerCase()) || idSet.has(p.sku.toLowerCase()) || idSet.has(p.slug.toLowerCase())) {
+            if (!seenProdIds.has(p.id)) {
+              seenProdIds.add(p.id);
+              suggestedProducts.push(p);
+            }
+          }
+        }
       }
+
+      // Dynamically fill up to 10 with temporary products matching category or brand (without modifying DB)
+      if (suggestedProducts.length < 10) {
+        const comboCat = (combo.category || "performance").toLowerCase();
+
+        // Priority A: Same category
+        for (const p of catalogProducts) {
+          if (suggestedProducts.length >= 10) break;
+          if (seenProdIds.has(p.id)) continue;
+          const pCats: string[] = (() => {
+            if (p.categoryJson) {
+              try {
+                const parsed = JSON.parse(p.categoryJson);
+                if (Array.isArray(parsed)) return parsed.map((c: string) => String(c).toLowerCase());
+              } catch {}
+            }
+            return [];
+          })();
+          if (pCats.includes(comboCat) || pCats.some((c: string) => c.includes(comboCat))) {
+            seenProdIds.add(p.id);
+            suggestedProducts.push(p);
+          }
+        }
+
+        // Priority B: Matching brand in combo title
+        const comboTitle = (combo.titleEs + " " + combo.titleEn).toLowerCase();
+        for (const p of catalogProducts) {
+          if (suggestedProducts.length >= 10) break;
+          if (seenProdIds.has(p.id)) continue;
+          const pBrands: string[] = [];
+          if (p.brandName) pBrands.push(p.brandName.toLowerCase());
+          if (p.brandJson) {
+            try {
+              const parsed = JSON.parse(p.brandJson);
+              if (Array.isArray(parsed)) parsed.forEach((b: string) => pBrands.push(String(b).toLowerCase()));
+            } catch {}
+          }
+          const matchesBrand = pBrands.some((b: string) => comboTitle.includes(b));
+          if (matchesBrand) {
+            seenProdIds.add(p.id);
+            suggestedProducts.push(p);
+          }
+        }
+
+        // Priority C: Other active catalog products
+        for (const p of catalogProducts) {
+          if (suggestedProducts.length >= 10) break;
+          if (!seenProdIds.has(p.id)) {
+            seenProdIds.add(p.id);
+            suggestedProducts.push(p);
+          }
+        }
+      }
+
+      suggestedProducts = suggestedProducts.slice(0, 10);
 
       let suggestedCombos: any[] = [];
       if (sugComboIds.length > 0) {
@@ -297,6 +347,7 @@ export async function GET(request: NextRequest) {
             suggestedProductIds: sugProdIds,
             suggestedComboIds: sugComboIds,
             suggestedProducts,
+            relatedProducts: suggestedProducts,
             suggestedCombos,
             parameters: (() => {
               if (combo.parametersJson) {

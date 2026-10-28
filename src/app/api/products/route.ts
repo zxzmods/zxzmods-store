@@ -329,6 +329,8 @@ export async function GET(request: Request) {
 
       const finalProduct = dbProductToProductItem(dbProd, null, isStaff);
 
+      // 1. Explicit related products from configured IDs
+      let explicitRelated: ProductItem[] = [];
       if (finalProduct.relatedProductIds && finalProduct.relatedProductIds.length > 0) {
         const relIds = finalProduct.relatedProductIds;
         const relDb = await prisma.product.findMany({
@@ -342,10 +344,96 @@ export async function GET(request: Request) {
           },
           include: { category: true, compatibilities: true },
         });
-        finalProduct.relatedProducts = relDb.map((p) =>
+        explicitRelated = relDb.map((p) =>
           dbProductToProductItem(p, null, isStaff)
         );
       }
+
+      // 2. Dynamically fill related products up to 10 with temporary products matching category or brand
+      // NOTE: Do not mutate or add to database array, only attach to the response
+      const relatedMap = new Map<string, ProductItem>();
+      const currentKeys = new Set([
+        (finalProduct.id || "").toLowerCase(),
+        (finalProduct.sku || "").toLowerCase(),
+        (finalProduct.slug || "").toLowerCase(),
+      ]);
+
+      // Seed explicit items first
+      explicitRelated.forEach((p) => {
+        if (!currentKeys.has(p.id.toLowerCase())) {
+          relatedMap.set(p.id, p);
+        }
+      });
+
+      if (relatedMap.size < 10) {
+        const primaryCat = finalProduct.category?.[0];
+        const primaryBrand = finalProduct.brand?.[0];
+
+        const candidateRows = await prisma.product.findMany({
+          where: {
+            isArchived: false,
+            id: { not: dbProd.id },
+          },
+          include: { category: true, compatibilities: true },
+          take: 40,
+        });
+        const candidates = candidateRows.map((p) => dbProductToProductItem(p, null, isStaff));
+
+        // Priority A: Same category AND compatible with vehicle platform
+        for (const cand of candidates) {
+          if (relatedMap.size >= 10) break;
+          if (relatedMap.has(cand.id)) continue;
+          const sameCat = primaryCat && cand.category?.some((c) => c.toLowerCase() === primaryCat.toLowerCase());
+          const samePlat = finalProduct.comp?.some((c) =>
+            cand.comp?.some((candC) => isPlatformOrVehicleMatch(candC, c))
+          );
+          if (sameCat && samePlat) {
+            relatedMap.set(cand.id, cand);
+          }
+        }
+
+        // Priority B: Same category
+        for (const cand of candidates) {
+          if (relatedMap.size >= 10) break;
+          if (relatedMap.has(cand.id)) continue;
+          const sameCat = primaryCat && cand.category?.some((c) => c.toLowerCase() === primaryCat.toLowerCase());
+          if (sameCat) {
+            relatedMap.set(cand.id, cand);
+          }
+        }
+
+        // Priority C: Same brand
+        for (const cand of candidates) {
+          if (relatedMap.size >= 10) break;
+          if (relatedMap.has(cand.id)) continue;
+          const sameBrand = primaryBrand && cand.brand?.some((b) => b.toLowerCase() === primaryBrand.toLowerCase());
+          if (sameBrand) {
+            relatedMap.set(cand.id, cand);
+          }
+        }
+
+        // Priority D: Same vehicle platform
+        for (const cand of candidates) {
+          if (relatedMap.size >= 10) break;
+          if (relatedMap.has(cand.id)) continue;
+          const samePlat = finalProduct.comp?.some((c) =>
+            cand.comp?.some((candC) => isPlatformOrVehicleMatch(candC, c))
+          );
+          if (samePlat) {
+            relatedMap.set(cand.id, cand);
+          }
+        }
+
+        // Priority E: Other active catalog products
+        for (const cand of candidates) {
+          if (relatedMap.size >= 10) break;
+          if (!relatedMap.has(cand.id)) {
+            relatedMap.set(cand.id, cand);
+          }
+        }
+      }
+
+      finalProduct.relatedProducts = Array.from(relatedMap.values()).slice(0, 10);
 
       if (finalProduct.suggestedProductIds && finalProduct.suggestedProductIds.length > 0) {
         const sugIds = finalProduct.suggestedProductIds;

@@ -15,7 +15,16 @@ import { useLanguage } from "@/context/LanguageContext";
 import { useCart } from "@/context/CartContext";
 import { useGarage } from "@/context/GarageContext";
 import { formatCRC, formatUSD, convertCRCToUSD } from "@/lib/i18n";
-import { ConfigurableParameter, SelectedParameterItem, resolveOptionColorHex, ComboUniqueProduct, ComboUniqueProductField } from "@/lib/products";
+import {
+  ConfigurableParameter,
+  SelectedParameterItem,
+  resolveOptionColorHex,
+  ComboUniqueProduct,
+  ComboUniqueProductField,
+  ProductItem,
+  normalizeBrandName,
+} from "@/lib/products";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { useTouchSwipe } from "@/lib/useTouchSwipe";
 import {
   Wrench,
@@ -77,6 +86,7 @@ interface ComboItem {
   suggestedComboIds?: string[];
   suggestedProducts?: any[];
   suggestedCombos?: any[];
+  relatedProducts?: any[];
 }
 
 function StarRating({ stars, emptyLabel }: { stars?: number | null; emptyLabel?: string }) {
@@ -137,6 +147,81 @@ export default function ComboDetailPage() {
 
   // Related combos state
   const [relatedCombos, setRelatedCombos] = useState<ComboItem[]>([]);
+
+  // Related products state (up to 10 products dynamically filled by category or brand)
+  const [relatedProducts, setRelatedProducts] = useState<ProductItem[]>([]);
+  const [relatedProductsLoading, setRelatedProductsLoading] = useState(false);
+
+  // Fetch / assemble related products up to 10 matching combo category or brand
+  useEffect(() => {
+    if (!combo) return;
+
+    const initialList = [
+      ...(Array.isArray(combo.relatedProducts) ? combo.relatedProducts : []),
+      ...(Array.isArray(combo.suggestedProducts) ? combo.suggestedProducts : []),
+    ];
+
+    if (initialList.length >= 10) {
+      setRelatedProducts(initialList.slice(0, 10));
+      setRelatedProductsLoading(false);
+      return;
+    }
+
+    setRelatedProductsLoading(true);
+    fetch("/api/products")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && Array.isArray(data.products)) {
+          const list: ProductItem[] = [];
+          const seen = new Set<string>();
+
+          for (const p of initialList) {
+            if (p && p.id && !seen.has(p.id)) {
+              seen.add(p.id);
+              list.push(p);
+            }
+          }
+
+          const comboCategory = (combo.category || "performance").toLowerCase();
+
+          // 1. Fill missing up to 10 with same category
+          for (const p of data.products) {
+            if (list.length >= 10) break;
+            if (seen.has(p.id)) continue;
+            const pCats = Array.isArray(p.category) ? p.category.map((c: string) => c.toLowerCase()) : [];
+            if (pCats.includes(comboCategory) || pCats.some((c: string) => c.includes(comboCategory))) {
+              seen.add(p.id);
+              list.push(p);
+            }
+          }
+
+          // 2. Fill missing up to 10 with matching brand
+          const comboTitle = (combo.titleEs + " " + combo.titleEn).toLowerCase();
+          for (const p of data.products) {
+            if (list.length >= 10) break;
+            if (seen.has(p.id)) continue;
+            const pBrands = Array.isArray(p.brand) ? p.brand.map((b: string) => b.toLowerCase()) : [];
+            if (pBrands.some((b: string) => comboTitle.includes(b))) {
+              seen.add(p.id);
+              list.push(p);
+            }
+          }
+
+          // 3. Fill missing up to 10 with other active products
+          for (const p of data.products) {
+            if (list.length >= 10) break;
+            if (!seen.has(p.id)) {
+              seen.add(p.id);
+              list.push(p);
+            }
+          }
+
+          setRelatedProducts(list.slice(0, 10));
+        }
+      })
+      .catch((err) => console.error("Error fetching related products for combo:", err))
+      .finally(() => setRelatedProductsLoading(false));
+  }, [combo]);
 
   useEffect(() => {
     if (!slug) return;
@@ -1172,6 +1257,88 @@ export default function ComboDetailPage() {
                 />
               </div>
             </div>
+
+            {/* Related & Suggested Products Shelf (up to 10 products, dynamically filled by category or brand) */}
+            {(relatedProductsLoading || relatedProducts.length > 0) && (
+              <section className="mt-14 pt-10 border-t border-gray-200">
+                <div className="mb-6 space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-[#C02030]" />
+                    <h2 className="text-xl sm:text-2xl font-black text-gray-900 tracking-tight">
+                      {t.productSuggestedProductsTitle || (lang === "es" ? "Productos Recomendados y Relacionados" : "Recommended & Related Products")}
+                    </h2>
+                  </div>
+                  <p className="text-xs sm:text-sm text-gray-500">
+                    {t.productSuggestedProductsSubtitle || (lang === "es" ? "Piezas y accesorios complementarios que se adaptan a tu vehículo" : "Complementary parts and upgrades engineered for your vehicle")}
+                  </p>
+                </div>
+
+                {relatedProductsLoading ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                    {[1, 2, 3, 4].map((i) => (
+                      <Skeleton key={i} className="h-72 w-full rounded-3xl" />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-5">
+                    {relatedProducts.slice(0, 10).map((rel) => {
+                      const isFree = rel.price?.I_price?.includes ?? (rel as any).isInstallationIncluded ?? false;
+                      const brandDisplay = normalizeBrandName(rel.brand?.[0] || (rel as any).brandName || "");
+                      const relPriceDisplay = currency === "USD"
+                        ? formatUSD(convertCRCToUSD(rel.price?.T_price ?? (rel as any).priceCRC ?? 0, sellRate))
+                        : formatCRC(rel.price?.T_price ?? (rel as any).priceCRC ?? 0);
+
+                      return (
+                        <Link
+                          key={rel.id}
+                          href={`/productos/${rel.slug || rel.id}`}
+                          className="group flex flex-col bg-white rounded-3xl border border-gray-200 overflow-hidden hover:shadow-xl hover:border-gray-300 transition-all duration-300 p-4"
+                        >
+                          <div className="relative h-44 w-full bg-gradient-to-b from-[#FBFBFC] to-[#F1F3F5] rounded-2xl overflow-hidden mb-3">
+                            <Image
+                              src={rel.imgs?.[0] || (rel as any).imageUrl || "/images/logo.png"}
+                              alt={rel.p_title || (rel as any).nameEs || "Product"}
+                              fill
+                              className="object-contain p-3 group-hover:scale-105 transition-transform duration-300"
+                            />
+                          </div>
+                          <div className="flex-1 flex flex-col justify-between space-y-2">
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                {brandDisplay && (
+                                  <span className="text-[10px] font-bold text-gray-600 bg-gray-100 px-2 py-0.5 rounded-full">
+                                    {brandDisplay}
+                                  </span>
+                                )}
+                                {rel.category?.[0] && (
+                                  <span className="text-[10px] font-bold text-[#C02030] bg-[#C02030]/10 px-2 py-0.5 rounded-full">
+                                    {getCategoryLabel(rel.category[0])}
+                                  </span>
+                                )}
+                              </div>
+                              <h3 className="font-bold text-xs text-gray-900 group-hover:text-[#C02030] transition-colors line-clamp-2">
+                                {lang === "es" ? ((rel as any).nameEs || rel.p_title) : ((rel as any).nameEn || rel.p_title)}
+                              </h3>
+                            </div>
+
+                            <div className="pt-2 border-t border-gray-100 space-y-1">
+                              <div className="text-base font-black text-gray-900 font-mono">
+                                {relPriceDisplay}
+                              </div>
+                              {isFree && (
+                                <span className="text-[10px] font-bold text-emerald-700 block">
+                                  {t.productsInstallationFree || (lang === "es" ? "Instalación Gratis" : "Free Installation")}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+            )}
 
             {/* Related Combos Section */}
             {relatedCombos.length > 0 && (
