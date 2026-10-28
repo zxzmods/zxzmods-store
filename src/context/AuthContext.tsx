@@ -197,14 +197,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }),
       });
 
-      const syncData = await syncRes.json().catch(() => ({}));
+      let syncData: any = {};
+      try {
+        syncData = await syncRes.json();
+      } catch (jsonErr) {
+        console.error("[SOCIAL_SYNC_JSON_PARSE_ERROR]:", jsonErr, "HTTP Status:", syncRes.status);
+      }
+
       if (syncData.success) {
         handleAuthSuccess(syncData.user);
         await refreshUser();
         return { success: true };
       } else {
-        console.error("[SOCIAL_SYNC_ERROR]:", syncData);
-        return { success: false, error: syncData.error || "Error de sincronización con Google en el servidor." };
+        console.error("[SOCIAL_SYNC_ERROR]:", syncData, "HTTP Status:", syncRes.status);
+        const serverError =
+          syncData.error ||
+          (syncRes.status >= 500
+            ? "Error interno del servidor al procesar la sesión (500). Por favor verifica los registros de Vercel."
+            : undefined);
+        return {
+          success: false,
+          error: serverError || "Error de sincronización con Google en el servidor.",
+        };
       }
     } catch (error: any) {
       console.error("[GOOGLE_AUTH_ERROR_DETAILS]:", {

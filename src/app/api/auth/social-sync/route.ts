@@ -8,6 +8,7 @@ import {
   CUSTOMER_SESSION_DURATION_MS,
 } from "@/lib/customerAuth";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
@@ -85,13 +86,17 @@ export async function POST(request: Request) {
     });
 
     // Associate garage vehicles from cookie session to user
-    const cookieStore = cookies();
-    const garageSessionId = cookieStore.get("zxz_garage_session")?.value;
-    if (garageSessionId) {
-      await prisma.garageVehicle.updateMany({
-        where: { sessionId: garageSessionId, userId: null },
-        data: { userId: user.id },
-      });
+    try {
+      const cookieStore = cookies();
+      const garageSessionId = cookieStore.get("zxz_garage_session")?.value;
+      if (garageSessionId) {
+        await prisma.garageVehicle.updateMany({
+          where: { sessionId: garageSessionId, userId: null },
+          data: { userId: user.id },
+        });
+      }
+    } catch (garageErr) {
+      console.warn("[SOCIAL_SYNC_GARAGE_LINK_WARNING]:", garageErr);
     }
 
     // Generate cryptographically signed session token

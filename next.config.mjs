@@ -12,6 +12,7 @@ const nextConfig = {
     serverComponentsExternalPackages: [
       "@opentelemetry/api",
       "@prisma/client",
+      "firebase-admin",
     ],
     optimizePackageImports: [
       "lucide-react",
