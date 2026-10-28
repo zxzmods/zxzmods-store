@@ -3834,6 +3834,649 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
   }
 
   // -------------------------------------------------------------
+  // SHARED GLOBAL MODALS (Rendered across all views: Products, Combos, Catalog Overview)
+  // -------------------------------------------------------------
+  const renderGlobalModals = () => (
+    <>
+      {/* ELIMINATE PRODUCT MODAL (STRICT MASTER PASSWORD CONFIRMATION) */}
+      {eliminateModalProduct && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-red-100 text-red-600 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-sm font-bold text-slate-900">{t.productEliminateConfirmTitle}</h3>
+                <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                  {t.productEliminateConfirmPrompt}
+                </p>
+                <div className="mt-2.5 p-2.5 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-700 space-y-0.5">
+                  <div className="font-mono font-bold text-slate-900">
+                    SKU: {eliminateModalProduct.sku}
+                  </div>
+                  <div className="text-slate-600 truncate">
+                    {lang === "es" ? eliminateModalProduct.nameEs : eliminateModalProduct.nameEn}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-300 space-y-2 text-xs">
+              <div className="flex items-start gap-2 text-amber-900 font-semibold">
+                <Lock className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+                <span>{t.orderMasterPasswordLabel}</span>
+              </div>
+              <input
+                type="password"
+                autoComplete="new-password"
+                name={`master_pwd_elim_prod_${eliminateModalProduct.id}`}
+                value={eliminateMasterPassword}
+                onChange={(e) => {
+                  setEliminateMasterPassword(e.target.value);
+                  setEliminateError(null);
+                }}
+                placeholder={t.orderMasterPasswordPlaceholder}
+                className="w-full bg-white border border-amber-300 rounded-xl p-2.5 text-xs text-slate-900 focus:outline-none focus:border-amber-600 font-mono"
+              />
+              {eliminateError && (
+                <p className="text-[11px] font-bold text-red-600">{eliminateError}</p>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                disabled={eliminatingProduct}
+                onClick={() => {
+                  setEliminateModalProduct(null);
+                  setEliminateMasterPassword("");
+                  setEliminateError(null);
+                }}
+                className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition"
+              >
+                {t.orderCancelBtn}
+              </button>
+              <button
+                type="button"
+                disabled={eliminatingProduct || !eliminateMasterPassword.trim()}
+                onClick={handleExecuteEliminateProduct}
+                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-sm disabled:opacity-50"
+              >
+                {eliminatingProduct ? (
+                  <span>{lang === "es" ? "Eliminando..." : "Eliminating..."}</span>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>{t.productEliminateBtn}</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ELIMINATE COMBO MODAL (STRICT MASTER PASSWORD CONFIRMATION) */}
+      {eliminateModalCombo && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-red-100 text-red-600 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-sm font-bold text-slate-900">{t.comboEliminateConfirmTitle}</h3>
+                <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                  {t.comboEliminateConfirmPrompt}
+                </p>
+                <div className="mt-2.5 p-2.5 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-700 space-y-0.5">
+                  <div className="font-mono font-bold text-slate-900">
+                    SLUG: {eliminateModalCombo.slug}
+                  </div>
+                  <div className="text-slate-600 truncate">
+                    {lang === "es" ? eliminateModalCombo.titleEs : eliminateModalCombo.titleEn}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-300 space-y-2 text-xs">
+              <div className="flex items-start gap-2 text-amber-900 font-semibold">
+                <Lock className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+                <span>{t.orderMasterPasswordLabel}</span>
+              </div>
+              <input
+                type="password"
+                autoComplete="new-password"
+                name={`master_pwd_elim_combo_${eliminateModalCombo.id}`}
+                value={eliminateComboMasterPassword}
+                onChange={(e) => {
+                  setEliminateComboMasterPassword(e.target.value);
+                  setEliminateComboError(null);
+                }}
+                placeholder={t.orderMasterPasswordPlaceholder}
+                className="w-full bg-white border border-amber-300 rounded-xl p-2.5 text-xs text-slate-900 focus:outline-none focus:border-amber-600 font-mono"
+              />
+              {eliminateComboError && (
+                <p className="text-[11px] font-bold text-red-600">{eliminateComboError}</p>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                disabled={eliminatingCombo}
+                onClick={() => {
+                  setEliminateModalCombo(null);
+                  setEliminateComboMasterPassword("");
+                  setEliminateComboError(null);
+                }}
+                className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition"
+              >
+                {t.orderCancelBtn}
+              </button>
+              <button
+                type="button"
+                disabled={eliminatingCombo || !eliminateComboMasterPassword.trim()}
+                onClick={handleExecuteEliminateCombo}
+                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-sm disabled:opacity-50"
+              >
+                {eliminatingCombo ? (
+                  <span>{lang === "es" ? "Eliminando..." : "Eliminating..."}</span>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>{t.comboEliminateBtn}</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* UNSAVED CHANGES WARNING MODAL (User Requirement) */}
+      {showUnsavedChangesModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-sm font-bold text-slate-900">{t.devUnsavedChangesTitle}</h3>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  {t.devUnsavedChangesPrompt}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowUnsavedChangesModal(false)}
+                className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
+              >
+                {t.devUnsavedChangesStay}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowUnsavedChangesModal(false);
+                  setIsEditingProductView(false);
+                  setIsEditingComboView(false);
+                }}
+                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition shadow-sm"
+              >
+                {t.devUnsavedChangesDiscard}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ADD CATEGORY MODAL (User Requirement: staff can create a new category and add to selector, first letter always caps) */}
+      {isAddCategoryModalOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-red-50 text-[#C02030] flex items-center justify-center shrink-0">
+                  <FolderPlus className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="text-sm font-bold text-slate-900">{t.devAddCategoryModalTitle}</h3>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                      {categoryModalTarget === "combo"
+                        ? (lang === "es" ? "Para: Combo" : "For: Combo")
+                        : categoryModalTarget === "quick_product"
+                        ? (lang === "es" ? "Para: Producto de Combo" : "For: Combo Product")
+                        : (lang === "es" ? "Para: Producto" : "For: Product")}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
+                    {t.devAddCategoryModalDesc}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsAddCategoryModalOpen(false);
+                  setNewCategoryNameEs("");
+                  setNewCategoryNameEn("");
+                  setCategoryModalError(null);
+                }}
+                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateCategory} className="space-y-3.5">
+              <div>
+                <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                  {t.devCategoryNameEsLabel} <span className="text-red-500">*</span>:
+                </label>
+                <input
+                  type="text"
+                  required
+                  autoFocus
+                  value={newCategoryNameEs}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    const formatted = raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : "";
+                    setNewCategoryNameEs(formatted);
+                    setCategoryModalError(null);
+                  }}
+                  placeholder="e.g. Frenos & Discos Ventilados"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:outline-none focus:border-red-500 font-semibold"
+                />
+                <span className="text-[10px] text-slate-400 block mt-1">
+                  {t.devCategoryCapsNotice}
+                </span>
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                  {t.devCategoryNameEnLabel}:
+                </label>
+                <input
+                  type="text"
+                  value={newCategoryNameEn}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    const formatted = raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : "";
+                    setNewCategoryNameEn(formatted);
+                  }}
+                  placeholder="e.g. Brakes & Rotors"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:outline-none focus:border-red-500 font-semibold"
+                />
+              </div>
+
+              {categoryModalError && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-600 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{categoryModalError}</span>
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  disabled={creatingCategory}
+                  onClick={() => {
+                    setIsAddCategoryModalOpen(false);
+                    setNewCategoryNameEs("");
+                    setNewCategoryNameEn("");
+                    setCategoryModalError(null);
+                  }}
+                  className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition cursor-pointer"
+                >
+                  {t.orderCancelBtn}
+                </button>
+                <button
+                  type="submit"
+                  disabled={creatingCategory || !newCategoryNameEs.trim()}
+                  className="px-4 py-2 rounded-xl bg-[#C02030] hover:bg-[#A01824] text-white text-xs font-bold transition flex items-center gap-1.5 shadow-sm disabled:opacity-50 cursor-pointer"
+                >
+                  {creatingCategory ? (
+                    <span className="flex items-center gap-1.5">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>{lang === "es" ? "Creando categoría..." : "Creating category..."}</span>
+                    </span>
+                  ) : (
+                    <>
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>{t.devAddCategoryBtn}</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* QUICK PRODUCT CREATION MODAL FOR COMBO */}
+      {isQuickProductModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-slate-900 text-white flex items-center justify-center">
+                  <Plus className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-xs font-black uppercase tracking-wider text-slate-900">
+                    {t.devComboUniqueProductQuickCreateModalTitle}
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Crea un nuevo artículo en catálogo y vincúlalo a este combo
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsQuickProductModalOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {quickProductError && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                <span>{quickProductError}</span>
+              </div>
+            )}
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                  Nombre del Producto (Español): <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={quickProductNameEs}
+                  onChange={(e) => setQuickProductNameEs(e.target.value)}
+                  placeholder="Ej: Tapas de Reservorio Anodizadas FOX"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:outline-none focus:border-slate-900 focus:bg-white"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                  Nombre del Producto (English):
+                </label>
+                <input
+                  type="text"
+                  value={quickProductNameEn}
+                  onChange={(e) => setQuickProductNameEn(e.target.value)}
+                  placeholder="E.g.: Anodized Billet Reservoir Caps FOX"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:outline-none focus:border-slate-900 focus:bg-white"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                    SKU:
+                  </label>
+                  <input
+                    type="text"
+                    value={quickProductSku}
+                    onChange={(e) => setQuickProductSku(e.target.value)}
+                    placeholder="PRD-123456"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-mono text-slate-900 focus:outline-none focus:border-slate-900 focus:bg-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                    Precio Individual (₡):
+                  </label>
+                  <input
+                    type="number"
+                    value={quickProductPriceCRC || ""}
+                    onChange={(e) => setQuickProductPriceCRC(Math.round(Number(e.target.value) || 0))}
+                    placeholder="0"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-slate-900 focus:bg-white"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[11px] font-bold text-slate-700">
+                    {t.devCategorySelectorLabel || (lang === "es" ? "Categoría de Producto" : "Product Category")}:
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCategoryModalTarget("quick_product");
+                      setCategoryModalError(null);
+                      setNewCategoryNameEs("");
+                      setNewCategoryNameEn("");
+                      setIsAddCategoryModalOpen(true);
+                    }}
+                    className="text-[10px] font-bold text-[#C02030] hover:text-[#A01824] flex items-center gap-1 cursor-pointer transition"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>{t.devNewCategoryBtn || (lang === "es" ? "+ Nueva Categoría" : "+ New Category")}</span>
+                  </button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={quickProductCategory}
+                    onChange={(e) => setQuickProductCategory(e.target.value)}
+                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-semibold text-slate-800 focus:outline-none focus:border-slate-900 focus:bg-white transition"
+                  >
+                    <option value="" disabled>
+                      {t.devSelectCategoryPrompt || (lang === "es" ? "-- Seleccionar Categoría --" : "-- Select Category --")}
+                    </option>
+                    {categories.map((cat: any) => {
+                      const rawName = lang === "es" ? (cat.nameEs || cat.nameEn || cat.slug) : (cat.nameEn || cat.nameEs || cat.slug);
+                      const displayName = rawName.charAt(0).toUpperCase() + rawName.slice(1);
+                      return (
+                        <option key={cat.id || cat.slug} value={cat.slug}>
+                          {displayName}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setIsQuickProductModalOpen(false)}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 rounded-xl border border-slate-200"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={creatingQuickProduct}
+                onClick={() => handleCreateQuickProductForCombo()}
+                className="px-4 py-2 text-xs font-bold text-white bg-slate-900 hover:bg-[#C02030] rounded-xl transition flex items-center gap-1.5 shadow-sm disabled:opacity-50"
+              >
+                <Check className="w-3.5 h-3.5" />
+                <span>{creatingQuickProduct ? t.devSaving : "Crear y Vincular"}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ADD FIELD MODAL TO UNIQUE PRODUCT */}
+      {isAddFieldModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-purple-600 text-white flex items-center justify-center">
+                  <ListPlus className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-xs font-black uppercase tracking-wider text-slate-900">
+                    {t.devComboUniqueProductAddField}
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Pregunta o especificación requerida al cliente
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAddFieldModalOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                  {t.devComboUniqueProductFieldName} (Español): <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={newFieldNameEs}
+                  onChange={(e) => setNewFieldNameEs(e.target.value)}
+                  placeholder="Ej: Estilo de Manejo, Peso del Piloto, Accesorios Instalados"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:outline-none focus:border-purple-600 focus:bg-white"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                  {t.devComboUniqueProductFieldName} (English):
+                </label>
+                <input
+                  type="text"
+                  value={newFieldNameEn}
+                  onChange={(e) => setNewFieldNameEn(e.target.value)}
+                  placeholder="E.g.: Riding Style, Rider Weight, Installed Accessories"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:outline-none focus:border-purple-600 focus:bg-white"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                  {t.devComboUniqueProductFieldType}:
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setNewFieldType("select")}
+                    className={`p-2 rounded-xl border text-xs font-bold transition text-center cursor-pointer ${
+                      newFieldType === "select"
+                        ? "bg-purple-600 text-white border-purple-600 shadow-xs"
+                        : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+                    }`}
+                  >
+                    {t.devComboUniqueProductFieldTypeSelect}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNewFieldType("text")}
+                    className={`p-2 rounded-xl border text-xs font-bold transition text-center cursor-pointer ${
+                      newFieldType === "text"
+                        ? "bg-purple-600 text-white border-purple-600 shadow-xs"
+                        : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+                    }`}
+                  >
+                    {t.devComboUniqueProductFieldTypeText}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNewFieldType("number")}
+                    className={`p-2 rounded-xl border text-xs font-bold transition text-center cursor-pointer ${
+                      newFieldType === "number"
+                        ? "bg-purple-600 text-white border-purple-600 shadow-xs"
+                        : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+                    }`}
+                  >
+                    {t.devComboUniqueProductFieldTypeNumber}
+                  </button>
+                </div>
+              </div>
+
+              {newFieldType === "select" ? (
+                <div>
+                  <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                    {t.devComboUniqueProductFieldOptionsPrompt}:
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={newFieldOptionsRaw}
+                    onChange={(e) => setNewFieldOptionsRaw(e.target.value)}
+                    placeholder="Dunas, Rocas, Trail, Carreras, Mixto"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:outline-none focus:border-purple-600 focus:bg-white"
+                  />
+                </div>
+              ) : (
+                <div>
+                  <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                    Ejemplo / Placeholder:
+                  </label>
+                  <input
+                    type="text"
+                    value={newFieldPlaceholderEs}
+                    onChange={(e) => setNewFieldPlaceholderEs(e.target.value)}
+                    placeholder="ej: 85 kg piloto + 60 kg copiloto"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:outline-none focus:border-purple-600 focus:bg-white"
+                  />
+                </div>
+              )}
+
+              <div className="pt-2">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={newFieldRequired}
+                    onChange={(e) => setNewFieldRequired(e.target.checked)}
+                    className="rounded border-slate-300 text-purple-600 focus:ring-purple-600 w-4 h-4"
+                  />
+                  <span className="text-xs font-bold text-slate-800">
+                    {t.devComboUniqueProductFieldRequired} (El cliente debe completarlo obligatoriamente)
+                  </span>
+                </label>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setIsAddFieldModalOpen(false)}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 rounded-xl border border-slate-200"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleAddUniqueProductField}
+                disabled={!newFieldNameEs.trim()}
+                className="px-4 py-2 text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-xl transition flex items-center gap-1.5 shadow-sm disabled:opacity-50 cursor-pointer"
+              >
+                <Check className="w-3.5 h-3.5" />
+                <span>Agregar Campo</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+
+  // -------------------------------------------------------------
   // PRODUCT EDIT / CREATE SCREEN WITH FADED RED BACKGROUND
   // "When editing the product show all the information of the product for me to edit, everything."
   // "When creating a new product leave everything empty ready for information. Also make the critical spots require"
@@ -5708,6 +6351,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
             </div>
           </div>
         </div>
+        {renderGlobalModals()}
       </div>
     );
   }
@@ -7095,6 +7739,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
             </div>
           </div>
         </div>
+        {renderGlobalModals()}
       </div>
     );
   }
@@ -7800,640 +8445,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
         </div>
       )}
 
-      {/* ELIMINATE PRODUCT MODAL (STRICT MASTER PASSWORD CONFIRMATION) */}
-      {eliminateModalProduct && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-150">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-red-100 text-red-600 flex items-center justify-center shrink-0">
-                <AlertTriangle className="w-5 h-5" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <h3 className="text-sm font-bold text-slate-900">{t.productEliminateConfirmTitle}</h3>
-                <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                  {t.productEliminateConfirmPrompt}
-                </p>
-                <div className="mt-2.5 p-2.5 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-700 space-y-0.5">
-                  <div className="font-mono font-bold text-slate-900">
-                    SKU: {eliminateModalProduct.sku}
-                  </div>
-                  <div className="text-slate-600 truncate">
-                    {lang === "es" ? eliminateModalProduct.nameEs : eliminateModalProduct.nameEn}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-300 space-y-2 text-xs">
-              <div className="flex items-start gap-2 text-amber-900 font-semibold">
-                <Lock className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
-                <span>{t.orderMasterPasswordLabel}</span>
-              </div>
-              <input
-                type="password"
-                autoComplete="new-password"
-                name={`master_pwd_elim_prod_${eliminateModalProduct.id}`}
-                value={eliminateMasterPassword}
-                onChange={(e) => {
-                  setEliminateMasterPassword(e.target.value);
-                  setEliminateError(null);
-                }}
-                placeholder={t.orderMasterPasswordPlaceholder}
-                className="w-full bg-white border border-amber-300 rounded-xl p-2.5 text-xs text-slate-900 focus:outline-none focus:border-amber-600 font-mono"
-              />
-              {eliminateError && (
-                <p className="text-[11px] font-bold text-red-600">{eliminateError}</p>
-              )}
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
-              <button
-                type="button"
-                disabled={eliminatingProduct}
-                onClick={() => {
-                  setEliminateModalProduct(null);
-                  setEliminateMasterPassword("");
-                  setEliminateError(null);
-                }}
-                className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition"
-              >
-                {t.orderCancelBtn}
-              </button>
-              <button
-                type="button"
-                disabled={eliminatingProduct || !eliminateMasterPassword.trim()}
-                onClick={handleExecuteEliminateProduct}
-                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-sm disabled:opacity-50"
-              >
-                {eliminatingProduct ? (
-                  <span>{lang === "es" ? "Eliminando..." : "Eliminating..."}</span>
-                ) : (
-                  <>
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span>{t.productEliminateBtn}</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ELIMINATE COMBO MODAL (STRICT MASTER PASSWORD CONFIRMATION) */}
-      {eliminateModalCombo && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-150">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-red-100 text-red-600 flex items-center justify-center shrink-0">
-                <AlertTriangle className="w-5 h-5" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <h3 className="text-sm font-bold text-slate-900">{t.comboEliminateConfirmTitle}</h3>
-                <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                  {t.comboEliminateConfirmPrompt}
-                </p>
-                <div className="mt-2.5 p-2.5 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-700 space-y-0.5">
-                  <div className="font-mono font-bold text-slate-900">
-                    SLUG: {eliminateModalCombo.slug}
-                  </div>
-                  <div className="text-slate-600 truncate">
-                    {lang === "es" ? eliminateModalCombo.titleEs : eliminateModalCombo.titleEn}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-300 space-y-2 text-xs">
-              <div className="flex items-start gap-2 text-amber-900 font-semibold">
-                <Lock className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
-                <span>{t.orderMasterPasswordLabel}</span>
-              </div>
-              <input
-                type="password"
-                autoComplete="new-password"
-                name={`master_pwd_elim_combo_${eliminateModalCombo.id}`}
-                value={eliminateComboMasterPassword}
-                onChange={(e) => {
-                  setEliminateComboMasterPassword(e.target.value);
-                  setEliminateComboError(null);
-                }}
-                placeholder={t.orderMasterPasswordPlaceholder}
-                className="w-full bg-white border border-amber-300 rounded-xl p-2.5 text-xs text-slate-900 focus:outline-none focus:border-amber-600 font-mono"
-              />
-              {eliminateComboError && (
-                <p className="text-[11px] font-bold text-red-600">{eliminateComboError}</p>
-              )}
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
-              <button
-                type="button"
-                disabled={eliminatingCombo}
-                onClick={() => {
-                  setEliminateModalCombo(null);
-                  setEliminateComboMasterPassword("");
-                  setEliminateComboError(null);
-                }}
-                className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition"
-              >
-                {t.orderCancelBtn}
-              </button>
-              <button
-                type="button"
-                disabled={eliminatingCombo || !eliminateComboMasterPassword.trim()}
-                onClick={handleExecuteEliminateCombo}
-                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-sm disabled:opacity-50"
-              >
-                {eliminatingCombo ? (
-                  <span>{lang === "es" ? "Eliminando..." : "Eliminating..."}</span>
-                ) : (
-                  <>
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span>{t.comboEliminateBtn}</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* UNSAVED CHANGES WARNING MODAL (User Requirement) */}
-      {showUnsavedChangesModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-150">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
-                <AlertTriangle className="w-5 h-5" />
-              </div>
-              <div className="space-y-1">
-                <h3 className="text-sm font-bold text-slate-900">{t.devUnsavedChangesTitle}</h3>
-                <p className="text-xs text-slate-600 leading-relaxed">
-                  {t.devUnsavedChangesPrompt}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={() => setShowUnsavedChangesModal(false)}
-                className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
-              >
-                {t.devUnsavedChangesStay}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowUnsavedChangesModal(false);
-                  setIsEditingProductView(false);
-                }}
-                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition shadow-sm"
-              >
-                {t.devUnsavedChangesDiscard}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ADD CATEGORY MODAL (User Requirement: staff can create a new category and add to selector, first letter always caps) */}
-      {isAddCategoryModalOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-150">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-start gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-red-50 text-[#C02030] flex items-center justify-center shrink-0">
-                  <FolderPlus className="w-5 h-5" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="text-sm font-bold text-slate-900">{t.devAddCategoryModalTitle}</h3>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
-                      {categoryModalTarget === "combo"
-                        ? (lang === "es" ? "Para: Combo" : "For: Combo")
-                        : categoryModalTarget === "quick_product"
-                        ? (lang === "es" ? "Para: Producto de Combo" : "For: Combo Product")
-                        : (lang === "es" ? "Para: Producto" : "For: Product")}
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
-                    {t.devAddCategoryModalDesc}
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setIsAddCategoryModalOpen(false);
-                  setNewCategoryNameEs("");
-                  setNewCategoryNameEn("");
-                  setCategoryModalError(null);
-                }}
-                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateCategory} className="space-y-3.5">
-              <div>
-                <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                  {t.devCategoryNameEsLabel} <span className="text-red-500">*</span>:
-                </label>
-                <input
-                  type="text"
-                  required
-                  autoFocus
-                  value={newCategoryNameEs}
-                  onChange={(e) => {
-                    const raw = e.target.value;
-                    const formatted = raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : "";
-                    setNewCategoryNameEs(formatted);
-                    setCategoryModalError(null);
-                  }}
-                  placeholder="e.g. Frenos & Discos Ventilados"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:outline-none focus:border-red-500 font-semibold"
-                />
-                <span className="text-[10px] text-slate-400 block mt-1">
-                  {t.devCategoryCapsNotice}
-                </span>
-              </div>
-
-              <div>
-                <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                  {t.devCategoryNameEnLabel}:
-                </label>
-                <input
-                  type="text"
-                  value={newCategoryNameEn}
-                  onChange={(e) => {
-                    const raw = e.target.value;
-                    const formatted = raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : "";
-                    setNewCategoryNameEn(formatted);
-                  }}
-                  placeholder="e.g. Brakes & Rotors"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:outline-none focus:border-red-500 font-semibold"
-                />
-              </div>
-
-              {categoryModalError && (
-                <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-600 flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 shrink-0" />
-                  <span>{categoryModalError}</span>
-                </div>
-              )}
-
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
-                <button
-                  type="button"
-                  disabled={creatingCategory}
-                  onClick={() => {
-                    setIsAddCategoryModalOpen(false);
-                    setNewCategoryNameEs("");
-                    setNewCategoryNameEn("");
-                    setCategoryModalError(null);
-                  }}
-                  className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition"
-                >
-                  {t.orderCancelBtn}
-                </button>
-                <button
-                  type="submit"
-                  disabled={creatingCategory || !newCategoryNameEs.trim()}
-                  className="px-4 py-2 rounded-xl bg-[#C02030] hover:bg-[#A01824] text-white text-xs font-bold transition flex items-center gap-1.5 shadow-sm disabled:opacity-50"
-                >
-                  {creatingCategory ? (
-                    <span className="flex items-center gap-1.5">
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      <span>{lang === "es" ? "Creando categoría..." : "Creating category..."}</span>
-                    </span>
-                  ) : (
-                    <>
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>{t.devAddCategoryBtn}</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* QUICK PRODUCT CREATION MODAL FOR COMBO */}
-      {isQuickProductModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-slate-900 text-white flex items-center justify-center">
-                  <Plus className="w-4 h-4" />
-                </div>
-                <div>
-                  <h3 className="text-xs font-black uppercase tracking-wider text-slate-900">
-                    {t.devComboUniqueProductQuickCreateModalTitle}
-                  </h3>
-                  <p className="text-[11px] text-slate-500">
-                    Crea un nuevo artículo en catálogo y vincúlalo a este combo
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsQuickProductModalOpen(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-700"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {quickProductError && (
-              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
-                <span>{quickProductError}</span>
-              </div>
-            )}
-
-            <div className="space-y-3 text-xs">
-              <div>
-                <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                  Nombre del Producto (Español): <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={quickProductNameEs}
-                  onChange={(e) => setQuickProductNameEs(e.target.value)}
-                  placeholder="Ej: Tapas de Reservorio Anodizadas FOX"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:outline-none focus:border-slate-900 focus:bg-white"
-                />
-              </div>
-
-              <div>
-                <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                  Nombre del Producto (English):
-                </label>
-                <input
-                  type="text"
-                  value={quickProductNameEn}
-                  onChange={(e) => setQuickProductNameEn(e.target.value)}
-                  placeholder="E.g.: Anodized Billet Reservoir Caps FOX"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:outline-none focus:border-slate-900 focus:bg-white"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                    SKU:
-                  </label>
-                  <input
-                    type="text"
-                    value={quickProductSku}
-                    onChange={(e) => setQuickProductSku(e.target.value)}
-                    placeholder="PRD-123456"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-mono text-slate-900 focus:outline-none focus:border-slate-900 focus:bg-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                    Precio Individual (₡):
-                  </label>
-                  <input
-                    type="number"
-                    value={quickProductPriceCRC || ""}
-                    onChange={(e) => setQuickProductPriceCRC(Math.round(Number(e.target.value) || 0))}
-                    placeholder="0"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-slate-900 focus:bg-white"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-[11px] font-bold text-slate-700">
-                    {t.devCategorySelectorLabel || (lang === "es" ? "Categoría de Producto" : "Product Category")}:
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCategoryModalTarget("quick_product");
-                      setCategoryModalError(null);
-                      setNewCategoryNameEs("");
-                      setNewCategoryNameEn("");
-                      setIsAddCategoryModalOpen(true);
-                    }}
-                    className="text-[10px] font-bold text-[#C02030] hover:text-[#A01824] flex items-center gap-1 cursor-pointer transition"
-                  >
-                    <Plus className="w-3 h-3" />
-                    <span>{t.devNewCategoryBtn || (lang === "es" ? "+ Nueva Categoría" : "+ New Category")}</span>
-                  </button>
-                </div>
-                <div className="flex items-center gap-2">
-                  <select
-                    value={quickProductCategory}
-                    onChange={(e) => setQuickProductCategory(e.target.value)}
-                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-semibold text-slate-800 focus:outline-none focus:border-slate-900 focus:bg-white transition"
-                  >
-                    <option value="" disabled>
-                      {t.devSelectCategoryPrompt || (lang === "es" ? "-- Seleccionar Categoría --" : "-- Select Category --")}
-                    </option>
-                    {categories.map((cat: any) => {
-                      const rawName = lang === "es" ? (cat.nameEs || cat.nameEn || cat.slug) : (cat.nameEn || cat.nameEs || cat.slug);
-                      const displayName = rawName.charAt(0).toUpperCase() + rawName.slice(1);
-                      return (
-                        <option key={cat.id || cat.slug} value={cat.slug}>
-                          {displayName}
-                        </option>
-                      );
-                    })}
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={() => setIsQuickProductModalOpen(false)}
-                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 rounded-xl border border-slate-200"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                disabled={creatingQuickProduct}
-                onClick={() => handleCreateQuickProductForCombo()}
-                className="px-4 py-2 text-xs font-bold text-white bg-slate-900 hover:bg-[#C02030] rounded-xl transition flex items-center gap-1.5 shadow-sm disabled:opacity-50"
-              >
-                <Check className="w-3.5 h-3.5" />
-                <span>{creatingQuickProduct ? t.devSaving : "Crear y Vincular"}</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ADD FIELD MODAL TO UNIQUE PRODUCT */}
-      {isAddFieldModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-purple-600 text-white flex items-center justify-center">
-                  <ListPlus className="w-4 h-4" />
-                </div>
-                <div>
-                  <h3 className="text-xs font-black uppercase tracking-wider text-slate-900">
-                    {t.devComboUniqueProductAddField}
-                  </h3>
-                  <p className="text-[11px] text-slate-500">
-                    Pregunta o especificación requerida al cliente
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsAddFieldModalOpen(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-700"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="space-y-3 text-xs">
-              <div>
-                <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                  {t.devComboUniqueProductFieldName} (Español): <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={newFieldNameEs}
-                  onChange={(e) => setNewFieldNameEs(e.target.value)}
-                  placeholder="Ej: Estilo de Manejo, Peso del Piloto, Accesorios Instalados"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:outline-none focus:border-purple-600 focus:bg-white"
-                />
-              </div>
-
-              <div>
-                <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                  {t.devComboUniqueProductFieldName} (English):
-                </label>
-                <input
-                  type="text"
-                  value={newFieldNameEn}
-                  onChange={(e) => setNewFieldNameEn(e.target.value)}
-                  placeholder="E.g.: Riding Style, Rider Weight, Installed Accessories"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:outline-none focus:border-purple-600 focus:bg-white"
-                />
-              </div>
-
-              <div>
-                <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                  {t.devComboUniqueProductFieldType}:
-                </label>
-                <div className="grid grid-cols-3 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setNewFieldType("select")}
-                    className={`p-2 rounded-xl border text-xs font-bold transition text-center cursor-pointer ${
-                      newFieldType === "select"
-                        ? "bg-purple-600 text-white border-purple-600 shadow-xs"
-                        : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
-                    }`}
-                  >
-                    {t.devComboUniqueProductFieldTypeSelect}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setNewFieldType("text")}
-                    className={`p-2 rounded-xl border text-xs font-bold transition text-center cursor-pointer ${
-                      newFieldType === "text"
-                        ? "bg-purple-600 text-white border-purple-600 shadow-xs"
-                        : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
-                    }`}
-                  >
-                    {t.devComboUniqueProductFieldTypeText}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setNewFieldType("number")}
-                    className={`p-2 rounded-xl border text-xs font-bold transition text-center cursor-pointer ${
-                      newFieldType === "number"
-                        ? "bg-purple-600 text-white border-purple-600 shadow-xs"
-                        : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
-                    }`}
-                  >
-                    {t.devComboUniqueProductFieldTypeNumber}
-                  </button>
-                </div>
-              </div>
-
-              {newFieldType === "select" ? (
-                <div>
-                  <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                    {t.devComboUniqueProductFieldOptionsPrompt}:
-                  </label>
-                  <textarea
-                    rows={2}
-                    value={newFieldOptionsRaw}
-                    onChange={(e) => setNewFieldOptionsRaw(e.target.value)}
-                    placeholder="Dunas, Rocas, Trail, Carreras, Mixto"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:outline-none focus:border-purple-600 focus:bg-white"
-                  />
-                </div>
-              ) : (
-                <div>
-                  <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                    Ejemplo / Placeholder:
-                  </label>
-                  <input
-                    type="text"
-                    value={newFieldPlaceholderEs}
-                    onChange={(e) => setNewFieldPlaceholderEs(e.target.value)}
-                    placeholder="ej: 85 kg piloto + 60 kg copiloto"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:outline-none focus:border-purple-600 focus:bg-white"
-                  />
-                </div>
-              )}
-
-              <div className="pt-2">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={newFieldRequired}
-                    onChange={(e) => setNewFieldRequired(e.target.checked)}
-                    className="rounded border-slate-300 text-purple-600 focus:ring-purple-600 w-4 h-4"
-                  />
-                  <span className="text-xs font-bold text-slate-800">
-                    {t.devComboUniqueProductFieldRequired} (El cliente debe completarlo obligatoriamente)
-                  </span>
-                </label>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={() => setIsAddFieldModalOpen(false)}
-                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 rounded-xl border border-slate-200"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={handleAddUniqueProductField}
-                disabled={!newFieldNameEs.trim()}
-                className="px-4 py-2 text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-xl transition flex items-center gap-1.5 shadow-sm disabled:opacity-50 cursor-pointer"
-              >
-                <Check className="w-3.5 h-3.5" />
-                <span>Agregar Campo</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {renderGlobalModals()}
     </div>
   );
 }
