@@ -9,6 +9,7 @@ import { GarageModal } from "@/components/garage/GarageModal";
 import { CartDrawer } from "@/components/cart/CartDrawer";
 import { FloatingConcierge } from "@/components/home/FloatingConcierge";
 import { ProfileDrawer } from "@/components/profile/ProfileDrawer";
+import { Footer } from "@/components/layout/Footer";
 import { useAuth, UserOrder } from "@/context/AuthContext";
 import { useCart } from "@/context/CartContext";
 import { useLanguage } from "@/context/LanguageContext";
@@ -1125,6 +1126,7 @@ export default function PedidosPage() {
           </div>
         )}
       </main>
+      <Footer />
 
       {/* Fullscreen Proof Modal for Client in Orders List */}
       {previewProofUrl && (

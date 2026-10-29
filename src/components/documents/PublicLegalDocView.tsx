@@ -19,6 +19,7 @@ import {
   ArrowLeft,
 } from "lucide-react";
 import { COMPANY_CONFIG, getWhatsAppUrl } from "@/config/company";
+import { Footer } from "@/components/layout/Footer";
 
 export interface LegalDocPayload {
   slug: string;
@@ -373,26 +374,8 @@ export function PublicLegalDocView({
         </article>
       </main>
 
-      {/* Footer */}
-      <footer className="border-t border-gray-200 bg-white py-8 px-4 text-center text-xs text-gray-500">
-        <div className="max-w-4xl mx-auto space-y-2">
-          <div className="flex flex-wrap justify-center gap-6 font-semibold text-gray-700">
-            <Link href="/" className="hover:text-black">
-              {lang === "es" ? "Inicio" : "Home"}
-            </Link>
-            <Link href="/privacidad" className="hover:text-[#C02030] text-black">
-              {lang === "es" ? "Política de Privacidad" : "Privacy Policy"}
-            </Link>
-            <Link href="/terminos" className="hover:text-[#C02030]">
-              {lang === "es" ? "Términos y Condiciones" : "Terms & Conditions"}
-            </Link>
-            <Link href="/documentos" className="hover:text-[#C02030]">
-              {lang === "es" ? "Todas las Pólizas" : "All Policies"}
-            </Link>
-          </div>
-          <p>© {new Date().getFullYear()} {COMPANY_CONFIG.name}. Todos los derechos reservados.</p>
-        </div>
-      </footer>
+      {/* Global Site Footer */}
+      <Footer />
     </div>
   );
 }

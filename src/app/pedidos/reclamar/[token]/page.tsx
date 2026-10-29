@@ -7,6 +7,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Navbar } from "@/components/layout/Navbar";
 import { NotificationBanner } from "@/components/layout/NotificationBanner";
+import { Footer } from "@/components/layout/Footer";
 import { useAuth } from "@/context/AuthContext";
 import { useLanguage } from "@/context/LanguageContext";
 import { formatCRC } from "@/lib/i18n";
@@ -304,6 +305,7 @@ export default function ClaimOrderPage() {
           </div>
         ) : null}
       </main>
+      <Footer />
     </div>
   );
 }

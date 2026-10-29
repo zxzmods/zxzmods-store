@@ -8,6 +8,7 @@ import { NotificationBanner } from "@/components/layout/NotificationBanner";
 import { GarageModal } from "@/components/garage/GarageModal";
 import { CartDrawer } from "@/components/cart/CartDrawer";
 import { FloatingConcierge } from "@/components/home/FloatingConcierge";
+import { Footer } from "@/components/layout/Footer";
 import { useLanguage } from "@/context/LanguageContext";
 import {
   ChevronDown,
@@ -648,6 +649,9 @@ export default function BarrialCrPage() {
           </div>
         </section>
       </main>
+
+      {/* Global Site Footer */}
+      <Footer />
 
       {/* Floating Concierge & Modals */}
       <FloatingConcierge />

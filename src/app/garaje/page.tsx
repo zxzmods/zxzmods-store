@@ -8,6 +8,7 @@ import { Navbar } from "@/components/layout/Navbar";
 import { NotificationBanner } from "@/components/layout/NotificationBanner";
 import { CartDrawer } from "@/components/cart/CartDrawer";
 import { FloatingConcierge } from "@/components/home/FloatingConcierge";
+import { Footer } from "@/components/layout/Footer";
 import { GarageModal } from "@/components/garage/GarageModal";
 import { GarageFleetSkeleton } from "@/components/garage/GarageFleetSkeleton";
 import { useGarage, RegisteredVehicle } from "@/context/GarageContext";
@@ -334,6 +335,7 @@ export default function GarageFleetPage() {
           </div>
         )}
       </main>
+      <Footer />
     </div>
   );
 }

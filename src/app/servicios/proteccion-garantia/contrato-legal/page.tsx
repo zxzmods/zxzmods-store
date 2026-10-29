@@ -7,6 +7,7 @@ import { NotificationBanner } from "@/components/layout/NotificationBanner";
 import { CartDrawer } from "@/components/cart/CartDrawer";
 import { GarageModal } from "@/components/garage/GarageModal";
 import { FloatingConcierge } from "@/components/home/FloatingConcierge";
+import { Footer } from "@/components/layout/Footer";
 import { useLanguage } from "@/context/LanguageContext";
 import { COMPANY_CONFIG } from "@/config/company";
 import {
@@ -31,13 +32,13 @@ export default function WarrantyLegalContractPage() {
   };
 
   return (
-    <main className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col justify-between transition-colors">
       <div className="print:hidden">
         <NotificationBanner />
         <Navbar />
       </div>
 
-      <div className="pt-28 pb-20 px-4 sm:px-6 lg:px-8 max-w-4xl mx-auto space-y-8 print:p-0 print:pt-4">
+      <main className="flex-1 pt-28 pb-20 px-4 sm:px-6 lg:px-8 max-w-4xl mx-auto space-y-8 print:p-0 print:pt-4 w-full">
         {/* Top Back Navigation */}
         <div className="flex items-center justify-between print:hidden">
           <Link
@@ -280,13 +281,14 @@ export default function WarrantyLegalContractPage() {
             <span>Revisión Legal: 2026-CR</span>
           </div>
         </div>
-      </div>
+      </main>
 
       <div className="print:hidden">
+        <Footer />
         <CartDrawer />
         <GarageModal />
         <FloatingConcierge />
       </div>
-    </main>
+    </div>
   );
 }

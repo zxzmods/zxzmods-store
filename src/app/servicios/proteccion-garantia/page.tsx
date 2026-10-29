@@ -11,6 +11,7 @@ import { NotificationBanner } from "@/components/layout/NotificationBanner";
 import { GarageModal } from "@/components/garage/GarageModal";
 import { CartDrawer } from "@/components/cart/CartDrawer";
 import { FloatingConcierge } from "@/components/home/FloatingConcierge";
+import { Footer } from "@/components/layout/Footer";
 import { COMPANY_CONFIG, getWhatsAppUrl, getTelUrl } from "@/config/company";
 import {
   ShieldCheck,
@@ -252,11 +253,11 @@ export default function WarrantyProtectionPage() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col justify-between transition-colors">
       <NotificationBanner />
       <Navbar />
 
-      <div className="pt-28 pb-20 px-4 sm:px-6 lg:px-8 max-w-5xl mx-auto space-y-10">
+      <main className="flex-1 pt-28 pb-20 px-4 sm:px-6 lg:px-8 max-w-5xl mx-auto space-y-10 w-full">
         {/* Top Navigation */}
         <div className="flex items-center justify-between">
           <Link
@@ -742,11 +743,13 @@ export default function WarrantyProtectionPage() {
             <span>{t.warrantyProtectionContactBtn}</span>
           </a>
         </div>
-      </div>
+      </main>
+
+      <Footer />
 
       <CartDrawer />
       <GarageModal />
       <FloatingConcierge />
-    </main>
+    </div>
   );
 }

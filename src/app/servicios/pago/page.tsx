@@ -39,6 +39,7 @@ import { getWhatsAppUrl } from "@/config/company";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { ServicePaymentSkeleton } from "@/components/services/ServicePaymentSkeleton";
 import { DjiPaymentAnimationOverlay } from "@/components/ui/DjiPaymentAnimationOverlay";
+import { Footer } from "@/components/layout/Footer";
 import { useCart } from "@/context/CartContext";
 import { useGarage } from "@/context/GarageContext";
 import { convertCRCToUSD, formatCRC, formatUSD } from "@/lib/i18n";
@@ -1690,6 +1691,7 @@ function ServicePaymentContent() {
           </div>
         </div>
       </main>
+      <Footer />
 
       {/* Full-Screen Submission Animation Overlay (Matches Checkout Animation) */}
       <DjiPaymentAnimationOverlay

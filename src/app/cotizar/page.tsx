@@ -7,6 +7,7 @@ import { NotificationBanner } from "@/components/layout/NotificationBanner";
 import { GarageModal } from "@/components/garage/GarageModal";
 import { CartDrawer } from "@/components/cart/CartDrawer";
 import { FloatingConcierge } from "@/components/home/FloatingConcierge";
+import { Footer } from "@/components/layout/Footer";
 import { useGarage } from "@/context/GarageContext";
 import { useLanguage } from "@/context/LanguageContext";
 import { getWhatsAppUrl } from "@/config/company";
@@ -401,6 +402,9 @@ export default function CotizarPage() {
           </div>
         </form>
       </main>
+
+      {/* Global Site Footer */}
+      <Footer />
 
       <GarageModal />
       <CartDrawer />

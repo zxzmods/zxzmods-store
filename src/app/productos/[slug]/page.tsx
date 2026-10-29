@@ -11,6 +11,7 @@ import { NotificationBanner } from "@/components/layout/NotificationBanner";
 import { GarageModal } from "@/components/garage/GarageModal";
 import { CartDrawer } from "@/components/cart/CartDrawer";
 import { FloatingConcierge } from "@/components/home/FloatingConcierge";
+import { Footer } from "@/components/layout/Footer";
 import { useLanguage } from "@/context/LanguageContext";
 import { useCart } from "@/context/CartContext";
 import { useGarage } from "@/context/GarageContext";
@@ -2425,6 +2426,9 @@ export default function ProductDetailPage() {
           </button>
         </div>
       )}
+
+      {/* Global Site Footer */}
+      <Footer />
 
       <GarageModal />
       <FloatingConcierge />

@@ -10,6 +10,7 @@ import { NotificationBanner } from "@/components/layout/NotificationBanner";
 import { GarageModal } from "@/components/garage/GarageModal";
 import { CartDrawer } from "@/components/cart/CartDrawer";
 import { FloatingConcierge } from "@/components/home/FloatingConcierge";
+import { Footer } from "@/components/layout/Footer";
 import { CatalogPagination } from "@/components/ui/CatalogPagination";
 import { useLanguage } from "@/context/LanguageContext";
 import { useCart } from "@/context/CartContext";
@@ -695,6 +696,9 @@ export default function CombosPage() {
           </>
         )}
       </main>
+
+      {/* Global Site Footer */}
+      <Footer />
 
       {/* Global Modals & Drawers */}
       <GarageModal />

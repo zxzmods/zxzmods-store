@@ -9,6 +9,7 @@ import { NotificationBanner } from "@/components/layout/NotificationBanner";
 import { GarageModal } from "@/components/garage/GarageModal";
 import { CartDrawer } from "@/components/cart/CartDrawer";
 import { FloatingConcierge } from "@/components/home/FloatingConcierge";
+import { Footer } from "@/components/layout/Footer";
 import { useLanguage } from "@/context/LanguageContext";
 import { useAuth } from "@/context/AuthContext";
 import { useCart } from "@/context/CartContext";
@@ -461,10 +462,10 @@ export default function InstallationCheckoutPage() {
   // Loading Skeleton Screen
   if (loadingOrder) {
     return (
-      <div className="min-h-screen bg-[#F8FAFC] text-[#111827]">
+      <div className="min-h-screen bg-[#F8FAFC] text-[#111827] flex flex-col justify-between">
         <NotificationBanner />
         <Navbar />
-        <main className="max-w-5xl mx-auto px-4 sm:px-6 pt-24 pb-16 space-y-6 animate-pulse">
+        <main className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 pt-24 pb-16 space-y-6 animate-pulse">
           <div className="h-6 w-48 bg-slate-200 rounded-xl" />
           <div className="h-32 bg-slate-200 rounded-3xl" />
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -472,6 +473,7 @@ export default function InstallationCheckoutPage() {
             <div className="lg:col-span-5 h-96 bg-slate-200 rounded-3xl" />
           </div>
         </main>
+        <Footer />
       </div>
     );
   }
@@ -552,6 +554,7 @@ export default function InstallationCheckoutPage() {
             </Link>
           </div>
         </main>
+        <Footer />
       </div>
     );
   }
@@ -1077,6 +1080,7 @@ export default function InstallationCheckoutPage() {
           </div>
         </div>
       </main>
+      <Footer />
 
       {/* Full-Screen Submission Animation Overlay (Matches Checkout Animation) */}
       <DjiPaymentAnimationOverlay

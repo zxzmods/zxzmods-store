@@ -9,6 +9,7 @@ import { GarageModal } from "@/components/garage/GarageModal";
 import { CartDrawer } from "@/components/cart/CartDrawer";
 import { FloatingConcierge } from "@/components/home/FloatingConcierge";
 import { ProfileDrawer } from "@/components/profile/ProfileDrawer";
+import { Footer } from "@/components/layout/Footer";
 import { useAuth } from "@/context/AuthContext";
 import { useLanguage } from "@/context/LanguageContext";
 import { useTheme } from "@/context/ThemeContext";
@@ -671,6 +672,7 @@ export default function ScheduledServicesPage() {
           )}
         </main>
       </div>
+      <Footer />
 
       {/* Reschedule Modal (Only opens if > 48 hours to service) */}
       {reschedulingItem && (

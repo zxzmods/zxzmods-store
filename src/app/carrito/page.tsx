@@ -9,6 +9,7 @@ import { NotificationBanner } from "@/components/layout/NotificationBanner";
 import { GarageModal } from "@/components/garage/GarageModal";
 import { CartDrawer } from "@/components/cart/CartDrawer";
 import { FloatingConcierge } from "@/components/home/FloatingConcierge";
+import { Footer } from "@/components/layout/Footer";
 import { useCart } from "@/context/CartContext";
 import { useGarage } from "@/context/GarageContext";
 import { useLanguage } from "@/context/LanguageContext";
@@ -997,6 +998,9 @@ export default function CartPage() {
         relatedSuggestions={relatedSuggestions}
         isLoading={false}
       />
+
+      {/* Global Site Footer */}
+      <Footer />
 
       <GarageModal />
       <CartDrawer />

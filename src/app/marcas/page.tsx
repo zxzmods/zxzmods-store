@@ -8,6 +8,7 @@ import { NotificationBanner } from "@/components/layout/NotificationBanner";
 import { GarageModal } from "@/components/garage/GarageModal";
 import { CartDrawer } from "@/components/cart/CartDrawer";
 import { FloatingConcierge } from "@/components/home/FloatingConcierge";
+import { Footer } from "@/components/layout/Footer";
 import { useLanguage } from "@/context/LanguageContext";
 import { SXS_BRANDS, SxsBrand } from "@/lib/sxsBrands";
 import { ChevronRight, ArrowLeft, Clock } from "lucide-react";
@@ -233,6 +234,9 @@ export default function MarcasPage() {
           </div>
         )}
       </main>
+
+      {/* Global Site Footer */}
+      <Footer />
 
       <GarageModal />
       <CartDrawer />

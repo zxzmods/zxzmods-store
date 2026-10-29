@@ -7,6 +7,7 @@ import { Navbar } from "@/components/layout/Navbar";
 import { NotificationBanner } from "@/components/layout/NotificationBanner";
 import { CartDrawer } from "@/components/cart/CartDrawer";
 import { FloatingConcierge } from "@/components/home/FloatingConcierge";
+import { Footer } from "@/components/layout/Footer";
 import { DocumentsSkeleton } from "@/components/documents/DocumentsSkeleton";
 import { useLanguage } from "@/context/LanguageContext";
 import { getWhatsAppUrl, COMPANY_CONFIG } from "@/config/company";
@@ -475,6 +476,7 @@ function DocumentCenterContent() {
           )}
         </div>
       </main>
+      <Footer />
     </div>
   );
 }

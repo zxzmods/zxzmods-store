@@ -12,6 +12,7 @@ import { GarageModal } from "@/components/garage/GarageModal";
 import { CartDrawer } from "@/components/cart/CartDrawer";
 import { FloatingConcierge } from "@/components/home/FloatingConcierge";
 import { ProfileDrawer } from "@/components/profile/ProfileDrawer";
+import { Footer } from "@/components/layout/Footer";
 import { CustomerZxzCertModal } from "@/components/orders/CustomerZxzCertModal";
 import { useAuth } from "@/context/AuthContext";
 import { useCart } from "@/context/CartContext";
@@ -2478,6 +2479,7 @@ export default function OrderDetailPage() {
           </div>
         )}
       </main>
+      <Footer />
 
       {/* Payment Modal */}
       {payModalOpen && order && (

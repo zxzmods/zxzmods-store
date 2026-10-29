@@ -10,6 +10,7 @@ import { GarageModal } from "@/components/garage/GarageModal";
 import { useGarage } from "@/context/GarageContext";
 import { CartDrawer } from "@/components/cart/CartDrawer";
 import { FloatingConcierge } from "@/components/home/FloatingConcierge";
+import { Footer } from "@/components/layout/Footer";
 import { ServiceOrderSelector } from "@/components/services/ServiceOrderSelector";
 import { ServicesSkeleton } from "@/components/services/ServicesSkeleton";
 import { useLanguage } from "@/context/LanguageContext";
@@ -2290,6 +2291,7 @@ function TransportServiceContent() {
           </div>
         )}
       </main>
+      <Footer />
 
       {/* Full-Screen Submission Animation Overlay (Matches Checkout Animation) */}
       <DjiPaymentAnimationOverlay

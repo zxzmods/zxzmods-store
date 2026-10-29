@@ -7,6 +7,7 @@ import { Navbar } from "@/components/layout/Navbar";
 import { NotificationBanner } from "@/components/layout/NotificationBanner";
 import { CartDrawer } from "@/components/cart/CartDrawer";
 import { FloatingConcierge } from "@/components/home/FloatingConcierge";
+import { Footer } from "@/components/layout/Footer";
 import { GarageModal } from "@/components/garage/GarageModal";
 import { ConfigBrandLogoStage } from "@/components/garage/ConfigBrandLogoStage";
 import { GarageRegisterSkeleton } from "@/components/garage/GarageRegisterSkeleton";
@@ -381,6 +382,7 @@ export default function RegisterVehiclePage() {
           </div>
         )}
       </main>
+      <Footer />
     </div>
   );
 }

@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { useCart } from "@/context/CartContext";
 import { useLanguage } from "@/context/LanguageContext";
 import { useAuth } from "@/context/AuthContext";
+import { Footer } from "@/components/layout/Footer";
 import {
   UploadCloud,
   CheckCircle2,
@@ -1813,6 +1814,9 @@ export default function CheckoutPage() {
           </div>
         </div>
       )}
+
+      {/* Global Site Footer */}
+      <Footer />
     </div>
   );
 }
