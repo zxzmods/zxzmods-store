@@ -1332,21 +1332,18 @@ function ProductsContent() {
                 key={`products-page-${safeCurrentPage}`}
                 initial={{
                   opacity: 0,
-                  x: pageDirection === "next" ? 40 : -40,
-                  scale: 0.99,
+                  x: pageDirection === "next" ? 18 : -18,
                 }}
                 animate={{
                   opacity: 1,
                   x: 0,
-                  scale: 1,
                 }}
                 exit={{
                   opacity: 0,
-                  x: pageDirection === "next" ? -40 : 40,
-                  scale: 0.99,
+                  x: pageDirection === "next" ? -18 : 18,
                 }}
                 transition={{
-                  duration: 0.35,
+                  duration: 0.25,
                   ease: [0.22, 1, 0.36, 1],
                 }}
                 className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5"

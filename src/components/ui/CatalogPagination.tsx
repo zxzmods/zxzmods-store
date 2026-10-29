@@ -1,8 +1,8 @@
 "use client";
 
 import React, { useMemo } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
+import { motion } from "framer-motion";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
 
 export interface CatalogPaginationProps {
@@ -24,10 +24,6 @@ export function CatalogPagination({
 
   const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage));
   const safeCurrentPage = Math.min(Math.max(1, currentPage), totalPages);
-
-  const startItem = totalItems === 0 ? 0 : (safeCurrentPage - 1) * itemsPerPage + 1;
-  const endItem = Math.min(totalItems, safeCurrentPage * itemsPerPage);
-  const progressPercent = totalPages > 1 ? (safeCurrentPage / totalPages) * 100 : 100;
 
   // Build visible page numbers with ellipsis for large page counts
   const pageNumbers = useMemo(() => {
@@ -66,167 +62,88 @@ export function CatalogPagination({
   };
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 16 }}
+    <motion.nav
+      aria-label="Pagination"
+      initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-      className="mt-10 sm:mt-12 w-full"
+      transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+      className="mt-10 sm:mt-12 flex items-center justify-center w-full select-none"
     >
-      <div className="bg-[#F8F9FA]/95 backdrop-blur-md border border-gray-200/90 rounded-3xl p-4 sm:p-5 shadow-sm flex flex-col gap-3.5">
-        {/* Top Animated Progress Track (DJI Minimalist Telemetry Bar) */}
-        <div className="w-full h-1 bg-gray-200/80 rounded-full overflow-hidden">
-          <motion.div
-            className="h-full bg-gradient-to-r from-[#111827] via-[#C02030] to-[#E02A3C] rounded-full"
-            initial={false}
-            animate={{ width: `${progressPercent}%` }}
-            transition={{ type: "spring", stiffness: 260, damping: 28 }}
-          />
+      <div className="inline-flex items-center gap-1 p-1 rounded-full bg-white/80 backdrop-blur-md border border-black/[0.06] shadow-[0_2px_12px_rgba(0,0,0,0.03)]">
+        {/* Previous Page Arrow */}
+        <motion.button
+          type="button"
+          whileTap={safeCurrentPage > 1 ? { scale: 0.92 } : undefined}
+          disabled={safeCurrentPage <= 1}
+          onClick={() => handleSelectPage(safeCurrentPage - 1)}
+          title={t.paginationPrevious}
+          aria-label={t.paginationPrevious}
+          className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
+            safeCurrentPage <= 1
+              ? "text-neutral-300 cursor-default"
+              : "text-neutral-500 hover:text-neutral-950 hover:bg-black/[0.04] cursor-pointer"
+          }`}
+        >
+          <ChevronLeft className="w-4 h-4 stroke-[2]" />
+        </motion.button>
+
+        {/* Minimalist Page Numbers */}
+        <div className="flex items-center gap-0.5 px-0.5">
+          {pageNumbers.map((item) => {
+            if (item === "ellipsis-start" || item === "ellipsis-end") {
+              return (
+                <span
+                  key={item}
+                  className="w-7 h-8 flex items-center justify-center text-xs text-neutral-400"
+                >
+                  …
+                </span>
+              );
+            }
+
+            const isActive = item === safeCurrentPage;
+            return (
+              <motion.button
+                key={item}
+                type="button"
+                whileTap={!isActive ? { scale: 0.92 } : undefined}
+                onClick={() => handleSelectPage(item)}
+                className={`relative min-w-[32px] h-8 px-2.5 rounded-full text-xs font-medium flex items-center justify-center transition-colors cursor-pointer ${
+                  isActive
+                    ? "text-white"
+                    : "text-neutral-500 hover:text-neutral-950 hover:bg-black/[0.03]"
+                }`}
+              >
+                {isActive && (
+                  <motion.span
+                    layoutId={`${layoutIdPrefix}-active-pill`}
+                    className="absolute inset-0 rounded-full bg-[#141414]"
+                    transition={{ type: "spring", stiffness: 420, damping: 32 }}
+                  />
+                )}
+                <span className="relative z-10">{item}</span>
+              </motion.button>
+            );
+          })}
         </div>
 
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-          {/* Left: Animated Item Range & Page Status */}
-          <div className="flex items-center gap-2.5 text-xs text-gray-600 font-medium">
-            <AnimatePresence mode="wait">
-              <motion.span
-                key={`${startItem}-${endItem}-${totalItems}`}
-                initial={{ opacity: 0, y: 6 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -6 }}
-                transition={{ duration: 0.2 }}
-                className="inline-flex items-center gap-1.5"
-              >
-                <span>{t.paginationShowing}</span>
-                <strong className="font-mono font-bold text-[#111827] bg-white px-2 py-0.5 rounded-lg border border-gray-200 shadow-2xs">
-                  {startItem}–{endItem}
-                </strong>
-                <span>{t.paginationOf}</span>
-                <strong className="font-mono font-bold text-[#111827]">{totalItems}</strong>
-              </motion.span>
-            </AnimatePresence>
-
-            <span className="text-gray-300">•</span>
-
-            <span className="text-[11px] font-mono uppercase tracking-wider text-gray-500">
-              {t.paginationPage}{" "}
-              <strong className="text-[#C02030] font-bold">{safeCurrentPage}</strong> / {totalPages}
-            </span>
-          </div>
-
-          {/* Right: Interactive Animated Page Changer Controls */}
-          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap justify-center">
-            {/* First Page Quick Jump (when > 3 pages) */}
-            {totalPages > 3 && (
-              <motion.button
-                type="button"
-                whileHover={safeCurrentPage > 1 ? { scale: 1.06 } : undefined}
-                whileTap={safeCurrentPage > 1 ? { scale: 0.94 } : undefined}
-                disabled={safeCurrentPage <= 1}
-                onClick={() => handleSelectPage(1)}
-                className={`w-9 h-9 rounded-2xl border flex items-center justify-center transition-colors ${
-                  safeCurrentPage <= 1
-                    ? "bg-gray-100 border-gray-200 text-gray-300 cursor-not-allowed"
-                    : "bg-white border-gray-200 text-gray-700 hover:border-gray-300 hover:text-[#111827] shadow-2xs cursor-pointer"
-                }`}
-                aria-label="First page"
-              >
-                <ChevronsLeft className="w-4 h-4" />
-              </motion.button>
-            )}
-
-            {/* Previous Page Button */}
-            <motion.button
-              type="button"
-              whileHover={safeCurrentPage > 1 ? { scale: 1.03, x: -2 } : undefined}
-              whileTap={safeCurrentPage > 1 ? { scale: 0.96 } : undefined}
-              disabled={safeCurrentPage <= 1}
-              onClick={() => handleSelectPage(safeCurrentPage - 1)}
-              className={`px-3.5 h-9 rounded-2xl border text-xs font-bold flex items-center gap-1.5 transition-colors ${
-                safeCurrentPage <= 1
-                  ? "bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed"
-                  : "bg-white border-gray-200 text-[#111827] hover:border-[#C02030] hover:text-[#C02030] shadow-2xs cursor-pointer"
-              }`}
-            >
-              <ChevronLeft className="w-3.5 h-3.5" />
-              <span className="hidden xs:inline">{t.paginationPrevious}</span>
-            </motion.button>
-
-            {/* Page Number Pills with DJI Spring Active Indicator */}
-            <div className="flex items-center gap-1 bg-white p-1 rounded-2xl border border-gray-200 shadow-2xs">
-              {pageNumbers.map((item) => {
-                if (item === "ellipsis-start" || item === "ellipsis-end") {
-                  return (
-                    <span
-                      key={item}
-                      className="w-7 h-7 flex items-center justify-center text-xs font-mono text-gray-400 select-none"
-                    >
-                      …
-                    </span>
-                  );
-                }
-
-                const isActive = item === safeCurrentPage;
-                return (
-                  <motion.button
-                    key={item}
-                    type="button"
-                    whileHover={!isActive ? { scale: 1.08 } : undefined}
-                    whileTap={{ scale: 0.92 }}
-                    onClick={() => handleSelectPage(item)}
-                    className={`relative min-w-[32px] h-8 px-2.5 rounded-xl text-xs font-mono font-bold flex items-center justify-center transition-colors cursor-pointer ${
-                      isActive ? "text-white" : "text-gray-700 hover:text-[#111827]"
-                    }`}
-                  >
-                    {isActive && (
-                      <motion.span
-                        layoutId={`${layoutIdPrefix}-active-pill`}
-                        className="absolute inset-0 rounded-xl bg-[#C02030] shadow-sm shadow-[#C02030]/30"
-                        transition={{ type: "spring", stiffness: 380, damping: 30 }}
-                      />
-                    )}
-                    <span className="relative z-10">{item}</span>
-                  </motion.button>
-                );
-              })}
-            </div>
-
-            {/* Next Page Button */}
-            <motion.button
-              type="button"
-              whileHover={safeCurrentPage < totalPages ? { scale: 1.03, x: 2 } : undefined}
-              whileTap={safeCurrentPage < totalPages ? { scale: 0.96 } : undefined}
-              disabled={safeCurrentPage >= totalPages}
-              onClick={() => handleSelectPage(safeCurrentPage + 1)}
-              className={`px-3.5 h-9 rounded-2xl border text-xs font-bold flex items-center gap-1.5 transition-colors ${
-                safeCurrentPage >= totalPages
-                  ? "bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed"
-                  : "bg-[#111827] border-[#111827] text-white hover:bg-[#C02030] hover:border-[#C02030] shadow-xs cursor-pointer"
-              }`}
-            >
-              <span className="hidden xs:inline">{t.paginationNext}</span>
-              <ChevronRight className="w-3.5 h-3.5" />
-            </motion.button>
-
-            {/* Last Page Quick Jump (when > 3 pages) */}
-            {totalPages > 3 && (
-              <motion.button
-                type="button"
-                whileHover={safeCurrentPage < totalPages ? { scale: 1.06 } : undefined}
-                whileTap={safeCurrentPage < totalPages ? { scale: 0.94 } : undefined}
-                disabled={safeCurrentPage >= totalPages}
-                onClick={() => handleSelectPage(totalPages)}
-                className={`w-9 h-9 rounded-2xl border flex items-center justify-center transition-colors ${
-                  safeCurrentPage >= totalPages
-                    ? "bg-gray-100 border-gray-200 text-gray-300 cursor-not-allowed"
-                    : "bg-white border-gray-200 text-gray-700 hover:border-gray-300 hover:text-[#111827] shadow-2xs cursor-pointer"
-                }`}
-                aria-label="Last page"
-              >
-                <ChevronsRight className="w-4 h-4" />
-              </motion.button>
-            )}
-          </div>
-        </div>
+        {/* Next Page Arrow */}
+        <motion.button
+          type="button"
+          whileTap={safeCurrentPage < totalPages ? { scale: 0.92 } : undefined}
+          disabled={safeCurrentPage >= totalPages}
+          onClick={() => handleSelectPage(safeCurrentPage + 1)}
+          title={t.paginationNext}
+          aria-label={t.paginationNext}
+          className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
+            safeCurrentPage >= totalPages
+              ? "text-neutral-300 cursor-default"
+              : "text-neutral-500 hover:text-neutral-950 hover:bg-black/[0.04] cursor-pointer"
+          }`}
+        >
+          <ChevronRight className="w-4 h-4 stroke-[2]" />
+        </motion.button>
       </div>
-    </motion.div>
+    </motion.nav>
   );
 }
