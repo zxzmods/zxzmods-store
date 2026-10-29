@@ -727,10 +727,113 @@ export default function ComboDetailPage() {
                     </span>
                   </div>
                 </div>
+
+                {/* Included Components (Boxed List) - Positioned on Left Column under media */}
+                <div className="p-5 rounded-3xl bg-[#FBFBFC] border border-gray-200 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-extrabold uppercase tracking-wider text-gray-700 flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-[#C02030]" />
+                      <span>{t.combosIncludes}</span>
+                    </h3>
+                    <span className="text-[11px] font-mono text-gray-500 font-bold">
+                      {combo.items.length} {lang === "es" ? "piezas" : "items"}
+                    </span>
+                  </div>
+
+                  <div className="space-y-2">
+                    {/* Unique Product / Service Highlight Card */}
+                    {combo.uniqueProduct?.enabled && (
+                      <div className="p-3.5 rounded-xl bg-gradient-to-r from-purple-50 via-slate-50 to-white border border-purple-200/90 shadow-2xs space-y-1.5">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-start gap-2.5 min-w-0">
+                            <div className="w-8 h-8 rounded-lg bg-purple-600 text-white flex items-center justify-center shrink-0 mt-0.5">
+                              <Sparkles className="w-4 h-4 text-amber-300" />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="text-xs font-black text-slate-900">
+                                  {lang === "es" ? combo.uniqueProduct.titleEs : (combo.uniqueProduct.titleEn || combo.uniqueProduct.titleEs)}
+                                </span>
+                              </div>
+                              {combo.uniqueProduct.descriptionEs && (
+                                <p className="text-[11px] text-slate-600 mt-0.5 leading-relaxed">
+                                  {lang === "es" ? combo.uniqueProduct.descriptionEs : (combo.uniqueProduct.descriptionEn || combo.uniqueProduct.descriptionEs)}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-200 uppercase shrink-0 font-mono">
+                            {combo.uniqueProduct.badgeEs || t.comboUniqueProductBadgeDefault}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {combo.items.map((item, idx) => {
+                      const compInfo = combo.availability?.components?.[idx] ||
+                        combo.availability?.components?.find((c: any) => c.originalText === item || c.name === item);
+                      const isOutOfStock = compInfo && (!compInfo.available || compInfo.status === "OUT_OF_STOCK" || compInfo.status === "UNAVAILABLE");
+                      const isPreOrder = compInfo && compInfo.status === "PRE_ORDER";
+
+                      return (
+                        <div
+                          key={idx}
+                          className={`flex items-start justify-between gap-2.5 text-xs font-medium p-2.5 rounded-xl border transition-all ${
+                            isOutOfStock
+                              ? "bg-rose-50/70 border-rose-200 text-rose-950"
+                              : isPreOrder
+                              ? "bg-blue-50/50 border-blue-200 text-blue-950"
+                              : "bg-white border-gray-100 text-gray-800"
+                          }`}
+                        >
+                          <div className="flex items-start gap-2.5 min-w-0">
+                            {isOutOfStock ? (
+                              <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0 mt-0.5" />
+                            ) : isPreOrder ? (
+                              <Calendar className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
+                            ) : (
+                              <Check className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
+                            )}
+                            <span className="truncate">{item}</span>
+                          </div>
+
+                          {/* Individual Part Status Badge */}
+                          {compInfo && compInfo.hasProduct && (
+                            <span className="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-md">
+                              {isOutOfStock ? (
+                                <span className="text-rose-700 bg-rose-100/90 px-1.5 py-0.5 rounded font-mono">
+                                  {t.comboComponentOutOfStock}
+                                </span>
+                              ) : isPreOrder ? (
+                                <span className="text-blue-700 bg-blue-100/90 px-1.5 py-0.5 rounded font-mono">
+                                  {t.comboComponentPreOrder}
+                                </span>
+                              ) : (
+                                <span className="text-emerald-700 bg-emerald-100/90 px-1.5 py-0.5 rounded font-mono">
+                                  {t.comboComponentInStock}
+                                </span>
+                              )}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Full Description Below Media Section */}
+                <div className="p-6 rounded-3xl bg-white border border-gray-200 shadow-sm space-y-2">
+                  <h3 className="text-xs font-extrabold uppercase tracking-wider text-gray-500">
+                    {lang === "es" ? "Descripción & Rendimiento" : "Description & Performance"}
+                  </h3>
+                  <p className="text-xs sm:text-sm text-gray-700 leading-relaxed whitespace-pre-line">
+                    {lang === "es" ? combo.descriptionEs : combo.descriptionEn}
+                  </p>
+                </div>
               </div>
 
-              {/* Right Column: Details, Components, Pricing & CTA */}
-              <div className="space-y-6">
+              {/* Right Column: Details, Components, Pricing & CTA (Stays fixed while scrolling left column until reaching recommended products) */}
+              <div className="space-y-6 lg:sticky lg:top-24 lg:self-start lg:max-h-[calc(100vh-6.5rem)] lg:overflow-y-auto no-scrollbar">
                 {/* Badges Bar */}
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="bg-black text-white text-[10px] font-bold tracking-wider uppercase px-3 py-1 rounded-full">
@@ -1070,109 +1173,6 @@ export default function ComboDetailPage() {
                   >
                     {vehicle ? t.combosChangeVehicle : t.combosSelectVehicle}
                   </button>
-                </div>
-
-                {/* Included Components (Boxed List) */}
-                <div className="p-5 rounded-2xl bg-[#FBFBFC] border border-gray-200 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-xs font-extrabold uppercase tracking-wider text-gray-700 flex items-center gap-1.5">
-                      <Sparkles className="w-3.5 h-3.5 text-[#C02030]" />
-                      <span>{t.combosIncludes}</span>
-                    </h3>
-                    <span className="text-[11px] font-mono text-gray-500 font-bold">
-                      {combo.items.length} {lang === "es" ? "piezas" : "items"}
-                    </span>
-                  </div>
-
-                  <div className="space-y-2">
-                    {/* Unique Product / Service Highlight Card */}
-                    {combo.uniqueProduct?.enabled && (
-                      <div className="p-3.5 rounded-xl bg-gradient-to-r from-purple-50 via-slate-50 to-white border border-purple-200/90 shadow-2xs space-y-1.5">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex items-start gap-2.5 min-w-0">
-                            <div className="w-8 h-8 rounded-lg bg-purple-600 text-white flex items-center justify-center shrink-0 mt-0.5">
-                              <Sparkles className="w-4 h-4 text-amber-300" />
-                            </div>
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                <span className="text-xs font-black text-slate-900">
-                                  {lang === "es" ? combo.uniqueProduct.titleEs : (combo.uniqueProduct.titleEn || combo.uniqueProduct.titleEs)}
-                                </span>
-                              </div>
-                              {combo.uniqueProduct.descriptionEs && (
-                                <p className="text-[11px] text-slate-600 mt-0.5 leading-relaxed">
-                                  {lang === "es" ? combo.uniqueProduct.descriptionEs : (combo.uniqueProduct.descriptionEn || combo.uniqueProduct.descriptionEs)}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                          <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-200 uppercase shrink-0 font-mono">
-                            {combo.uniqueProduct.badgeEs || t.comboUniqueProductBadgeDefault}
-                          </span>
-                        </div>
-                      </div>
-                    )}
-
-                    {combo.items.map((item, idx) => {
-                      const compInfo = combo.availability?.components?.[idx] ||
-                        combo.availability?.components?.find((c: any) => c.originalText === item || c.name === item);
-                      const isOutOfStock = compInfo && (!compInfo.available || compInfo.status === "OUT_OF_STOCK" || compInfo.status === "UNAVAILABLE");
-                      const isPreOrder = compInfo && compInfo.status === "PRE_ORDER";
-
-                      return (
-                        <div
-                          key={idx}
-                          className={`flex items-start justify-between gap-2.5 text-xs font-medium p-2.5 rounded-xl border transition-all ${
-                            isOutOfStock
-                              ? "bg-rose-50/70 border-rose-200 text-rose-950"
-                              : isPreOrder
-                              ? "bg-blue-50/50 border-blue-200 text-blue-950"
-                              : "bg-white border-gray-100 text-gray-800"
-                          }`}
-                        >
-                          <div className="flex items-start gap-2.5 min-w-0">
-                            {isOutOfStock ? (
-                              <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0 mt-0.5" />
-                            ) : isPreOrder ? (
-                              <Calendar className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
-                            ) : (
-                              <Check className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
-                            )}
-                            <span className="truncate">{item}</span>
-                          </div>
-
-                          {/* Individual Part Status Badge */}
-                          {compInfo && compInfo.hasProduct && (
-                            <span className="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-md">
-                              {isOutOfStock ? (
-                                <span className="text-rose-700 bg-rose-100/90 px-1.5 py-0.5 rounded font-mono">
-                                  {t.comboComponentOutOfStock}
-                                </span>
-                              ) : isPreOrder ? (
-                                <span className="text-blue-700 bg-blue-100/90 px-1.5 py-0.5 rounded font-mono">
-                                  {t.comboComponentPreOrder}
-                                </span>
-                              ) : (
-                                <span className="text-emerald-700 bg-emerald-100/90 px-1.5 py-0.5 rounded font-mono">
-                                  {t.comboComponentInStock}
-                                </span>
-                              )}
-                            </span>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Full Description */}
-                <div className="p-5 rounded-2xl bg-white border border-gray-200 space-y-2">
-                  <h3 className="text-xs font-extrabold uppercase tracking-wider text-gray-500">
-                    {lang === "es" ? "Descripción & Rendimiento" : "Description & Performance"}
-                  </h3>
-                  <p className="text-xs sm:text-sm text-gray-700 leading-relaxed">
-                    {lang === "es" ? combo.descriptionEs : combo.descriptionEn}
-                  </p>
                 </div>
 
                 {/* Optional Workshop Installation Toggle */}

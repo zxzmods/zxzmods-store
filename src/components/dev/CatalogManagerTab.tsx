@@ -3637,8 +3637,9 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
     mediaType: "image" | "video" | "audio" = "image",
     replaceIndex?: number
   ) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const rawFiles = e.target.files;
+    if (!rawFiles || rawFiles.length === 0) return;
+    const files = Array.from(rawFiles);
 
     setUploadingMediaType(mediaType);
     setUploadingImage(true);
@@ -3646,18 +3647,125 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
 
     try {
       const validFolder = (["products", "combos", "brands", "payments", "videos", "audios"].includes(folderTarget) ? folderTarget : "products") as "products" | "combos" | "brands" | "payments" | "videos" | "audios";
-      const result = await uploadMediaDirect(file, {
-        folder: validFolder,
-        lang,
-      });
 
-      if (!result.success || !result.url) {
-        alert(result.error || (lang === "es" ? "Error al subir archivo" : "Upload failed"));
+      // If replacing a single media item at a specific index
+      if (replaceIndex !== undefined && replaceIndex >= 0) {
+        const file = files[0];
+        const result = await uploadMediaDirect(file, {
+          folder: validFolder,
+          lang,
+        });
+
+        if (!result.success || !result.url) {
+          alert(result.error || (lang === "es" ? "Error al subir archivo" : "Upload failed"));
+          return;
+        }
+
+        const fileUrl = result.url;
+        if (isEditingProductView) {
+          if (mediaType === "image") {
+            setProductForm((prev) => {
+              const list = prev.imgsText
+                ? prev.imgsText.split("\n").map((s) => s.trim()).filter(Boolean)
+                : prev.imageUrl
+                ? [prev.imageUrl]
+                : [];
+              let nextPrimary = prev.imageUrl;
+              if (replaceIndex < list.length) {
+                const oldUrl = list[replaceIndex];
+                list[replaceIndex] = fileUrl;
+                if (prev.imageUrl === oldUrl || replaceIndex === 0) {
+                  nextPrimary = fileUrl;
+                }
+              }
+              const deduped = Array.from(new Set(list));
+              return {
+                ...prev,
+                imageUrl: nextPrimary || deduped[0] || "",
+                imgsText: deduped.join("\n"),
+              };
+            });
+          } else if (mediaType === "video") {
+            setProductForm((prev) => {
+              const list = prev.vidsText
+                ? prev.vidsText.split("\n").map((s) => s.trim()).filter(Boolean)
+                : prev.videoUrl
+                ? [prev.videoUrl]
+                : [];
+              if (replaceIndex < list.length) {
+                list[replaceIndex] = fileUrl;
+              }
+              const deduped = Array.from(new Set(list));
+              return {
+                ...prev,
+                videoUrl: deduped[0] || "",
+                vidsText: deduped.join("\n"),
+              };
+            });
+          } else if (mediaType === "audio") {
+            setProductForm((prev) => {
+              const list = prev.audiosText
+                ? prev.audiosText.split("\n").map((s) => s.trim()).filter(Boolean)
+                : prev.audioUrl
+                ? [prev.audioUrl]
+                : [];
+              if (replaceIndex < list.length) {
+                list[replaceIndex] = fileUrl;
+              }
+              const deduped = Array.from(new Set(list));
+              return {
+                ...prev,
+                audioUrl: deduped[0] || "",
+                audiosText: deduped.join("\n"),
+              };
+            });
+          }
+        } else {
+          setComboForm((prev) => {
+            const list = prev.imgsText
+              ? prev.imgsText.split("\n").map((s) => s.trim()).filter(Boolean)
+              : prev.imageUrl
+              ? [prev.imageUrl]
+              : [];
+            let nextPrimary = prev.imageUrl;
+            if (replaceIndex < list.length) {
+              const oldUrl = list[replaceIndex];
+              list[replaceIndex] = fileUrl;
+              if (prev.imageUrl === oldUrl || replaceIndex === 0) {
+                nextPrimary = fileUrl;
+              }
+            }
+            const deduped = Array.from(new Set(list));
+            return {
+              ...prev,
+              imageUrl: nextPrimary || deduped[0] || "",
+              imgsText: deduped.join("\n"),
+            };
+          });
+        }
+        setFeedback({
+          type: "success",
+          msg:
+            lang === "es"
+              ? "Archivo multimedia reemplazado exitosamente. Guarda los cambios para aplicarlo en la base de datos."
+              : "Media file replaced successfully. Save changes to apply in database.",
+        });
         return;
       }
 
-      const fileUrl = result.url;
-      const data = { url: fileUrl };
+      // MULTIPLE / BATCH UPLOAD (when replaceIndex is undefined)
+      // Upload all selected files concurrently
+      const results = await Promise.all(
+        files.map((f) => uploadMediaDirect(f, { folder: validFolder, lang }))
+      );
+
+      const successfulUrls = results.filter((r) => r.success && r.url).map((r) => r.url as string);
+      const failedCount = results.filter((r) => !r.success || !r.url).length;
+
+      if (successfulUrls.length === 0) {
+        alert(results[0]?.error || (lang === "es" ? "Error al subir archivo(s)" : "Upload failed"));
+        return;
+      }
 
       if (isEditingProductView) {
         if (mediaType === "image") {
@@ -3668,16 +3776,10 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
               ? [prev.imageUrl]
               : [];
             let nextPrimary = prev.imageUrl;
-            if (replaceIndex !== undefined && replaceIndex >= 0 && replaceIndex < list.length) {
-              const oldUrl = list[replaceIndex];
-              list[replaceIndex] = data.url;
-              if (prev.imageUrl === oldUrl || replaceIndex === 0) {
-                nextPrimary = data.url;
-              }
-            } else {
-              if (!list.includes(data.url)) list.push(data.url);
-              if (!nextPrimary) nextPrimary = data.url;
-            }
+            successfulUrls.forEach((fileUrl) => {
+              if (!list.includes(fileUrl)) list.push(fileUrl);
+              if (!nextPrimary) nextPrimary = fileUrl;
+            });
             const deduped = Array.from(new Set(list));
             return {
               ...prev,
@@ -3692,11 +3794,9 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
               : prev.videoUrl
               ? [prev.videoUrl]
               : [];
-            if (replaceIndex !== undefined && replaceIndex >= 0 && replaceIndex < list.length) {
-              list[replaceIndex] = data.url;
-            } else if (!list.includes(data.url)) {
-              list.push(data.url);
-            }
+            successfulUrls.forEach((fileUrl) => {
+              if (!list.includes(fileUrl)) list.push(fileUrl);
+            });
             const deduped = Array.from(new Set(list));
             return {
               ...prev,
@@ -3711,11 +3811,9 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
               : prev.audioUrl
               ? [prev.audioUrl]
               : [];
-            if (replaceIndex !== undefined && replaceIndex >= 0 && replaceIndex < list.length) {
-              list[replaceIndex] = data.url;
-            } else if (!list.includes(data.url)) {
-              list.push(data.url);
-            }
+            successfulUrls.forEach((fileUrl) => {
+              if (!list.includes(fileUrl)) list.push(fileUrl);
+            });
             const deduped = Array.from(new Set(list));
             return {
               ...prev,
@@ -3732,16 +3830,12 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
             ? [prev.imageUrl]
             : [];
           let nextPrimary = prev.imageUrl;
-          if (replaceIndex !== undefined && replaceIndex >= 0 && replaceIndex < list.length) {
-            const oldUrl = list[replaceIndex];
-            list[replaceIndex] = data.url;
-            if (prev.imageUrl === oldUrl || replaceIndex === 0) {
-              nextPrimary = data.url;
+          successfulUrls.forEach((fileUrl) => {
+            if (!list.includes(fileUrl)) list.push(fileUrl);
+            if (!nextPrimary || nextPrimary === "/images/sxs/z10_front.png") {
+              nextPrimary = fileUrl;
             }
-          } else {
-            if (!list.includes(data.url)) list.push(data.url);
-            if (!nextPrimary || nextPrimary === "/images/sxs/z10_front.png") nextPrimary = data.url;
-          }
+          });
           const deduped = Array.from(new Set(list));
           return {
             ...prev,
@@ -3750,16 +3844,13 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
           };
         });
       }
+
       setFeedback({
         type: "success",
         msg:
-          replaceIndex !== undefined
-            ? lang === "es"
-              ? "Archivo multimedia reemplazado exitosamente. Guarda los cambios para aplicarlo en la base de datos."
-              : "Media file replaced successfully. Save changes to apply in database."
-            : lang === "es"
-            ? "Archivo multimedia subido exitosamente."
-            : "Media file uploaded successfully.",
+          lang === "es"
+            ? `${successfulUrls.length} ${successfulUrls.length === 1 ? "archivo multimedia subido" : "archivos multimedia subidos"} exitosamente.${failedCount > 0 ? ` (${failedCount} fallaron)` : ""}`
+            : `${successfulUrls.length} ${successfulUrls.length === 1 ? "media file uploaded" : "media files uploaded"} successfully.${failedCount > 0 ? ` (${failedCount} failed)` : ""}`,
       });
     } catch (err) {
       console.error("Upload error:", err);
@@ -4940,8 +5031,10 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                   <label className="cursor-pointer bg-red-50/80 hover:bg-red-100 text-[#C02030] border border-red-200 p-3.5 rounded-2xl text-xs font-bold flex flex-col items-center justify-center gap-1.5 transition text-center shadow-xs">
                     <ImageIcon className="w-5 h-5 text-[#C02030]" />
                     <span>{uploadingMediaType === "image" ? t.devUploading : t.devUploadImage}</span>
-                    <span className="text-[9px] text-slate-500 font-normal">Fotos (imgs)</span>
-                    <input type="file" accept="image/*" onChange={(e) => handleMediaUpload(e, "image")} disabled={Boolean(uploadingMediaType)} className="hidden" />
+                    <span className="text-[9px] text-slate-500 font-normal">
+                      {lang === "es" ? "Fotos (múltiples)" : "Photos (multiple)"}
+                    </span>
+                    <input type="file" accept="image/*" multiple onChange={(e) => handleMediaUpload(e, "image")} disabled={Boolean(uploadingMediaType)} className="hidden" />
                   </label>
 
                   {/* Upload Video */}
@@ -5096,8 +5189,8 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                   </div>
                   <label className="cursor-pointer bg-red-50 hover:bg-red-100 text-[#C02030] border border-red-200 px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition shrink-0 mt-2 sm:mt-4">
                     <Upload className="w-3.5 h-3.5" />
-                    <span>{uploadingImage ? t.devUploading : t.devUploadImage}</span>
-                    <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
+                    <span>{uploadingImage ? t.devUploading : (lang === "es" ? "Subir Imágenes (múltiples)" : "Upload Images (multiple)")}</span>
+                    <input type="file" accept="image/*" multiple onChange={handleImageUpload} disabled={uploadingImage} className="hidden" />
                   </label>
                 </div>
 
@@ -8299,12 +8392,13 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                         {uploadingImage
                           ? t.devSaving
                           : lang === "es"
-                          ? "Subir Imagen Adicional al Combo"
-                          : "Upload Additional Combo Image"}
+                          ? "Subir Imágenes al Combo (múltiples)"
+                          : "Upload Combo Images (multiple)"}
                       </span>
                       <input
                         type="file"
                         accept="image/*"
+                        multiple
                         disabled={uploadingImage}
                         onChange={(e) => handleMediaUpload(e, "image")}
                         className="hidden"

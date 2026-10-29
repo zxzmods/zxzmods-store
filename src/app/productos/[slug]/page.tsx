@@ -1386,8 +1386,8 @@ export default function ProductDetailPage() {
                 />
               </div>
 
-              {/* Right Column: Information, Fitment, Price & Purchase */}
-              <div className="space-y-6 lg:sticky lg:top-24">
+              {/* Right Column: Information, Fitment, Price & Purchase (Stays fixed while scrolling left column until reaching recommended products) */}
+              <div className="space-y-6 lg:sticky lg:top-24 lg:self-start lg:max-h-[calc(100vh-6.5rem)] lg:overflow-y-auto no-scrollbar">
                 {/* Badges */}
                 <div className="flex flex-wrap items-center gap-2">
                   {product.category?.map((cat) => (

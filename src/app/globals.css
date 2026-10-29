@@ -10,7 +10,7 @@
 html {
   scroll-behavior: smooth;
   background-color: #FFFFFF;
-  overflow-x: hidden;
+  overflow-x: clip;
   max-width: 100vw;
 }
 
@@ -18,7 +18,7 @@ body {
   background-color: var(--background);
   color: var(--foreground);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  overflow-x: hidden;
+  overflow-x: clip;
   max-width: 100vw;
   width: 100%;
 }
@@ -61,6 +61,15 @@ body {
   100% {
     transform: translateX(100%);
   }
+}
+
+/* Invisible Utility Scrollbars */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
 /* Leaflet Map Interactive Styles */
