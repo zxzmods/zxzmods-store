@@ -213,6 +213,8 @@ function ParametersEditorSection({
   currentProductPrice = 0,
   currentProductName = "",
   currentProductSku = "",
+  currentProductImage = "",
+  currentProductSupplierUrl = "",
 }: {
   parameters: ConfigurableParameter[];
   onChange: (newParams: ConfigurableParameter[]) => void;
@@ -221,6 +223,8 @@ function ParametersEditorSection({
   currentProductPrice?: number;
   currentProductName?: string;
   currentProductSku?: string;
+  currentProductImage?: string;
+  currentProductSupplierUrl?: string;
 }) {
   const [activeColorPaletteOpt, setActiveColorPaletteOpt] = useState<string | null>(null);
   const [uploadingOptId, setUploadingOptId] = useState<string | null>(null);
@@ -299,6 +303,8 @@ function ParametersEditorSection({
           labelEs: "Estándar / Base",
           labelEn: "Standard / Base",
           priceDeltaCRC: 0,
+          imageUrl: currentProductImage || "",
+          supplierUrl: currentProductSupplierUrl || "",
         },
         {
           id: `opt-${Date.now()}-2`,
@@ -661,12 +667,35 @@ function ParametersEditorSection({
                                     }
                                   }
 
+                                  // Auto-fill linked product image
+                                  const targetImg =
+                                    (typeof targetProd.imageUrl === "string" && targetProd.imageUrl.trim() ? targetProd.imageUrl.trim() : "") ||
+                                    (Array.isArray(targetProd.imgs) && targetProd.imgs[0] && typeof targetProd.imgs[0] === "string" ? targetProd.imgs[0].trim() : "") ||
+                                    (() => {
+                                      if ((targetProd as any).imagesJson) {
+                                        try {
+                                          const parsed = JSON.parse((targetProd as any).imagesJson);
+                                          if (Array.isArray(parsed) && parsed[0]) return String(parsed[0]).trim();
+                                        } catch {}
+                                      }
+                                      return "";
+                                    })() ||
+                                    opt.imageUrl ||
+                                    "";
+
+                                  // Auto-fill linked product supplierUrl
+                                  const targetSupplier =
+                                    (typeof targetProd.supplierUrl === "string" && targetProd.supplierUrl.trim() ? targetProd.supplierUrl.trim() : "") ||
+                                    (typeof (targetProd as any).supplier_url === "string" && (targetProd as any).supplier_url.trim() ? (targetProd as any).supplier_url.trim() : "") ||
+                                    opt.supplierUrl ||
+                                    "";
+
                                   handleUpdateOptionMulti(pIdx, oIdx, {
                                     linkedProductId: targetProd.slug || targetProd.sku || targetProd.id,
                                     labelEs: candidateLabelEs || targetTitleEs,
                                     labelEn: candidateLabelEn || targetTitleEn,
-                                    imageUrl: opt.imageUrl || targetProd.imageUrl || targetProd.imgs?.[0] || "",
-                                    supplierUrl: opt.supplierUrl || targetProd.supplierUrl || "",
+                                    imageUrl: targetImg,
+                                    supplierUrl: targetSupplier,
                                     priceDeltaCRC: delta,
                                   });
 
@@ -676,17 +705,31 @@ function ParametersEditorSection({
                                     const otherIdx = currentParam.options.findIndex((_, idx) => idx !== oIdx && !_.linkedProductId);
                                     if (otherIdx !== -1) {
                                       const otherOpt = currentParam.options[otherIdx];
+                                      const updates: Partial<ParameterOption> = {};
+
                                       if (!otherOpt.labelEs || otherOpt.labelEs === "Estándar / Base" || otherOpt.labelEs.includes("Skid Plate")) {
                                         const curTitle = (currentProductName || "").toLowerCase();
                                         const curSku = (currentProductSku || "").toLowerCase();
                                         if (candidateLabelEs === "Z10-4" || /z10-4|\b4[- ]?(seater|seat|plazas)\b/i.test(targetTitleEs)) {
-                                          handleUpdateOption(pIdx, otherIdx, "labelEs", "2 Seater");
-                                          handleUpdateOption(pIdx, otherIdx, "labelEn", "2 Seater");
+                                          updates.labelEs = "2 Seater";
+                                          updates.labelEn = "2 Seater";
                                         } else if (candidateLabelEs === "2 Seater" || /z10\b|\b2[- ]?(seater|seat|plazas)\b/i.test(targetTitleEs)) {
                                           const is4 = curTitle.includes("z10-4") || curSku.includes("z10-4");
-                                          handleUpdateOption(pIdx, otherIdx, "labelEs", is4 ? "Z10-4" : "4 Seater");
-                                          handleUpdateOption(pIdx, otherIdx, "labelEn", is4 ? "Z10-4" : "4 Seater");
+                                          updates.labelEs = is4 ? "Z10-4" : "4 Seater";
+                                          updates.labelEn = is4 ? "Z10-4" : "4 Seater";
                                         }
+                                      }
+
+                                      // Auto fill base option's image and supplierUrl from current product if not yet set
+                                      if (!otherOpt.imageUrl && currentProductImage) {
+                                        updates.imageUrl = currentProductImage;
+                                      }
+                                      if (!otherOpt.supplierUrl && currentProductSupplierUrl) {
+                                        updates.supplierUrl = currentProductSupplierUrl;
+                                      }
+
+                                      if (Object.keys(updates).length > 0) {
+                                        handleUpdateOptionMulti(pIdx, otherIdx, updates);
                                       }
                                     }
                                   }
@@ -6773,6 +6816,8 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                 currentProductPrice={productForm.T_price || productForm.priceCRC}
                 currentProductName={productForm.nameEs || productForm.p_title}
                 currentProductSku={productForm.sku}
+                currentProductImage={productForm.imageUrl || parsedImgsList[0] || ""}
+                currentProductSupplierUrl={productForm.supplierUrl || ""}
               />
 
               {/* Services & Toggles (inHome_install & featured) */}
@@ -8438,6 +8483,9 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
               t={t}
               availableProducts={products}
               currentProductPrice={comboForm.priceCRC}
+              currentProductName={comboForm.titleEs || comboForm.titleEn}
+              currentProductImage={comboForm.imageUrl || ""}
+              currentProductSupplierUrl=""
             />
 
             {/* Minimalistic Suggestions Tagger for Prevention & Performance */}

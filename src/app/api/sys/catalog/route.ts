@@ -201,6 +201,8 @@ export async function GET() {
         imgs,
         vids,
         audios,
+        imageUrl: p.imageUrl || imgs[0] || "/images/logo.png",
+        supplierUrl: p.supplierUrl || jsonP?.supplierUrl || (jsonP as any)?.supplier_url || null,
         price: {
           P_price_D: livePricing.pPriceUSD,
           P_price: p.processingPriceCRC || jsonP?.price?.P_price || 0,
