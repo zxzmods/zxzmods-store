@@ -457,6 +457,62 @@ export function detectVehiclePlatform(token: string): string | null {
     return "villain";
   }
 
+  // 6. Polaris RZR Pro R
+  if (
+    t === "rzr-pro-r" ||
+    t === "pro-r" ||
+    t === "pro r" ||
+    t.includes("pro r") ||
+    /\bpro\s*r\b/i.test(t)
+  ) {
+    return "pror";
+  }
+
+  // 7. Polaris RZR Pro XP
+  if (
+    t === "rzr-pro-xp" ||
+    t === "pro-xp" ||
+    t === "pro xp" ||
+    t.includes("pro xp") ||
+    /\bpro\s*xp\b/i.test(t)
+  ) {
+    return "proxp";
+  }
+
+  // 8. Polaris Turbo R
+  if (
+    t === "rzr-turbo-r" ||
+    t === "turbo-r" ||
+    t === "turbo r" ||
+    t.includes("turbo r") ||
+    /\bturbo\s*r\b/i.test(t)
+  ) {
+    return "turbor";
+  }
+
+  // 9. Kawasaki KRX 1000
+  if (
+    t === "krx" ||
+    t === "krx-1000" ||
+    t === "krx 1000" ||
+    t === "krx4" ||
+    t.includes("krx 1000") ||
+    /\bkrx(\s*1000)?\b/i.test(t)
+  ) {
+    return "krx1000";
+  }
+
+  // 10. Honda Talon
+  if (
+    t === "talon" ||
+    t === "talon-1000" ||
+    t === "talon 1000" ||
+    t.includes("talon") ||
+    /\btalon(\s*1000)?\b/i.test(t)
+  ) {
+    return "talon";
+  }
+
   return null;
 }
 
@@ -635,6 +691,68 @@ export function normalizeVideoUrl(url: string | null | undefined): string {
   if (trimmed.startsWith("videos/")) return `/${trimmed}`;
   if (trimmed.startsWith("uploads/")) return `/${trimmed}`;
   return `/videos/${trimmed}`;
+}
+
+/**
+ * Resolves the display image for a vehicle registered in the garage.
+ * If no vehicle-specific image exists, falls back to the official company logo as requested.
+ */
+export function resolveVehicleImage(v?: {
+  imageUrl?: string | null;
+  modelSlug?: string | null;
+  modelName?: string | null;
+  brandSlug?: string | null;
+  brandName?: string | null;
+} | null): string {
+  if (!v) return "/images/logo.png";
+
+  // 1. Explicit valid vehicle image
+  if (
+    v.imageUrl &&
+    typeof v.imageUrl === "string" &&
+    v.imageUrl.trim() &&
+    v.imageUrl !== "null" &&
+    v.imageUrl !== "undefined"
+  ) {
+    return v.imageUrl.trim();
+  }
+
+  const slug = (v.modelSlug || "").toLowerCase().trim();
+  const name = (v.modelName || "").toLowerCase().trim();
+
+  // 2. Known SXS Model Front / Action Images
+  // CFMOTO Z10 (2-seater and 4-seater)
+  if (slug === "zforce-z10" || slug === "zforce-z10-4" || slug === "z10" || slug === "z10-4" || name.includes("z10")) {
+    return "/images/sxs/z10_front.png";
+  }
+
+  // Can-Am Maverick X3
+  if (slug === "can-amx3" || slug === "x3" || slug.includes("x3") || name.includes("x3") || name.includes("maverick")) {
+    return "/images/sxs/canam_x3_front.png";
+  }
+
+  // Polaris RZR Pro R
+  if (slug.includes("pro-r") || slug.includes("pror") || name.includes("pro r")) {
+    return "/images/sxs/polaris_pror_front.png";
+  }
+
+  // Segway Villain
+  if (slug.includes("villain") || slug.includes("sx10") || name.includes("villain")) {
+    return "/images/sxs/segway_sxs.png";
+  }
+
+  // CFMOTO ZForce 1000 Sport R
+  if (slug === "zforce-1000" || slug.includes("1000") || name.includes("1000")) {
+    return "https://images.unsplash.com/photo-1558981403-c5f9899a28bc?auto=format&fit=crop&w=800&q=80";
+  }
+
+  // CFMOTO ZForce 950 Sport
+  if (slug === "zforce-950-sport" || slug.includes("950") || name.includes("950")) {
+    return "https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&w=800&q=80";
+  }
+
+  // 3. Fallback to company logo
+  return "/images/logo.png";
 }
 
 export async function getAllProducts(): Promise<ProductItem[]> {
@@ -1021,12 +1139,23 @@ export async function searchAndFilterProducts(options: FilterOptions = {}): Prom
 
     // 4. Active Vehicle Compatibility
     if (options.vehicleModel) {
-      const vehicleLower = options.vehicleModel.toLowerCase();
+      const vehicleLower = options.vehicleModel.toLowerCase().trim();
       const isUniversal = isUniversalFit(product.comp);
-      const matchesVehicle = product.comp.some((c) =>
-        isPlatformOrVehicleMatch(c, vehicleLower)
-      );
-      if (!isUniversal && !matchesVehicle) return false;
+
+      if (!isUniversal) {
+        let matchesVehicle = false;
+        if (product.modelYearCompatibility && product.modelYearCompatibility.length > 0) {
+          matchesVehicle = product.modelYearCompatibility.some((m) => {
+            const fitModel = (m.model || "").toLowerCase().trim();
+            if (fitModel === "all" || fitModel.includes("universal")) return true;
+            return isPlatformOrVehicleMatch(fitModel, vehicleLower);
+          });
+        }
+        if (!matchesVehicle && product.comp && product.comp.length > 0) {
+          matchesVehicle = product.comp.some((c) => isPlatformOrVehicleMatch(c, vehicleLower));
+        }
+        if (!matchesVehicle) return false;
+      }
     }
 
     // 5. Special by SxS Brand Filter

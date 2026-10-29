@@ -256,6 +256,8 @@ export default function RegisterVehiclePage() {
               brandName={currentBrand?.name}
               year={selectedYear}
               modelName={currentModel?.name}
+              modelSlug={currentModel?.slug}
+              imageUrl={currentModel?.imageUrl}
               category={currentModel?.category}
             />
 

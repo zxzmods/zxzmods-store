@@ -16,6 +16,8 @@ interface YMMData {
       slug: string;
       name: string;
       category: string;
+      imageUrl?: string | null;
+      pickupServiceAvailable?: boolean;
       years: number[];
     }[];
   }[];
@@ -79,6 +81,9 @@ export function GarageModal() {
           brandName: brand.name,
           modelSlug: model.slug,
           modelName: model.name,
+          category: model.category,
+          imageUrl: model.imageUrl || undefined,
+          pickupServiceAvailable: model.pickupServiceAvailable,
         };
         setVehicle(newVehicle);
       };

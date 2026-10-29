@@ -536,6 +536,11 @@ function ProductsContent() {
     setInStockOnly(searchParams.get("inStock") === "true");
     setDiscountedOnly(searchParams.get("discounted") === "true");
 
+    const isGarage = searchParams.get("garage") === "true" || searchParams.get("compatible") === "true";
+    if (isGarage) {
+      setOnlyCompatibleWithGarage(true);
+    }
+
     const sxsParam = (vb || "").toLowerCase().trim();
     const isIntro = searchParams.get("intro") === "true";
     if (isIntro && (sxsParam === "cfmoto" || sxsParam === "can-am" || sxsParam === "polaris")) {
@@ -564,7 +569,9 @@ function ProductsContent() {
     if (discountedOnly) params.set("discounted", "true");
     if (sortBy && sortBy !== "relevant") params.set("sort", sortBy);
     if (onlyCompatibleWithGarage && vehicle) {
-      params.set("vehicleModel", `${vehicle.brandName} ${vehicle.modelName}`);
+      params.set("vehicleModel", vehicle.modelSlug || `${vehicle.brandName} ${vehicle.modelName}`);
+      params.set("vehicleBrand", vehicle.brandSlug || vehicle.brandName);
+      if (vehicle.year) params.set("vehicleYear", String(vehicle.year));
     }
 
     fetch(`/api/products?${params.toString()}`)
@@ -749,13 +756,22 @@ function ProductsContent() {
     vehicle,
   ]);
 
-  const totalPages = Math.max(1, Math.ceil(products.length / ITEMS_PER_PAGE));
+  // Filter products by vehicle compatibility when onlyCompatibleWithGarage is active
+  const displayedProducts = useMemo(() => {
+    if (!onlyCompatibleWithGarage || !vehicle) return products;
+    return products.filter((p) => {
+      const { isCompatible, isUniversal } = checkVehicleCompatibility(p);
+      return isCompatible || isUniversal;
+    });
+  }, [products, onlyCompatibleWithGarage, vehicle]);
+
+  const totalPages = Math.max(1, Math.ceil(displayedProducts.length / ITEMS_PER_PAGE));
   const safeCurrentPage = Math.min(Math.max(1, currentPage), totalPages);
 
   const paginatedProducts = useMemo(() => {
     const startIdx = (safeCurrentPage - 1) * ITEMS_PER_PAGE;
-    return products.slice(startIdx, startIdx + ITEMS_PER_PAGE);
-  }, [products, safeCurrentPage, ITEMS_PER_PAGE]);
+    return displayedProducts.slice(startIdx, startIdx + ITEMS_PER_PAGE);
+  }, [displayedProducts, safeCurrentPage, ITEMS_PER_PAGE]);
 
   const handlePageChange = (newPage: number, direction: "next" | "prev") => {
     setPageDirection(direction);
@@ -1108,7 +1124,7 @@ function ProductsContent() {
               {/* Results count & Sort */}
               <div className="flex flex-wrap items-center justify-between sm:justify-end gap-2.5 w-full sm:w-auto sm:ml-auto">
                 <span className="text-gray-500 font-medium text-xs whitespace-nowrap">
-                  {products.length} {t.productsCount}
+                  {displayedProducts.length} {t.productsCount}
                 </span>
 
                 <div className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-xl px-2.5 py-1.5 shadow-xs">
@@ -1254,6 +1270,22 @@ function ProductsContent() {
                   </div>
                 )}
 
+                {/* Compatible with Garage Pill */}
+                {onlyCompatibleWithGarage && vehicle && (
+                  <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-700 text-white text-[11px] font-semibold shadow-xs">
+                    <span>
+                      {t.productsFitMyGarage}: <strong className="text-white">{vehicle.brandName} {vehicle.modelName}</strong>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setOnlyCompatibleWithGarage(false)}
+                      className="p-0.5 hover:bg-white/20 rounded-full transition cursor-pointer"
+                    >
+                      <X className="w-3 h-3 text-white" />
+                    </button>
+                  </div>
+                )}
+
                 {/* Clear All Filters Button */}
                 <button
                   type="button"
@@ -1296,7 +1328,7 @@ function ProductsContent() {
               </div>
             ))}
           </div>
-        ) : products.length === 0 ? (
+        ) : displayedProducts.length === 0 ? (
           /* Empty State */
           <div className="py-20 text-center max-w-md mx-auto space-y-4 bg-[#F8F9FA] rounded-3xl border border-gray-200 p-8 shadow-sm">
             <div className="w-16 h-16 rounded-full bg-red-50 text-[#C02030] flex items-center justify-center mx-auto">

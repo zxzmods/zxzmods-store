@@ -87,7 +87,10 @@ function dbProductToProductItem(dbProd: any, jsonProd?: ProductItem | null, isSt
   if (comp.length === 0 && Array.isArray(dbProd.compatibilities) && dbProd.compatibilities.length > 0) {
     comp = dbProd.compatibilities.map((c: any) => c.modelSlug);
   }
-  if (comp.length === 0) comp = ["all"];
+  if (comp.length === 0 && modelYearCompatibility.length > 0) {
+    comp = Array.from(new Set(modelYearCompatibility.map((m: any) => m.model).filter(Boolean)));
+  }
+  if (comp.length === 0) comp = [];
 
   // Audio & Video (Database audiosJson & videosJson are authoritative)
   let rawAudios: string[] = [];
@@ -289,6 +292,8 @@ export async function GET(request: Request) {
 
     const comp = searchParams.get("comp") || undefined;
     const vehicleModel = searchParams.get("vehicleModel") || undefined;
+    const vehicleYearStr = searchParams.get("vehicleYear") || undefined;
+    const vehicleYear = vehicleYearStr ? parseInt(vehicleYearStr, 10) : undefined;
     const sort = (searchParams.get("sort") as any) || undefined;
 
     // Fast-path: Single product fetch by slug or ID with direct indexed lookup
@@ -773,14 +778,50 @@ export async function GET(request: Request) {
 
       // 3. Active Vehicle Compatibility
       if (vehicleModel) {
-        const vehicleLower = vehicleModel.toLowerCase();
+        const vehicleLower = vehicleModel.toLowerCase().trim();
         const isUniversal = isUniversalFit(product.comp);
-        const matchesVehicle =
-          (product.comp && product.comp.some((c) => isPlatformOrVehicleMatch(c, vehicleLower))) ||
-          (product.modelYearCompatibility && product.modelYearCompatibility.some((m) =>
-            isPlatformOrVehicleMatch(m.model, vehicleLower) || (m.make && isPlatformOrVehicleMatch(m.make, vehicleLower))
-          ));
-        if (!isUniversal && !matchesVehicle) return false;
+
+        if (!isUniversal) {
+          let matchesVehicle = false;
+
+          // A. If product has structured modelYearCompatibility
+          if (product.modelYearCompatibility && product.modelYearCompatibility.length > 0) {
+            matchesVehicle = product.modelYearCompatibility.some((m) => {
+              const fitModel = (m.model || "").toLowerCase().trim();
+              const fitMake = (m.make || "").toLowerCase().trim();
+
+              if (fitModel === "all" || fitModel.includes("universal")) return true;
+
+              // If make is specified, verify vehicle brand doesn't contradict
+              if (vehicleBrand && vehicleBrand.toLowerCase() !== "all" && fitMake && fitMake !== "all" && !fitMake.includes("universal")) {
+                const brandMatches =
+                  isPlatformOrVehicleMatch(fitMake, vehicleBrand) ||
+                  fitMake.includes(vehicleBrand.toLowerCase()) ||
+                  vehicleBrand.toLowerCase().includes(fitMake);
+                if (!brandMatches) return false;
+              }
+
+              // Model match: vehicle model MUST match fit.model
+              const modelMatches = isPlatformOrVehicleMatch(fitModel, vehicleLower);
+              if (!modelMatches) return false;
+
+              // Year check: if vehicleYear is provided, it must be within range
+              if (vehicleYear && !isNaN(vehicleYear)) {
+                if (m.yearFrom && vehicleYear < m.yearFrom) return false;
+                if (m.yearTo && vehicleYear > m.yearTo) return false;
+              }
+
+              return true;
+            });
+          }
+
+          // B. Fallback to product.comp array
+          if (!matchesVehicle && product.comp && product.comp.length > 0) {
+            matchesVehicle = product.comp.some((c) => isPlatformOrVehicleMatch(c, vehicleLower));
+          }
+
+          if (!matchesVehicle) return false;
+        }
       }
 
       // 4. Vehicle Brand Filter (Separated parameter: e.g. "cfmoto", "can-am", "polaris", "kawasaki")

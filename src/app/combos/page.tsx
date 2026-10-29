@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -16,6 +16,7 @@ import { useLanguage } from "@/context/LanguageContext";
 import { useCart } from "@/context/CartContext";
 import { useGarage } from "@/context/GarageContext";
 import { formatCRC, formatUSD, convertCRCToUSD } from "@/lib/i18n";
+import { detectVehiclePlatform, isPlatformOrVehicleMatch } from "@/lib/products";
 import {
   Search,
   X,
@@ -48,6 +49,8 @@ interface ComboItem {
   discountPercent: number;
   items: string[];
   imageUrl: string;
+  vehicleBrands?: string[];
+  distributorBrands?: string[];
   homeInstallationAvailable?: boolean;
   availability?: any;
   stockStatus?: string;
@@ -70,6 +73,7 @@ export default function CombosPage() {
   const [selectedDistributorBrand, setSelectedDistributorBrand] = useState<string>("all");
   const [inStockOnly, setInStockOnly] = useState<boolean>(false);
   const [discountedOnly, setDiscountedOnly] = useState<boolean>(false);
+  const [onlyCompatibleWithGarage, setOnlyCompatibleWithGarage] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
@@ -92,6 +96,11 @@ export default function CombosPage() {
     if (selectedDistributorBrand && selectedDistributorBrand !== "all") params.set("distributorBrand", selectedDistributorBrand);
     if (inStockOnly) params.set("inStock", "true");
     if (discountedOnly) params.set("discounted", "true");
+    if (onlyCompatibleWithGarage && vehicle) {
+      params.set("vehicleModel", vehicle.modelSlug || `${vehicle.brandName} ${vehicle.modelName}`);
+      params.set("vehicleBrand", vehicle.brandSlug || vehicle.brandName);
+      if (vehicle.year) params.set("vehicleYear", String(vehicle.year));
+    }
 
     fetch(`/api/combos?${params.toString()}`)
       .then((res) => res.json())
@@ -114,7 +123,7 @@ export default function CombosPage() {
     return () => {
       isMounted = false;
     };
-  }, [searchQuery, selectedCategory, selectedVehicleBrand, selectedDistributorBrand, inStockOnly, discountedOnly]);
+  }, [searchQuery, selectedCategory, selectedVehicleBrand, selectedDistributorBrand, inStockOnly, discountedOnly, onlyCompatibleWithGarage, vehicle]);
 
   const handleClearFilters = () => {
     setSearchQuery("");
@@ -123,6 +132,7 @@ export default function CombosPage() {
     setSelectedDistributorBrand("all");
     setInStockOnly(false);
     setDiscountedOnly(false);
+    setOnlyCompatibleWithGarage(false);
   };
 
   // Helper to get friendly bilingual label for any category (dynamic)
@@ -134,14 +144,64 @@ export default function CombosPage() {
     return cat.charAt(0).toUpperCase() + cat.slice(1);
   };
 
-  // Filter combos based on active category & search query
-  const filteredCombos = combos;
+  // Check if a combo is compatible with active garage vehicle
+  const checkComboCompatibility = useCallback(
+    (combo: ComboItem) => {
+      if (!vehicle) return true;
+
+      // 1. Check vehicle brand if defined on combo
+      if (combo.vehicleBrands && combo.vehicleBrands.length > 0) {
+        const vBrand = (vehicle.brandSlug || vehicle.brandName || "").toLowerCase();
+        const hasBrand = combo.vehicleBrands.some(
+          (b) =>
+            b.toLowerCase() === vBrand ||
+            vBrand.includes(b.toLowerCase()) ||
+            b.toLowerCase().includes(vBrand)
+        );
+        if (!hasBrand) return false;
+      }
+
+      // 2. Check platform matching
+      const vPlatform = detectVehiclePlatform(vehicle.modelSlug || vehicle.modelName);
+      const comboText = `${combo.titleEs || ""} ${combo.titleEn || ""} ${combo.badgeEs || ""} ${combo.badgeEn || ""} ${combo.descriptionEs || ""} ${(combo.items || []).join(" ")}`.toLowerCase();
+      const comboPlatform = detectVehiclePlatform(comboText);
+
+      if (vPlatform && comboPlatform) {
+        return vPlatform === comboPlatform;
+      }
+
+      // 3. Platform separation negative check
+      if (vPlatform) {
+        if (vPlatform === "z10" && (comboText.includes("1000") || comboText.includes("z1000") || comboText.includes("950") || comboText.includes("z10-4") || comboText.includes("z10 4"))) {
+          return false;
+        }
+        if (vPlatform === "z10-4" && (comboText.includes("1000") || comboText.includes("z1000") || comboText.includes("950") || (!comboText.includes("z10-4") && !comboText.includes("z10 4")))) {
+          return false;
+        }
+        if (vPlatform === "z1000" && (/\bz10(-4)?\b/i.test(comboText) || comboText.includes("950"))) {
+          return false;
+        }
+        if (vPlatform === "z950" && (comboText.includes("1000") || comboText.includes("z1000") || /\bz10(-4)?\b/i.test(comboText))) {
+          return false;
+        }
+      }
+
+      return true;
+    },
+    [vehicle]
+  );
+
+  // Filter combos based on active category, search query, and garage vehicle
+  const filteredCombos = useMemo(() => {
+    if (!onlyCompatibleWithGarage || !vehicle) return combos;
+    return combos.filter(checkComboCompatibility);
+  }, [combos, onlyCompatibleWithGarage, vehicle, checkComboCompatibility]);
 
   // Reset pagination to page 1 when filters or search query change
   useEffect(() => {
     setCurrentPage(1);
     setPageDirection("next");
-  }, [searchQuery, selectedCategory, selectedVehicleBrand, selectedDistributorBrand, inStockOnly, discountedOnly]);
+  }, [searchQuery, selectedCategory, selectedVehicleBrand, selectedDistributorBrand, inStockOnly, discountedOnly, onlyCompatibleWithGarage]);
 
   const totalPages = Math.max(1, Math.ceil(filteredCombos.length / ITEMS_PER_PAGE));
   const safeCurrentPage = Math.min(Math.max(1, currentPage), totalPages);
@@ -364,6 +424,24 @@ export default function CombosPage() {
                 </button>
               )}
 
+              {/* 5. Compatible with My Garage Toggle */}
+              {vehicle && (
+                <button
+                  type="button"
+                  onClick={() => setOnlyCompatibleWithGarage(!onlyCompatibleWithGarage)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all shadow-xs cursor-pointer ${
+                    onlyCompatibleWithGarage
+                      ? "bg-emerald-500 text-white border-emerald-600"
+                      : "bg-white text-gray-700 border-gray-200 hover:border-gray-400"
+                  }`}
+                >
+                  <Car className="w-3.5 h-3.5" />
+                  <span>
+                    {t.productsFitMyGarage} ({vehicle.brandName} {vehicle.modelName})
+                  </span>
+                </button>
+              )}
+
               {/* Count indicator */}
               <div className="ml-auto text-xs text-gray-500 font-mono whitespace-nowrap">
                 <span>{filteredCombos.length}</span>
@@ -378,6 +456,7 @@ export default function CombosPage() {
               selectedDistributorBrand !== "all" ||
               inStockOnly ||
               discountedOnly ||
+              onlyCompatibleWithGarage ||
               selectedCategory !== "all" ||
               searchQuery.trim() !== "") && (
               <div className="flex flex-wrap items-center gap-1.5 pt-1">
@@ -470,6 +549,22 @@ export default function CombosPage() {
                     <button
                       type="button"
                       onClick={() => setSearchQuery("")}
+                      className="p-0.5 hover:bg-white/20 rounded-full transition cursor-pointer"
+                    >
+                      <X className="w-3 h-3 text-white" />
+                    </button>
+                  </div>
+                )}
+
+                {/* Compatible with Garage Pill */}
+                {onlyCompatibleWithGarage && vehicle && (
+                  <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-700 text-white text-[11px] font-semibold shadow-xs">
+                    <span>
+                      {t.productsFitMyGarage}: <strong className="text-white">{vehicle.brandName} {vehicle.modelName}</strong>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setOnlyCompatibleWithGarage(false)}
                       className="p-0.5 hover:bg-white/20 rounded-full transition cursor-pointer"
                     >
                       <X className="w-3 h-3 text-white" />

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { calculateComboAvailability } from "@/lib/comboAvailability";
-import { detectProductVehicleBrands, normalizeBrandName } from "@/lib/products";
+import { detectProductVehicleBrands, normalizeBrandName, detectVehiclePlatform } from "@/lib/products";
 import { SXS_BRAND_PLATFORMS, SXS_BRANDS } from "@/lib/sxsBrands";
 
 export const dynamic = "force-dynamic";
@@ -183,6 +183,8 @@ export async function GET(request: NextRequest) {
     const category = searchParams.get("category");
     const search = searchParams.get("search") || searchParams.get("q");
     const vehicleBrand = searchParams.get("vehicleBrand") || searchParams.get("sxs");
+    const vehicleModel = searchParams.get("vehicleModel") || undefined;
+    const vehicleYear = searchParams.get("vehicleYear") || undefined;
     const distributorBrand = searchParams.get("distributorBrand") || searchParams.get("brand");
     const inStock = searchParams.get("inStock") === "true" || searchParams.get("inStock") === "1";
     const discounted = searchParams.get("discounted") === "true" || searchParams.get("discounted") === "1";
@@ -511,6 +513,29 @@ export async function GET(request: NextRequest) {
         const targetVb = vehicleBrand.toLowerCase().trim();
         if (!c.vehicleBrands.map((b) => b.toLowerCase()).includes(targetVb)) {
           return false;
+        }
+      }
+
+      // 3b. Vehicle Model & Platform
+      if (vehicleModel) {
+        const vPlatform = detectVehiclePlatform(vehicleModel);
+        const comboText = `${c.titleEs || ""} ${c.titleEn || ""} ${c.badgeEs || ""} ${c.badgeEn || ""} ${c.descriptionEs || ""} ${(c.items || []).join(" ")}`.toLowerCase();
+        const comboPlatform = detectVehiclePlatform(comboText);
+        if (vPlatform && comboPlatform) {
+          if (vPlatform !== comboPlatform) return false;
+        } else if (vPlatform) {
+          if (vPlatform === "z10" && (comboText.includes("1000") || comboText.includes("z1000") || comboText.includes("950") || comboText.includes("z10-4") || comboText.includes("z10 4"))) {
+            return false;
+          }
+          if (vPlatform === "z10-4" && (comboText.includes("1000") || comboText.includes("z1000") || comboText.includes("950") || (!comboText.includes("z10-4") && !comboText.includes("z10 4")))) {
+            return false;
+          }
+          if (vPlatform === "z1000" && (/\bz10(-4)?\b/i.test(comboText) || comboText.includes("950"))) {
+            return false;
+          }
+          if (vPlatform === "z950" && (comboText.includes("1000") || comboText.includes("z1000") || /\bz10(-4)?\b/i.test(comboText))) {
+            return false;
+          }
         }
       }
 

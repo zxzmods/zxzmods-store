@@ -28,22 +28,21 @@ export async function GET(request: Request) {
     const modelSlugs = Array.from(new Set(vehicles.map((v) => v.modelSlug)));
     const vehicleModels = await prisma.vehicleModel.findMany({
       where: { slug: { in: modelSlugs } },
-      select: { slug: true, pickupServiceAvailable: true },
+      select: { slug: true, pickupServiceAvailable: true, imageUrl: true },
     });
-    const modelMap = new Map(vehicleModels.map((m) => [m.slug, m.pickupServiceAvailable]));
+    const modelMap = new Map(vehicleModels.map((m) => [m.slug, m]));
 
-    const enrichedVehicles = vehicles.map((v) => ({
-      ...v,
-      pickupServiceAvailable: modelMap.get(v.modelSlug) ?? true,
-    }));
+    const enrichedVehicles = vehicles.map((v) => {
+      const vm = modelMap.get(v.modelSlug);
+      return {
+        ...v,
+        imageUrl: v.imageUrl || vm?.imageUrl || null,
+        pickupServiceAvailable: vm?.pickupServiceAvailable ?? true,
+      };
+    });
 
-    const activeVehicleRaw = vehicles.find((v) => v.isActive) || vehicles[0] || null;
-    const activeVehicle = activeVehicleRaw
-      ? {
-          ...activeVehicleRaw,
-          pickupServiceAvailable: modelMap.get(activeVehicleRaw.modelSlug) ?? true,
-        }
-      : null;
+    const activeVehicleRaw = enrichedVehicles.find((v) => v.isActive) || enrichedVehicles[0] || null;
+    const activeVehicle = activeVehicleRaw || null;
 
     const response = NextResponse.json({
       success: true,
@@ -131,6 +130,13 @@ export async function POST(request: Request) {
       });
     }
 
+    const model = await prisma.vehicleModel.findUnique({
+      where: { slug: String(modelSlug) },
+      select: { pickupServiceAvailable: true, imageUrl: true },
+    });
+
+    const finalImageUrl = imageUrl ? String(imageUrl) : (model?.imageUrl || null);
+
     const created = await prisma.garageVehicle.create({
       data: {
         sessionId,
@@ -143,14 +149,9 @@ export async function POST(request: Request) {
         color: color ? String(color) : null,
         nickname: nickname ? String(nickname) : null,
         notes: notes ? String(notes) : null,
-        imageUrl: imageUrl ? String(imageUrl) : null,
+        imageUrl: finalImageUrl,
         isActive: shouldBeActive,
       },
-    });
-
-    const model = await prisma.vehicleModel.findUnique({
-      where: { slug: String(modelSlug) },
-      select: { pickupServiceAvailable: true },
     });
 
     const response = NextResponse.json({

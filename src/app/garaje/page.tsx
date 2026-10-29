@@ -14,6 +14,35 @@ import { GarageFleetSkeleton } from "@/components/garage/GarageFleetSkeleton";
 import { useGarage, RegisteredVehicle } from "@/context/GarageContext";
 import { useLanguage } from "@/context/LanguageContext";
 import { getBrandLogo } from "@/lib/sxsBrands";
+import { resolveVehicleImage } from "@/lib/products";
+
+function VehicleCardImage({ vehicle }: { vehicle: RegisteredVehicle }) {
+  const initialImg = resolveVehicleImage(vehicle);
+  const [src, setSrc] = useState(initialImg);
+  const [hasError, setHasError] = useState(false);
+
+  return (
+    <div className="relative h-36 w-full rounded-2xl bg-gray-50/80 border border-gray-100 flex items-center justify-center p-3 transition-transform hover:scale-[1.02] overflow-hidden">
+      <div className="relative w-full h-full max-h-28 flex items-center justify-center">
+        <Image
+          src={hasError ? "/images/logo.png" : src}
+          alt={`${vehicle.brandName} ${vehicle.modelName}`}
+          fill
+          className={`object-contain filter drop-shadow-sm transition-all duration-300 ${
+            src === "/images/logo.png" || hasError ? "p-4 opacity-75" : ""
+          }`}
+          sizes="(max-width: 768px) 100vw, 320px"
+          onError={() => {
+            if (!hasError) {
+              setHasError(true);
+              setSrc("/images/logo.png");
+            }
+          }}
+        />
+      </div>
+    </div>
+  );
+}
 import {
   Car,
   Plus,
@@ -255,26 +284,26 @@ export default function GarageFleetPage() {
                         </div>
 
                         {/* 
-                          VEHICLE IMAGE REPRESENTED BY THE BRAND LOGO
-                          (User requirement: "The vehicle image in teh garage will be represented by the brand logo. Asign each logo respectively")
+                          VEHICLE IMAGE WITH FALLBACK TO COMPANY LOGO
+                          (Ex: Z10 shows Z10 image, fallback to company logo)
                         */}
-                        <div className="relative h-28 w-full rounded-2xl bg-gray-50/80 border border-gray-100 flex items-center justify-center p-4 transition-transform hover:scale-[1.02]">
-                          <div className="relative w-44 h-16">
-                            <Image
-                              src={logoUrl}
-                              alt={v.brandName}
-                              fill
-                              className="object-contain filter drop-shadow-sm"
-                              sizes="(max-width: 768px) 100vw, 250px"
-                            />
-                          </div>
-                        </div>
+                        <VehicleCardImage vehicle={v} />
 
                         {/* Vehicle Title & Platform Specs */}
                         <div className="space-y-1">
-                          <p className="text-[10px] font-mono uppercase tracking-widest text-[#C02030] font-bold">
-                            {v.brandName}
-                          </p>
+                          <div className="flex items-center gap-1.5">
+                            <div className="relative w-4 h-4 flex-shrink-0">
+                              <Image
+                                src={logoUrl}
+                                alt={v.brandName}
+                                fill
+                                className="object-contain"
+                              />
+                            </div>
+                            <p className="text-[10px] font-mono uppercase tracking-widest text-[#C02030] font-bold">
+                              {v.brandName}
+                            </p>
+                          </div>
                           <h3 className="text-lg font-black text-gray-900 leading-snug">
                             {v.year} {v.modelName}
                           </h3>
@@ -319,7 +348,10 @@ export default function GarageFleetPage() {
 
                         {/* View Compatible Parts Link */}
                         <Link
-                          href={`/productos?sxs=${v.brandSlug}`}
+                          href={`/productos?sxs=${v.brandSlug}&compatible=true`}
+                          onClick={() => {
+                            if (!isActive) handleSetActive(v.id);
+                          }}
                           className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-xl text-[11px] font-bold text-gray-600 hover:text-[#C02030] transition-colors"
                         >
                           <Wrench className="w-3.5 h-3.5 text-[#C02030]" />
