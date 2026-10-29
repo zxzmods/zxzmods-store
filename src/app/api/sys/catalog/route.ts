@@ -3,13 +3,15 @@ import { requireStealthSession } from "@/lib/stealthAuth";
 import { prisma } from "@/lib/prisma";
 import { calculateComboAvailability } from "@/lib/comboAvailability";
 import { normalizeAudioUrl, normalizeVideoUrl, cleanDescriptionText, extractAndCleanDescription } from "@/lib/products";
+import { computeProductLivePricing } from "@/lib/productPricing";
+import { getLiveExchangeRate } from "@/lib/exchangeRate";
 
 export async function GET() {
   const auth = await requireStealthSession();
   if (!auth.authorized) return auth.response;
 
   try {
-    const [products, combos, categories, brands, dealerBrands] = await Promise.all([
+    const [products, combos, categories, brands, dealerBrands, ratesConfig] = await Promise.all([
       prisma.product.findMany({
         include: {
           category: true,
@@ -28,7 +30,16 @@ export async function GET() {
         where: { isActive: true },
         orderBy: [{ order: "asc" }, { name: "asc" }],
       }),
+      prisma.logisticsRateConfig.findUnique({
+        where: { id: "rates-config" },
+      }),
     ]);
+
+    const liveRateInfo = await getLiveExchangeRate().catch(() => ({ rate: 455.21 }));
+    const sellRate =
+      ratesConfig?.useManualExchangeRate && ratesConfig?.manualExchangeRateCRC
+        ? ratesConfig.manualExchangeRateCRC
+        : liveRateInfo.rate || ratesConfig?.cachedExchangeRateCRC || 455.21;
 
     let productsJsonMap: Record<string, any> = {};
     try {
@@ -154,8 +165,23 @@ export async function GET() {
         year_compatability = jsonP.modelYearCompatibility;
       }
 
+      const livePricing = computeProductLivePricing(
+        {
+          ...p,
+          shippingPriceD: (p as any).shippingPriceD ?? jsonP?.price?.S_price_D,
+          lockedExchangeRate: (p as any).lockedExchangeRate,
+        },
+        sellRate
+      );
+
       return {
         ...p,
+        shippingPriceD: livePricing.sPriceUSD,
+        lockedExchangeRate: livePricing.lockedExchangeRate,
+        livePricing,
+        effectiveProfitCRC: livePricing.effectiveProfitCRC,
+        hasProfitAlert: livePricing.hasProfitAlert,
+        profitLossPercent: livePricing.profitLossPercent,
         comp,
         category,
         brand,
@@ -176,14 +202,16 @@ export async function GET() {
         vids,
         audios,
         price: {
-          P_price_D: p.processingPriceD || jsonP?.price?.P_price_D || 0,
+          P_price_D: livePricing.pPriceUSD,
           P_price: p.processingPriceCRC || jsonP?.price?.P_price || 0,
+          S_price_D: livePricing.sPriceUSD,
           S_price: p.shippingPriceCRC || jsonP?.price?.S_price || 0,
           I_price: {
             includes: p.isInstallationIncluded !== undefined ? p.isInstallationIncluded : (jsonP?.price?.I_price?.includes ?? true),
             I_price: p.installationPriceCRC,
           },
           profit: p.profitCRC || jsonP?.price?.profit || 0,
+          effectiveProfitCRC: livePricing.effectiveProfitCRC,
           iva: {
             rate: p.ivaPercent ?? 13,
             amount: p.ivaCRC ?? Math.round((p.priceCRC || 0) * (13 / 113)),
@@ -266,8 +294,32 @@ export async function GET() {
       };
     });
 
+    const profitAlertProducts = enrichedProducts
+      .filter((p) => !p.isArchived && p.hasProfitAlert)
+      .map((p) => ({
+        id: p.id,
+        sku: p.sku,
+        slug: p.slug,
+        nameEs: p.nameEs,
+        nameEn: p.nameEn,
+        imageUrl: p.imageUrl,
+        lockedTPriceCRC: p.livePricing.lockedTPriceCRC,
+        initialProfitCRC: p.livePricing.initialProfitCRC,
+        effectiveProfitCRC: p.livePricing.effectiveProfitCRC,
+        profitDeltaCRC: p.livePricing.profitDeltaCRC,
+        profitLossPercent: p.livePricing.profitLossPercent,
+        alertThresholdProfitCRC: p.livePricing.alertThresholdProfitCRC,
+        suggestedTPriceCRC: p.livePricing.suggestedTPriceCRC,
+        pPriceUSD: p.livePricing.pPriceUSD,
+        sPriceUSD: p.livePricing.sPriceUSD,
+        livePPriceCRC: p.livePricing.livePPriceCRC,
+        liveSPriceCRC: p.livePricing.liveSPriceCRC,
+      }));
+
     return NextResponse.json({
       success: true,
+      exchangeRate: sellRate,
+      profitAlertProducts,
       products: enrichedProducts,
       combos: enrichedCombos,
       categories,

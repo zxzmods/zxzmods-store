@@ -57,6 +57,12 @@ import {
   resolveProductStockStatus,
   ComboAvailabilityResult,
 } from "@/lib/comboAvailability";
+import {
+  computeProductLivePricing,
+  resolveShippingUSD,
+  LEGACY_SHIPPING_CONVERSION_RATE,
+  type ProductLivePricingProjection,
+} from "@/lib/productPricing";
 
 export interface InstallExtraPart {
   id: string;
@@ -82,8 +88,14 @@ interface Product {
   installationBreakdownJson?: string | null;
   processingPriceD?: number;
   processingPriceCRC?: number;
+  shippingPriceD?: number;
   shippingPriceCRC?: number;
+  lockedExchangeRate?: number;
   profitCRC?: number;
+  effectiveProfitCRC?: number;
+  hasProfitAlert?: boolean;
+  profitLossPercent?: number;
+  livePricing?: ProductLivePricingProjection;
   totalPriceD?: string;
   warrantyCategory: string;
   descriptionEs: string;
@@ -113,8 +125,10 @@ interface Product {
   brand?: string[];
   price?: {
     P_price_D: number;
+    S_price_D?: number;
     P_price: number;
     S_price: number;
+    lockedExchangeRate?: number;
     I_price: {
       includes: boolean;
       I_price: number;
@@ -1601,6 +1615,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
     reviews: "",
     // price hierarchy:
     P_price_D: 0,
+    S_price_D: 0,
     P_price: 0,
     S_price: 0,
     I_price_includes: true,
@@ -1881,6 +1896,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
   }, [productForm.brandName, selectedVehicles, products, dealerBrands, brands, editingProduct?.id, lang]);
 
   const [liveExchangeRate, setLiveExchangeRate] = useState<number>(455.21);
+  const [adjustingProductId, setAdjustingProductId] = useState<string | null>(null);
 
   const fetchCatalog = useCallback(async () => {
     setLoading(true);
@@ -1896,11 +1912,15 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
         setCategories(data.categories || []);
         setBrands(data.brands || []);
         setDealerBrands(data.dealerBrands || []);
+        if (data.exchangeRate && Number(data.exchangeRate) > 300) {
+          setLiveExchangeRate(Number(data.exchangeRate));
+        }
       }
       if (rateRes && rateRes.ok) {
         const rateData = await rateRes.json().catch(() => null);
-        if (rateData?.rate && Number(rateData.rate) > 300) {
-          setLiveExchangeRate(Number(rateData.rate));
+        const extractedRate = Number(rateData?.data?.rate || rateData?.rate || 0);
+        if (extractedRate > 300) {
+          setLiveExchangeRate(extractedRate);
         }
       }
     } catch (err) {
@@ -1913,6 +1933,47 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
   useEffect(() => {
     fetchCatalog();
   }, [fetchCatalog]);
+
+  const handleAdjustProductLockedPrice = useCallback(
+    async (prod: Product) => {
+      setAdjustingProductId(prod.id);
+      setFeedback(null);
+      try {
+        const res = await fetch(`/api/sys/products/${prod.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            recalculateLockedPrice: true,
+            lockedExchangeRate: liveExchangeRate,
+          }),
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          await fetchCatalog();
+          setFeedback({
+            type: "success",
+            msg:
+              lang === "es"
+                ? `Precio T_price de ${prod.sku} actualizado y bloqueado al tipo de cambio actual (₡${liveExchangeRate.toFixed(2)}).`
+                : `T_price for ${prod.sku} updated and locked at current exchange rate (₡${liveExchangeRate.toFixed(2)}).`,
+          });
+        } else {
+          setFeedback({
+            type: "error",
+            msg: data.error || (lang === "es" ? "No se pudo ajustar el precio" : "Could not adjust price"),
+          });
+        }
+      } catch (err: any) {
+        setFeedback({
+          type: "error",
+          msg: err?.message || (lang === "es" ? "Error al ajustar precio" : "Error adjusting price"),
+        });
+      } finally {
+        setAdjustingProductId(null);
+      }
+    },
+    [liveExchangeRate, fetchCatalog, lang]
+  );
 
   const syncSupplierUrlPrice = useCallback(
     async (urlToTest: string, silent = false) => {
@@ -2098,10 +2159,13 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
     const descEs = extractAndCleanDescription(prod.description, "es", prod.descriptionEs);
     const descEn = extractAndCleanDescription(prod.description, "en", prod.descriptionEn);
 
-    // 7. Price hierarchy
-    const P_price_D = prod.price?.P_price_D ?? prod.processingPriceD ?? 0;
-    const P_price = prod.price?.P_price ?? prod.processingPriceCRC ?? 0;
-    const S_price = prod.price?.S_price ?? prod.shippingPriceCRC ?? 0;
+    // 7. Price hierarchy (P_price_D and S_price_D in USD, translated to Colones at liveExchangeRate when editing/saving)
+    const activeRate = liveExchangeRate > 300 ? liveExchangeRate : 455.21;
+    const P_price_D = Number(prod.price?.P_price_D ?? prod.processingPriceD ?? 0);
+    const rawSPriceCRC = Number(prod.price?.S_price ?? prod.shippingPriceCRC ?? 0);
+    const S_price_D = resolveShippingUSD(prod.shippingPriceD ?? prod.price?.S_price_D, rawSPriceCRC);
+    const P_price = P_price_D > 0 ? Math.round(P_price_D * activeRate) : (prod.price?.P_price ?? prod.processingPriceCRC ?? 0);
+    const S_price = S_price_D > 0 ? Math.round(S_price_D * activeRate) : rawSPriceCRC;
     const I_price_includes = prod.price?.I_price?.includes ?? prod.isInstallationIncluded ?? true;
 
     // Installation breakdown extraction
@@ -2197,6 +2261,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       requirements: prod.requirements || "",
       reviews: typeof prod.reviews === "string" ? prod.reviews : JSON.stringify(prod.reviews || ""),
       P_price_D,
+      S_price_D,
       P_price,
       S_price,
       I_price_includes,
@@ -2286,6 +2351,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       requirements: "",
       reviews: "",
       P_price_D: 0,
+      S_price_D: 0,
       P_price: 0,
       S_price: 0,
       I_price_includes: false,
@@ -2777,8 +2843,10 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       // Full price hierarchy:
       price: {
         P_price_D: Number(productForm.P_price_D) || 0,
+        S_price_D: Number(productForm.S_price_D) || 0,
         P_price: Math.round(Number(productForm.P_price) || 0),
         S_price: Math.round(Number(productForm.S_price) || 0),
+        lockedExchangeRate: liveExchangeRate,
         I_price: {
           includes: Boolean(productForm.I_price_includes),
           I_price: Math.round(Number(productForm.I_price) || 0),
@@ -2796,7 +2864,9 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       // Database mapped fields:
       processingPriceD: Number(productForm.P_price_D) || 0,
       processingPriceCRC: Math.round(Number(productForm.P_price) || 0),
+      shippingPriceD: Number(productForm.S_price_D) || 0,
       shippingPriceCRC: Math.round(Number(productForm.S_price) || 0),
+      lockedExchangeRate: liveExchangeRate,
       profitCRC: Math.round(Number(productForm.profit) || 0),
       ivaPercent: finalIvaRate,
       ivaCRC: finalIvaCRC,
@@ -5967,139 +6037,277 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                   </span>
                 </div>
 
-                {/* Important Notice regarding Dollar Pricing in Checkout */}
-                <div className="p-3 bg-red-50/80 rounded-2xl border border-red-200/90 text-[11px] text-[#A01825] leading-relaxed flex items-start gap-2">
+                {/* Important Notice regarding Dollar Pricing & Locked T_price */}
+                <div className="p-3.5 bg-red-50/80 rounded-2xl border border-red-200/90 text-[11px] text-[#A01825] leading-relaxed flex items-start gap-2.5">
                   <Sparkles className="w-4 h-4 text-[#C02030] shrink-0 mt-0.5" />
-                  <div>
-                    <p className="font-semibold">{t.devPriceDollarNotice}</p>
-                    <p className="text-[10px] text-red-700/80 mt-0.5 font-mono">
-                      {lang === "es" ? "Tipo de Cambio Venta BCCR" : "BCCR Sell Exchange Rate"}: <span className="font-bold">₡{liveExchangeRate.toFixed(2)} / $1 USD</span> · <span className="font-bold">T_price_D</span> = &quot;{productForm.T_price_D}&quot;
+                  <div className="space-y-1">
+                    <p className="font-bold text-slate-900">
+                      {lang === "es"
+                        ? "Sistema de Precios en Dólares ($ USD) con T_price Bloqueado y Precaución del 15%"
+                        : "USD ($) Pricing System with Locked T_price & 15% Profit Precaution"}
+                    </p>
+                    <p className="text-[11px] text-[#A01825]">
+                      {lang === "es"
+                        ? "Ingresa el costo del producto (P_price_D) y el envío (S_price) en dólares ($ USD); ambos se traducen automáticamente según el valor actual del dólar. Al guardar en creación o edición, el precio público con impuestos (T_price) queda bloqueado para no confundir al cliente, y cualquier fluctuación del dólar se refleja directamente en la ganancia."
+                        : "Enter the product cost (P_price_D) and shipping (S_price) in US Dollars ($ USD); both translate automatically using the live dollar rate. Once saved on creation or edit, the total price with taxes (T_price) is locked for customers, and any dollar fluctuation is absorbed by the profit."}
+                    </p>
+                    <p className="text-[10px] text-red-700/90 font-mono">
+                      {lang === "es" ? "Tipo de Cambio Venta BCCR Actual" : "Current BCCR Sell Exchange Rate"}:{" "}
+                      <span className="font-extrabold">₡{liveExchangeRate.toFixed(2)} / $1 USD</span> ·{" "}
+                      <span className="font-bold">Alerta de precaución si la ganancia cae ≥ 15% (≤ 85% de la ganancia inicial)</span>
                     </p>
                   </div>
                 </div>
 
-                {/* Base Costs Grid - Master Editable / Staff Locked */}
+                {/* Live Profit Fluctuation Status when editing an existing product */}
+                {editingProduct && (() => {
+                  const liveInfo = computeProductLivePricing(editingProduct, liveExchangeRate);
+                  return (
+                    <div
+                      className={`p-4 rounded-2xl border space-y-2.5 ${
+                        liveInfo.hasProfitAlert
+                          ? "bg-rose-50/90 border-rose-300 text-rose-950"
+                          : liveInfo.profitDeltaCRC < 0
+                          ? "bg-amber-50/80 border-amber-200 text-amber-950"
+                          : "bg-emerald-50/70 border-emerald-200 text-emerald-950"
+                      }`}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          {liveInfo.hasProfitAlert ? (
+                            <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                          ) : (
+                            <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                          )}
+                          <span className="text-xs font-extrabold uppercase tracking-wider">
+                            {liveInfo.hasProfitAlert
+                              ? lang === "es"
+                                ? "⚠️ Alerta de Precaución: Pérdida de Ganancia ≥ 15% por Dólar"
+                                : "⚠️ Precaution Alert: Profit Loss ≥ 15% from Dollar Fluctuation"
+                              : lang === "es"
+                              ? "Estado Actual del Precio Bloqueado vs Dólar Hoy"
+                              : "Current Locked Price vs Live Dollar Status"}
+                          </span>
+                        </div>
+                        <span
+                          className={`text-[10px] font-mono font-extrabold px-2.5 py-0.5 rounded-full border ${
+                            liveInfo.hasProfitAlert
+                              ? "bg-rose-100 text-rose-800 border-rose-300"
+                              : liveInfo.profitDeltaCRC < 0
+                              ? "bg-amber-100 text-amber-800 border-amber-300"
+                              : "bg-emerald-100 text-emerald-800 border-emerald-300"
+                          }`}
+                        >
+                          {liveInfo.profitChangePercent >= 0 ? `+${liveInfo.profitChangePercent}%` : `${liveInfo.profitChangePercent}%`}{" "}
+                          ({liveInfo.profitDeltaCRC >= 0 ? `+${formatCRC(liveInfo.profitDeltaCRC)}` : formatCRC(liveInfo.profitDeltaCRC)})
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1">
+                        <div className="p-2.5 rounded-xl bg-white/90 border border-black/5">
+                          <span className="text-[10px] font-bold text-slate-500 block">
+                            {lang === "es" ? "T_price Bloqueado Actual" : "Current Locked T_price"}
+                          </span>
+                          <span className="text-xs font-black font-mono text-slate-900">
+                            {formatCRC(liveInfo.lockedTPriceCRC)}
+                          </span>
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-white/90 border border-black/5">
+                          <span className="text-[10px] font-bold text-slate-500 block">
+                            {lang === "es" ? "Ganancia Inicial Fijada" : "Initial Set Profit"}
+                          </span>
+                          <span className="text-xs font-bold font-mono text-slate-700">
+                            {formatCRC(liveInfo.initialProfitCRC)}
+                          </span>
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-white/90 border border-black/5">
+                          <span className="text-[10px] font-bold text-slate-500 block">
+                            {lang === "es" ? "Ganancia Real Hoy (con Dólar)" : "Live Profit Today (USD Adj.)"}
+                          </span>
+                          <span
+                            className={`text-xs font-black font-mono ${
+                              liveInfo.hasProfitAlert
+                                ? "text-rose-700"
+                                : liveInfo.profitDeltaCRC < 0
+                                ? "text-amber-700"
+                                : "text-emerald-700"
+                            }`}
+                          >
+                            {formatCRC(liveInfo.effectiveProfitCRC)}
+                          </span>
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-white/90 border border-black/5">
+                          <span className="text-[10px] font-bold text-slate-500 block">
+                            {lang === "es" ? "Umbral Precaución (85%)" : "Precaution Threshold (85%)"}
+                          </span>
+                          <span className="text-xs font-bold font-mono text-slate-800">
+                            {formatCRC(liveInfo.alertThresholdProfitCRC)}
+                          </span>
+                        </div>
+                      </div>
+
+                      {liveInfo.hasProfitAlert && (
+                        <p className="text-[11px] font-semibold text-rose-800">
+                          {lang === "es"
+                            ? `La ganancia real cayó un ${liveInfo.profitLossPercent}% (a ${formatCRC(liveInfo.effectiveProfitCRC)}, por debajo del límite de ${formatCRC(liveInfo.alertThresholdProfitCRC)}). Al guardar este formulario, el T_price se actualizará y bloqueará en ${formatCRC(recalculateTPrice(productForm.P_price, productForm.S_price, productForm.profit, productForm.I_price, productForm.I_price_includes, productForm.discountPercent, productForm.ivaPercent ?? 13))} recuperando el 100% de la ganancia.`
+                            : `Real profit dropped by ${liveInfo.profitLossPercent}% (to ${formatCRC(liveInfo.effectiveProfitCRC)}, below the ${formatCRC(liveInfo.alertThresholdProfitCRC)} threshold). Saving this form will re-lock T_price and restore 100% of target profit.`}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* Base Costs Grid - Editable by Staff & Master in USD ($), Auto-Translated to CRC (₡) */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {/* P_price_D (Acquisition in USD) */}
-                  <div className="p-3 bg-slate-50 rounded-2xl border border-red-200/80 space-y-1">
+                  {/* P_price_D (Acquisition in USD -> translates to P_price in CRC) */}
+                  <div className="p-3.5 bg-slate-50 rounded-2xl border border-red-200/80 space-y-1.5">
                     <div className="flex items-center justify-between">
                       <label className="text-[11px] font-bold text-slate-800 flex items-center gap-1">
-                        <span>{lang === "es" ? "Precio de Adquisición en Dólares (P_price_D)" : "Acquisition Price in USD (P_price_D)"}</span>
-                        {!isMaster && <Lock className="w-3 h-3 text-slate-400" />}
+                        <span>{lang === "es" ? "Precio del Producto en Dólares (P_price_D)" : "Product Price in USD (P_price_D)"}</span>
                       </label>
-                      <span className="text-xs font-bold font-mono text-slate-600">
-                        ${Number(productForm.P_price_D).toFixed(2)}
+                      <span className="text-xs font-extrabold font-mono text-[#C02030] bg-red-50 px-2 py-0.5 rounded-lg border border-red-200">
+                        ${Number(productForm.P_price_D || 0).toFixed(2)} USD → {formatCRC(productForm.P_price)}
                       </span>
                     </div>
-                    <input
-                      type="number"
-                      min="0"
-                      step="any"
-                      disabled={!isMaster}
-                      value={productForm.P_price_D}
-                      onChange={(e) => {
-                        const usdVal = parseFloat(e.target.value) || 0;
-                        setProductForm((prev) => ({
-                          ...prev,
-                          P_price_D: usdVal,
-                          supplierLastPriceUSD: usdVal > 0 ? usdVal : prev.supplierLastPriceUSD,
-                          P_price: usdVal > 0 ? Math.round(usdVal * (liveExchangeRate || 455.21)) : prev.P_price,
-                        }));
-                      }}
-                      className="w-full bg-white border border-red-200 rounded-xl p-2 text-xs font-mono text-slate-900 disabled:bg-slate-100 disabled:text-slate-400 focus:outline-none focus:border-red-500"
-                    />
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold font-mono text-slate-500">$</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="any"
+                        value={productForm.P_price_D}
+                        onChange={(e) => {
+                          const usdVal = parseFloat(e.target.value) || 0;
+                          const rate = liveExchangeRate > 300 ? liveExchangeRate : 455.21;
+                          const translatedCRC = Math.round(usdVal * rate);
+                          setProductForm((prev) => {
+                            const ivaRate = prev.ivaPercent ?? 13;
+                            return {
+                              ...prev,
+                              P_price_D: usdVal,
+                              supplierLastPriceUSD: usdVal > 0 ? usdVal : prev.supplierLastPriceUSD,
+                              P_price: translatedCRC,
+                              ivaCRC: calculateIvaAmount(translatedCRC, prev.S_price, prev.profit, prev.I_price, prev.I_price_includes, prev.discountPercent, ivaRate),
+                              priceCRC: recalculateTPrice(translatedCRC, prev.S_price, prev.profit, prev.I_price, prev.I_price_includes, prev.discountPercent, ivaRate),
+                              T_price: recalculateTPrice(translatedCRC, prev.S_price, prev.profit, prev.I_price, prev.I_price_includes, prev.discountPercent, ivaRate),
+                            };
+                          });
+                        }}
+                        className="w-full bg-white border border-red-200 rounded-xl pl-7 pr-14 py-2 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-red-500"
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold font-mono text-slate-400">USD</span>
+                    </div>
+                    <p className="text-[9px] text-slate-500">
+                      {lang === "es"
+                        ? `En $ USD · Se traduce automáticamente a P_price (${formatCRC(productForm.P_price)}) a ₡${liveExchangeRate.toFixed(2)}/$1`
+                        : `In $ USD · Auto-translates to P_price (${formatCRC(productForm.P_price)}) at ₡${liveExchangeRate.toFixed(2)}/$1`}
+                    </p>
+                  </div>
+
+                  {/* S_price / S_price_D (Shipping in USD -> translates to S_price in CRC) */}
+                  <div className="p-3.5 bg-slate-50 rounded-2xl border border-red-200/80 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-bold text-slate-800 flex items-center gap-1">
+                        <span>{lang === "es" ? "Precio de Envío en Dólares (S_price USD)" : "Shipping Price in USD (S_price USD)"}</span>
+                      </label>
+                      <span className="text-xs font-extrabold font-mono text-[#C02030] bg-red-50 px-2 py-0.5 rounded-lg border border-red-200">
+                        ${Number(productForm.S_price_D || 0).toFixed(2)} USD → {formatCRC(productForm.S_price)}
+                      </span>
+                    </div>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold font-mono text-slate-500">$</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="any"
+                        value={productForm.S_price_D}
+                        onChange={(e) => {
+                          const usdVal = parseFloat(e.target.value) || 0;
+                          const rate = liveExchangeRate > 300 ? liveExchangeRate : 455.21;
+                          const translatedCRC = Math.round(usdVal * rate);
+                          setProductForm((prev) => {
+                            const ivaRate = prev.ivaPercent ?? 13;
+                            return {
+                              ...prev,
+                              S_price_D: usdVal,
+                              S_price: translatedCRC,
+                              ivaCRC: calculateIvaAmount(prev.P_price, translatedCRC, prev.profit, prev.I_price, prev.I_price_includes, prev.discountPercent, ivaRate),
+                              priceCRC: recalculateTPrice(prev.P_price, translatedCRC, prev.profit, prev.I_price, prev.I_price_includes, prev.discountPercent, ivaRate),
+                              T_price: recalculateTPrice(prev.P_price, translatedCRC, prev.profit, prev.I_price, prev.I_price_includes, prev.discountPercent, ivaRate),
+                            };
+                          });
+                        }}
+                        className="w-full bg-white border border-red-200 rounded-xl pl-7 pr-14 py-2 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-red-500"
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold font-mono text-slate-400">USD</span>
+                    </div>
+                    <p className="text-[9px] text-slate-500">
+                      {lang === "es"
+                        ? `Flete e impuestos en $ USD · Se traduce a S_price (${formatCRC(productForm.S_price)}) a ₡${liveExchangeRate.toFixed(2)}/$1`
+                        : `Shipping & customs in $ USD · Auto-translates to S_price (${formatCRC(productForm.S_price)}) at ₡${liveExchangeRate.toFixed(2)}/$1`}
+                    </p>
+                  </div>
+
+                  {/* Translated Colones Summary / Direct CRC Reference (P_price & S_price in CRC) */}
+                  <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-bold text-slate-700">
+                        {lang === "es" ? "Conversión a Colones (P_price + S_price)" : "Colones Conversion (P_price + S_price)"}
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const rate = liveExchangeRate > 300 ? liveExchangeRate : 455.21;
+                          const nextP = productForm.P_price_D > 0 ? Math.round(Number(productForm.P_price_D) * rate) : productForm.P_price;
+                          const nextS = productForm.S_price_D > 0 ? Math.round(Number(productForm.S_price_D) * rate) : productForm.S_price;
+                          setProductForm((prev) => {
+                            const ivaRate = prev.ivaPercent ?? 13;
+                            return {
+                              ...prev,
+                              P_price: nextP,
+                              S_price: nextS,
+                              ivaCRC: calculateIvaAmount(nextP, nextS, prev.profit, prev.I_price, prev.I_price_includes, prev.discountPercent, ivaRate),
+                              priceCRC: recalculateTPrice(nextP, nextS, prev.profit, prev.I_price, prev.I_price_includes, prev.discountPercent, ivaRate),
+                              T_price: recalculateTPrice(nextP, nextS, prev.profit, prev.I_price, prev.I_price_includes, prev.discountPercent, ivaRate),
+                            };
+                          });
+                        }}
+                        className="text-[10px] font-bold text-blue-700 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2 py-0.5 rounded-lg flex items-center gap-1 transition cursor-pointer"
+                      >
+                        <RefreshCw className="w-2.5 h-2.5" />
+                        <span>{lang === "es" ? "Sincronizar con Dólar Hoy" : "Sync with Live USD"}</span>
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="bg-white border border-slate-200 rounded-xl p-2">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase block">P_price (₡)</span>
+                        <span className="text-xs font-mono font-extrabold text-slate-900">{formatCRC(productForm.P_price)}</span>
+                      </div>
+                      <div className="bg-white border border-slate-200 rounded-xl p-2">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase block">S_price (₡)</span>
+                        <span className="text-xs font-mono font-extrabold text-slate-900">{formatCRC(productForm.S_price)}</span>
+                      </div>
+                    </div>
                     <p className="text-[9px] text-slate-400">
                       {lang === "es"
-                        ? `Precio adquisición en $ USD (auto-sincronizado desde supplierUrl · 1 USD = ₡${liveExchangeRate.toFixed(2)})`
-                        : `Acquisition price in $ USD (auto-synced from supplierUrl · 1 USD = ₡${liveExchangeRate.toFixed(2)})`}
+                        ? `Costo Total Base USD: $${(Number(productForm.P_price_D || 0) + Number(productForm.S_price_D || 0)).toFixed(2)} = ${formatCRC((Number(productForm.P_price) || 0) + (Number(productForm.S_price) || 0))}`
+                        : `Total Base USD Cost: $${(Number(productForm.P_price_D || 0) + Number(productForm.S_price_D || 0)).toFixed(2)} = ${formatCRC((Number(productForm.P_price) || 0) + (Number(productForm.S_price) || 0))}`}
                     </p>
-                  </div>
-
-                  {/* P_price (Acquisition in CRC) */}
-                  <div className="p-3 bg-slate-50 rounded-2xl border border-red-200/80 space-y-1">
-                    <div className="flex items-center justify-between">
-                      <label className="text-[11px] font-bold text-slate-800 flex items-center gap-1">
-                        <span>{lang === "es" ? "Precio Base de Hardware en Colones (P_price)" : "Base Hardware Price in Colones (P_price)"}</span>
-                        {!isMaster && <Lock className="w-3 h-3 text-slate-400" />}
-                      </label>
-                      <span className="text-xs font-bold font-mono text-slate-600">
-                        {formatCRC(productForm.P_price)}
-                      </span>
-                    </div>
-                    <input
-                      type="number"
-                      min="0"
-                      disabled={!isMaster}
-                      value={productForm.P_price}
-                      onChange={(e) => {
-                        const val = parseInt(e.target.value) || 0;
-                        setProductForm((prev) => {
-                          const ivaRate = prev.ivaPercent ?? 13;
-                          return {
-                            ...prev,
-                            P_price: val,
-                            ivaCRC: calculateIvaAmount(val, prev.S_price, prev.profit, prev.I_price, prev.I_price_includes, prev.discountPercent, ivaRate),
-                            priceCRC: recalculateTPrice(val, prev.S_price, prev.profit, prev.I_price, prev.I_price_includes, prev.discountPercent, ivaRate),
-                            T_price: recalculateTPrice(val, prev.S_price, prev.profit, prev.I_price, prev.I_price_includes, prev.discountPercent, ivaRate),
-                          };
-                        });
-                      }}
-                      className="w-full bg-white border border-red-200 rounded-xl p-2 text-xs font-mono text-slate-900 disabled:bg-slate-100 disabled:text-slate-400 focus:outline-none focus:border-red-500"
-                    />
-                    <p className="text-[9px] text-slate-400">
-                      {lang === "es" ? "Precio base en ₡ (actualiza el total en vivo)" : "Base price in ₡ (updates total live)"}
-                    </p>
-                  </div>
-
-                  {/* S_price (Shipping in CRC) */}
-                  <div className="p-3 bg-slate-50 rounded-2xl border border-red-200/80 space-y-1">
-                    <div className="flex items-center justify-between">
-                      <label className="text-[11px] font-bold text-slate-800 flex items-center gap-1">
-                        <span>Precio de Envío e Impuestos (S_price)</span>
-                        {!isMaster && <Lock className="w-3 h-3 text-slate-400" />}
-                      </label>
-                      <span className="text-xs font-bold font-mono text-slate-600">
-                        {formatCRC(productForm.S_price)}
-                      </span>
-                    </div>
-                    <input
-                      type="number"
-                      min="0"
-                      disabled={!isMaster}
-                      value={productForm.S_price}
-                      onChange={(e) => {
-                        const val = parseInt(e.target.value) || 0;
-                        setProductForm((prev) => {
-                          const ivaRate = prev.ivaPercent ?? 13;
-                          return {
-                            ...prev,
-                            S_price: val,
-                            ivaCRC: calculateIvaAmount(prev.P_price, val, prev.profit, prev.I_price, prev.I_price_includes, prev.discountPercent, ivaRate),
-                            priceCRC: recalculateTPrice(prev.P_price, val, prev.profit, prev.I_price, prev.I_price_includes, prev.discountPercent, ivaRate),
-                            T_price: recalculateTPrice(prev.P_price, val, prev.profit, prev.I_price, prev.I_price_includes, prev.discountPercent, ivaRate),
-                          };
-                        });
-                      }}
-                      className="w-full bg-white border border-red-200 rounded-xl p-2 text-xs font-mono text-slate-900 disabled:bg-slate-100 disabled:text-slate-400 focus:outline-none focus:border-red-500"
-                    />
-                    <p className="text-[9px] text-slate-400">Flete e impuestos aduanales en ₡ (actualiza en vivo)</p>
                   </div>
 
                   {/* profit (Profit Margin in CRC) */}
-                  <div className="p-3 bg-slate-50 rounded-2xl border border-red-200/80 space-y-1">
+                  <div className="p-3.5 bg-slate-50 rounded-2xl border border-red-200/80 space-y-1.5">
                     <div className="flex items-center justify-between">
                       <label className="text-[11px] font-bold text-slate-800 flex items-center gap-1">
-                        <span>Margen de Ganancia de Taller (profit)</span>
-                        {!isMaster && <Lock className="w-3 h-3 text-slate-400" />}
+                        <span>{lang === "es" ? "Margen de Ganancia Inicial (profit ₡)" : "Initial Target Profit (profit ₡)"}</span>
                       </label>
-                      <span className="text-xs font-bold font-mono text-slate-600">
+                      <span className="text-xs font-bold font-mono text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200">
                         {formatCRC(productForm.profit)}
                       </span>
                     </div>
                     <input
                       type="number"
                       min="0"
-                      disabled={!isMaster}
                       value={productForm.profit}
                       onChange={(e) => {
                         const val = parseInt(e.target.value) || 0;
@@ -6114,17 +6322,15 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                           };
                         });
                       }}
-                      className="w-full bg-white border border-red-200 rounded-xl p-2 text-xs font-mono text-slate-900 disabled:bg-slate-100 disabled:text-slate-400 focus:outline-none focus:border-red-500"
+                      className="w-full bg-white border border-red-200 rounded-xl p-2 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-red-500"
                     />
-                    <p className="text-[9px] text-slate-400">Margen neto de beneficio en ₡ (actualiza en vivo)</p>
+                    <p className="text-[9px] text-slate-500">
+                      {lang === "es"
+                        ? `Ganancia inicial en ₡ · Alerta de precaución (-15%) si baja a ${formatCRC(Math.round((Number(productForm.profit) || 0) * 0.85))} o menos`
+                        : `Initial profit in ₡ · Precaution alert (-15%) triggers if it drops to ${formatCRC(Math.round((Number(productForm.profit) || 0) * 0.85))} or lower`}
+                    </p>
                   </div>
                 </div>
-
-                {!isMaster && (
-                  <p className="text-[10px] text-slate-500 italic">
-                    {t.devMasterPriceOnly}
-                  </p>
-                )}
 
                 {/* I_price (Installation & Labor Breakdown - Editable by Staff & Master) */}
                 <InstallationBreakdownEditor
@@ -6354,15 +6560,15 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                   {/* Formula Breakdown Display */}
                   <div className="p-3 bg-slate-800/90 rounded-xl border border-slate-700 text-xs font-mono space-y-1.5 text-slate-300">
                     <div className="flex items-center justify-between text-[11px]">
-                      <span>Hardware (P_price):</span>
+                      <span>Hardware (P_price_D: ${Number(productForm.P_price_D || 0).toFixed(2)} USD):</span>
                       <span className="font-bold text-white">{formatCRC(productForm.P_price)}</span>
                     </div>
                     <div className="flex items-center justify-between text-[11px]">
-                      <span>Flete/Aduana (S_price):</span>
+                      <span>Flete/Aduana (S_price: ${Number(productForm.S_price_D || 0).toFixed(2)} USD):</span>
                       <span className="font-bold text-white">{formatCRC(productForm.S_price)}</span>
                     </div>
                     <div className="flex items-center justify-between text-[11px]">
-                      <span>Margen de Ganancia (profit):</span>
+                      <span>Margen de Ganancia Inicial (profit):</span>
                       <span className="font-bold text-white">{formatCRC(productForm.profit)}</span>
                     </div>
                     <div className="flex items-center justify-between text-[11px]">
@@ -8502,6 +8708,134 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
         </div>
       )}
 
+      {/* 15% PROFIT LOSS PRECAUTION SYSTEM BANNER (Active for Staff & Master) */}
+      {activeCatalogType === "products" && (() => {
+        const activeList = products.filter((p) => !p.isArchived);
+        const alertedProducts = activeList
+          .map((p) => ({
+            product: p,
+            live: computeProductLivePricing(p, liveExchangeRate),
+          }))
+          .filter((item) => item.live.hasProfitAlert);
+
+        return (
+          <div
+            className={`rounded-2xl p-4 border shadow-2xs space-y-3 transition-all ${
+              alertedProducts.length > 0
+                ? "bg-rose-50/90 border-rose-300 text-rose-950"
+                : "bg-emerald-50/60 border-emerald-200/90 text-emerald-950"
+            }`}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div
+                  className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                    alertedProducts.length > 0
+                      ? "bg-rose-600 text-white shadow-xs"
+                      : "bg-emerald-600 text-white shadow-xs"
+                  }`}
+                >
+                  {alertedProducts.length > 0 ? (
+                    <AlertTriangle className="w-5 h-5" />
+                  ) : (
+                    <ShieldCheck className="w-5 h-5" />
+                  )}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs font-extrabold uppercase tracking-wider">
+                      {alertedProducts.length > 0
+                        ? lang === "es"
+                          ? `⚠️ Sistema de Precaución: ${alertedProducts.length} ${alertedProducts.length === 1 ? "producto perdió" : "productos perdieron"} ≥ 15% de ganancia por el dólar`
+                          : `⚠️ Precaution System: ${alertedProducts.length} ${alertedProducts.length === 1 ? "product lost" : "products lost"} ≥ 15% profit from USD fluctuation`
+                        : lang === "es"
+                        ? "Sistema de Precaución de Ganancias (Umbral -15% por Dólar) — Sin Alertas"
+                        : "Profit Precaution System (-15% USD Fluctuation Threshold) — Clear"}
+                    </span>
+                    <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-white/90 border border-black/10 text-slate-800">
+                      {lang === "es" ? "Dólar BCCR Hoy" : "Live BCCR USD"}: ₡{liveExchangeRate.toFixed(2)}
+                    </span>
+                  </div>
+                  <p className="text-[11px] opacity-85 mt-0.5">
+                    {alertedProducts.length > 0
+                      ? lang === "es"
+                        ? "Los siguientes productos tienen su T_price bloqueado y su ganancia real cayó un 15% o más (a ≤ 85% de la ganancia inicial) debido al alza del dólar. Ajusta el precio para recuperar el margen."
+                        : "The following products have a locked T_price and their real profit dropped by 15% or more (to ≤ 85% of initial profit) due to USD increases. Adjust their price to restore margin."
+                      : lang === "es"
+                      ? `Todos los productos activos (${activeList.length}) mantienen más del 85% de su ganancia proyectada con el tipo de cambio actual. Los precios T_price permanecen bloqueados.`
+                      : `All active products (${activeList.length}) maintain over 85% of their projected profit at the current exchange rate. Customer T_price values remain locked.`}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {alertedProducts.length > 0 && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 pt-1">
+                {alertedProducts.map(({ product: prod, live }) => (
+                  <div
+                    key={prod.id}
+                    className="bg-white rounded-xl p-3 border border-rose-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs"
+                  >
+                    <div className="space-y-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-extrabold text-xs text-slate-900 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                          {prod.sku}
+                        </span>
+                        <span className="text-xs font-bold text-slate-900 truncate">
+                          {lang === "es" ? prod.nameEs : prod.nameEn}
+                        </span>
+                        <span className="text-[10px] font-mono font-black px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-300">
+                          -{live.profitLossPercent}% {lang === "es" ? "ganancia" : "profit"}
+                        </span>
+                      </div>
+                      <div className="text-[11px] font-mono text-slate-600 flex flex-wrap items-center gap-x-3 gap-y-0.5">
+                        <span>
+                          {lang === "es" ? "T_price Bloqueado" : "Locked T_price"}:{" "}
+                          <strong className="text-slate-900">{formatCRC(live.lockedTPriceCRC)}</strong>
+                        </span>
+                        <span>
+                          {lang === "es" ? "Ganancia Inicial" : "Initial Profit"}:{" "}
+                          <strong>{formatCRC(live.initialProfitCRC)}</strong>
+                        </span>
+                        <span className="text-rose-700 font-bold">
+                          {lang === "es" ? "Ganancia Hoy" : "Live Profit"}: {formatCRC(live.effectiveProfitCRC)}
+                        </span>
+                        <span className="text-emerald-700 font-bold">
+                          {lang === "es" ? "T_price Sugerido" : "Suggested T_price"}: {formatCRC(live.suggestedTPriceCRC)}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        disabled={adjustingProductId === prod.id}
+                        onClick={() => handleAdjustProductLockedPrice(prod)}
+                        className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-[11px] font-bold flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
+                      >
+                        {adjustingProductId === prod.id ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <RefreshCw className="w-3.5 h-3.5" />
+                        )}
+                        <span>{lang === "es" ? "Ajustar T_price" : "Adjust T_price"}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenEditProduct(prod)}
+                        className="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-[11px] font-bold transition cursor-pointer"
+                      >
+                        {lang === "es" ? "Editar" : "Edit"}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
       {/* PRODUCTS TABLE */}
       {activeCatalogType === "products" && (
         <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
@@ -8510,14 +8844,16 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
               <tr>
                 <th className="p-3.5">{lang === "es" ? "SKU / Producto" : "SKU / Product"}</th>
                 <th className="p-3.5">{lang === "es" ? "Estado Stock" : "Stock Status"}</th>
-                <th className="p-3.5">{lang === "es" ? "Precio Base (₡)" : "Base Price (₡)"}</th>
+                <th className="p-3.5">{lang === "es" ? "T_price Bloqueado & Ganancia Real" : "Locked T_price & Live Profit"}</th>
                 <th className="p-3.5">{lang === "es" ? "Mano de Obra / Inst." : "Labor / Install"}</th>
                 <th className="p-3.5 text-right">{lang === "es" ? "Acciones" : "Actions"}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filteredProducts.map((prod) => (
-                <tr key={prod.id} className="hover:bg-slate-50/70 transition">
+              {filteredProducts.map((prod) => {
+                const liveInfo = computeProductLivePricing(prod, liveExchangeRate);
+                return (
+                <tr key={prod.id} className={`hover:bg-slate-50/70 transition ${liveInfo.hasProfitAlert ? "bg-rose-50/30" : ""}`}>
                   <td className="p-3.5">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-lg bg-slate-50 border border-slate-200 p-1 flex items-center justify-center shrink-0">
@@ -8528,7 +8864,15 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                         />
                       </div>
                       <div>
-                        <span className="font-mono font-bold text-slate-900 block">{prod.sku}</span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-mono font-bold text-slate-900">{prod.sku}</span>
+                          {liveInfo.hasProfitAlert && (
+                            <span className="inline-flex items-center gap-1 text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 border border-rose-300">
+                              <AlertTriangle className="w-2.5 h-2.5 text-rose-600" />
+                              <span>-{liveInfo.profitLossPercent}% GANANCIA</span>
+                            </span>
+                          )}
+                        </div>
                         <span className="text-slate-600 text-[11px] line-clamp-1">
                           {lang === "es" ? (prod.nameEs || prod.p_title || prod.nameEn) : (prod.nameEn || prod.nameEs || prod.p_title)}
                         </span>
@@ -8565,19 +8909,20 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                   </td>
 
                   <td className="p-3.5 font-bold text-slate-900">
-                    <div className="flex flex-col">
+                    <div className="flex flex-col gap-0.5">
                       <div className="flex items-center gap-1.5 font-mono">
                         <span className={prod.discountPercent && prod.discountPercent > 0 ? "text-[#C02030]" : ""}>
                           {formatCRC(prod.priceCRC)}
                         </span>
-                        {!isMaster && (
-                          <span title={lang === "es" ? "Precio base exclusivo de Master" : "Master-only base price"}>
-                            <Lock className="w-3 h-3 text-slate-400" />
-                          </span>
-                        )}
+                        <span
+                          className="text-[9px] font-sans font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200"
+                          title={lang === "es" ? "T_price bloqueado con impuestos incluidos" : "Locked T_price including taxes"}
+                        >
+                          {lang === "es" ? "Bloqueado" : "Locked"}
+                        </span>
                       </div>
                       {Boolean(prod.discountPercent && prod.discountPercent > 0) && (
-                        <div className="flex items-center gap-1.5 mt-0.5">
+                        <div className="flex items-center gap-1.5">
                           {Boolean(prod.originalPriceCRC && prod.originalPriceCRC > prod.priceCRC) && (
                             <span className="text-[10px] text-slate-400 line-through font-mono">
                               {formatCRC(prod.originalPriceCRC!)}
@@ -8588,6 +8933,35 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                           </span>
                         </div>
                       )}
+                      <div className="text-[10px] font-mono text-slate-500">
+                        P: ${liveInfo.pPriceUSD.toFixed(2)} | S: ${liveInfo.sPriceUSD.toFixed(2)} USD
+                      </div>
+                      <div className="flex items-center gap-1.5 text-[10px] font-mono">
+                        <span
+                          className={
+                            liveInfo.hasProfitAlert
+                              ? "text-rose-700 font-extrabold"
+                              : liveInfo.profitDeltaCRC < 0
+                              ? "text-amber-700 font-bold"
+                              : "text-emerald-700 font-bold"
+                          }
+                        >
+                          {lang === "es" ? "Ganancia Real:" : "Live Profit:"} {formatCRC(liveInfo.effectiveProfitCRC)}
+                        </span>
+                        {liveInfo.profitDeltaCRC !== 0 && (
+                          <span
+                            className={`text-[9px] px-1 rounded ${
+                              liveInfo.hasProfitAlert
+                                ? "bg-rose-100 text-rose-800 font-extrabold"
+                                : liveInfo.profitDeltaCRC < 0
+                                ? "bg-amber-100 text-amber-800"
+                                : "bg-emerald-100 text-emerald-800"
+                            }`}
+                          >
+                            {liveInfo.profitChangePercent >= 0 ? `+${liveInfo.profitChangePercent}%` : `${liveInfo.profitChangePercent}%`}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </td>
 
@@ -8609,6 +8983,18 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
 
                   <td className="p-3.5 text-right">
                     <div className="inline-flex items-center gap-1.5">
+                      {liveInfo.hasProfitAlert && (
+                        <button
+                          type="button"
+                          disabled={adjustingProductId === prod.id}
+                          onClick={() => handleAdjustProductLockedPrice(prod)}
+                          className="px-2 py-1 text-white bg-rose-600 hover:bg-rose-700 rounded-lg text-[10px] font-bold flex items-center gap-1 transition cursor-pointer"
+                          title={lang === "es" ? "Ajustar y bloquear nuevo T_price con el dólar actual" : "Adjust and lock new T_price at current USD rate"}
+                        >
+                          <RefreshCw className={`w-3 h-3 ${adjustingProductId === prod.id ? "animate-spin" : ""}`} />
+                          <span>{lang === "es" ? "Ajustar ₡" : "Adjust ₡"}</span>
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => handleOpenEditProduct(prod)}
@@ -8645,7 +9031,8 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
               {filteredProducts.length === 0 && (
                 <tr>
                   <td colSpan={5} className="py-12 text-center text-slate-400 space-y-2">

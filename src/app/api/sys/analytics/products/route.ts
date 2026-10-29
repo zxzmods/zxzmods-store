@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getStealthSession } from "@/lib/stealthAuth";
+import { computeProductLivePricing } from "@/lib/productPricing";
+import { getLiveExchangeRate } from "@/lib/exchangeRate";
 
 export const dynamic = "force-dynamic";
 
@@ -26,8 +28,8 @@ export async function GET(request: Request) {
       startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     }
 
-    // 1. Fetch catalog products, categories, combos, and confirmed orders
-    const [products, combos, categories, confirmedOrders] = await Promise.all([
+    // 1. Fetch catalog products, categories, combos, confirmed orders, and exchange rate config
+    const [products, combos, categories, confirmedOrders, ratesConfig] = await Promise.all([
       prisma.product.findMany({
         select: {
           id: true,
@@ -38,6 +40,15 @@ export async function GET(request: Request) {
           brandName: true,
           priceCRC: true,
           profitCRC: true,
+          processingPriceD: true,
+          processingPriceCRC: true,
+          shippingPriceD: true,
+          shippingPriceCRC: true,
+          lockedExchangeRate: true,
+          installationPriceCRC: true,
+          isInstallationIncluded: true,
+          discountPercent: true,
+          ivaPercent: true,
           imageUrl: true,
           isArchived: true,
           categoryId: true,
@@ -94,7 +105,16 @@ export async function GET(request: Request) {
           createdAt: true,
         },
       }),
+      prisma.logisticsRateConfig.findUnique({
+        where: { id: "rates-config" },
+      }),
     ]);
+
+    const liveRateInfo = await getLiveExchangeRate().catch(() => ({ rate: 455.21 }));
+    const sellRate =
+      ratesConfig?.useManualExchangeRate && ratesConfig?.manualExchangeRateCRC
+        ? ratesConfig.manualExchangeRateCRC
+        : liveRateInfo.rate || ratesConfig?.cachedExchangeRateCRC || 455.21;
 
     // Build fast lookup maps
     const productBySkuOrSlug = new Map<string, typeof products[0]>();
@@ -371,11 +391,13 @@ export async function GET(request: Request) {
 
     const top5Categories = allCategoriesRanked.slice(0, 5);
 
-    // Highest Profit Margin product among active catalog products
+    // Highest Profit Margin product among active catalog products (Projected with live USD fluctuation, NOT theoretical initial profit)
     const activeProductsWithMargin = products
       .filter((p) => !p.isArchived && p.priceCRC > 0)
       .map((p) => {
-        const marginPct = Math.round(((p.profitCRC || 0) / p.priceCRC) * 1000) / 10;
+        const livePricing = computeProductLivePricing(p, sellRate);
+        const effectiveProfit = livePricing.effectiveProfitCRC;
+        const marginPct = Math.round((effectiveProfit / p.priceCRC) * 1000) / 10;
         return {
           id: p.id,
           sku: p.sku,
@@ -384,13 +406,20 @@ export async function GET(request: Request) {
           nameEn: p.nameEn,
           brandName: p.brandName || "ZxZ Performance",
           priceCRC: p.priceCRC,
-          profitCRC: p.profitCRC || 0,
+          profitCRC: effectiveProfit,
+          profitDeltaCRC: livePricing.profitDeltaCRC,
+          profitChangePercent: livePricing.profitChangePercent,
+          profitLossPercent: livePricing.profitLossPercent,
+          hasProfitAlert: livePricing.hasProfitAlert,
+          suggestedTPriceCRC: livePricing.suggestedTPriceCRC,
           marginPct,
           imageUrl: p.imageUrl,
           type: "product" as const,
         };
       })
       .sort((a, b) => b.marginPct - a.marginPct || b.profitCRC - a.profitCRC);
+
+    const profitAlertProducts = activeProductsWithMargin.filter((p) => p.hasProfitAlert);
 
     const highestMarginProduct = activeProductsWithMargin[0] || null;
 
@@ -492,7 +521,10 @@ export async function GET(request: Request) {
     return NextResponse.json({
       success: true,
       timeframe,
+      exchangeRate: sellRate,
       data: {
+        exchangeRate: sellRate,
+        profitAlertProducts,
         totalConfirmedOrders: confirmedOrders.length,
         totalUnitsSold,
         totalRevenueCRC,

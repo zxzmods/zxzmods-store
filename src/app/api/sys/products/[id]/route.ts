@@ -58,24 +58,6 @@ export async function PATCH(
       return NextResponse.json({ success: false, error: "Product not found" }, { status: 404 });
     }
 
-    // STRICT ROLE PERMISSION CHECK:
-    // Only MASTER profile is authorized to alter base product hardware prices (priceCRC).
-    if (
-      body.priceCRC !== undefined &&
-      Math.round(Number(body.priceCRC)) !== existingProduct.priceCRC
-    ) {
-      if (auth.session.role !== "MASTER") {
-        return NextResponse.json(
-          {
-            success: false,
-            error: "UNAUTHORIZED_PRICE_MODIFICATION",
-            message: "Only the Master profile can edit base product prices. Staff accounts are limited to editing installation costs.",
-          },
-          { status: 403 }
-        );
-      }
-    }
-
     const updateData: any = {};
     if (body.nameEs !== undefined) updateData.nameEs = body.nameEs;
     if (body.nameEn !== undefined) updateData.nameEn = body.nameEn;
@@ -118,18 +100,61 @@ export async function PATCH(
       updateData.suggestedComboIdsJson = typeof body.suggestedComboIdsJson === "string" ? body.suggestedComboIdsJson : JSON.stringify(body.suggestedComboIdsJson);
     }
 
-    // Price breakdown extraction
+    // Price breakdown extraction (USD inputs P_price_D and S_price_D translated & locked on save)
+    const activeRate =
+      Number(body.lockedExchangeRate) > 300
+        ? Number(body.lockedExchangeRate)
+        : (existingProduct as any).lockedExchangeRate && Number((existingProduct as any).lockedExchangeRate) > 300
+        ? Number((existingProduct as any).lockedExchangeRate)
+        : 455.21;
+
     const pD = body.processingPriceD !== undefined ? body.processingPriceD : body.price?.P_price_D;
     if (pD !== undefined) updateData.processingPriceD = Number(pD) || 0;
 
     const pCRC = body.processingPriceCRC !== undefined ? body.processingPriceCRC : body.price?.P_price;
-    if (pCRC !== undefined) updateData.processingPriceCRC = Math.round(Number(pCRC) || 0);
+    if (pCRC !== undefined) {
+      updateData.processingPriceCRC = Math.round(Number(pCRC) || 0);
+    } else if (pD !== undefined && Number(pD) > 0) {
+      updateData.processingPriceCRC = Math.round(Number(pD) * activeRate);
+    }
+
+    const sD = body.shippingPriceD !== undefined ? body.shippingPriceD : body.price?.S_price_D;
+    if (sD !== undefined) updateData.shippingPriceD = Number(Number(sD || 0).toFixed(2));
 
     const sCRC = body.shippingPriceCRC !== undefined ? body.shippingPriceCRC : body.price?.S_price;
-    if (sCRC !== undefined) updateData.shippingPriceCRC = Math.round(Number(sCRC) || 0);
+    if (sD !== undefined && Number(sD) >= 0) {
+      updateData.shippingPriceCRC = Math.round(Number(sD) * activeRate);
+    } else if (sCRC !== undefined) {
+      updateData.shippingPriceCRC = Math.round(Number(sCRC) || 0);
+      if (sD === undefined && Number(sCRC) > 0) {
+        updateData.shippingPriceD = Number((Number(sCRC) / activeRate).toFixed(2));
+      }
+    }
 
     const prof = body.profitCRC !== undefined ? body.profitCRC : body.price?.profit;
     if (prof !== undefined) updateData.profitCRC = Math.round(Number(prof) || 0);
+
+    const hasPricingPayload =
+      pD !== undefined ||
+      pCRC !== undefined ||
+      sD !== undefined ||
+      sCRC !== undefined ||
+      prof !== undefined ||
+      body.priceCRC !== undefined ||
+      body.price?.T_price !== undefined ||
+      body.discountPercent !== undefined ||
+      body.ivaPercent !== undefined ||
+      body.recalculateLockedPrice === true;
+
+    if (hasPricingPayload) {
+      updateData.lockedExchangeRate = activeRate;
+      if (body.recalculateLockedPrice === true) {
+        const effPD = updateData.processingPriceD ?? existingProduct.processingPriceD ?? 0;
+        const effSD = updateData.shippingPriceD ?? (existingProduct as any).shippingPriceD ?? 0;
+        if (effPD > 0) updateData.processingPriceCRC = Math.round(effPD * activeRate);
+        if (effSD > 0) updateData.shippingPriceCRC = Math.round(effSD * activeRate);
+      }
+    }
 
     const tD = body.totalPriceD !== undefined ? body.totalPriceD : body.price?.T_price_D;
     if (tD !== undefined) updateData.totalPriceD = String(tD);
@@ -364,9 +389,9 @@ export async function PATCH(
     const computedTPrice = discountedSubtotal + computedIvaCRC;
     const computedOrigPrice = Math.round(baseSubtotal * (1 + ivaRate / 100));
 
-    // Only set priceCRC if Master provided it or if base components changed
+    // Lock T_price (priceCRC) on creation or edit whenever pricing fields are saved
     const reqPriceCRC = body.priceCRC !== undefined ? body.priceCRC : body.price?.T_price;
-    if (auth.session.role === "MASTER") {
+    if (hasPricingPayload || hasInstallUpdate) {
       if (computedTPrice > 0) {
         updateData.priceCRC = computedTPrice;
         updateData.originalPriceCRC = computedOrigPrice;

@@ -53,9 +53,14 @@ export async function POST(request: Request) {
 
     const pD = body.processingPriceD !== undefined ? body.processingPriceD : body.price?.P_price_D;
     const pCRC = body.processingPriceCRC !== undefined ? body.processingPriceCRC : body.price?.P_price;
+    const sD = body.shippingPriceD !== undefined ? body.shippingPriceD : body.price?.S_price_D;
     const sCRC = body.shippingPriceCRC !== undefined ? body.shippingPriceCRC : body.price?.S_price;
     const prof = body.profitCRC !== undefined ? body.profitCRC : body.price?.profit;
     const tD = body.totalPriceD !== undefined ? body.totalPriceD : body.price?.T_price_D;
+    const activeExchangeRate =
+      Number(body.lockedExchangeRate) > 300
+        ? Number(body.lockedExchangeRate)
+        : 455.21;
 
     const compArr = body.comp !== undefined ? (Array.isArray(body.comp) ? body.comp : [body.comp]) : ["zforce-z10"];
     const catArr = body.category !== undefined ? (Array.isArray(body.category) ? body.category : [body.category]) : ["performance"];
@@ -135,10 +140,28 @@ export async function POST(request: Request) {
       ? calculatedInstallPrice
       : Math.round(Number(body.price?.I_price?.I_price || installationPriceCRC) || 0);
 
-    // Calculate true price including 13% IVA
+    // Calculate true price including 13% IVA and lock T_price on creation
     const ivaRate = body.ivaPercent !== undefined ? Math.max(0, Number(body.ivaPercent)) : 13;
-    const pCost = Math.round(Number(pCRC) || 0);
-    const sCost = Math.round(Number(sCRC) || 0);
+    const rawPCost = Math.round(Number(pCRC) || 0);
+    const pCost =
+      rawPCost > 0
+        ? rawPCost
+        : effectivePD > 0
+        ? Math.round(effectivePD * activeExchangeRate)
+        : 0;
+
+    const rawSD = Number(sD) || 0;
+    const rawSCost = Math.round(Number(sCRC) || 0);
+    const effectiveSD =
+      rawSD > 0
+        ? Number(rawSD.toFixed(2))
+        : rawSCost > 0
+        ? Number((rawSCost / activeExchangeRate).toFixed(2))
+        : 0;
+    const sCost =
+      rawSD > 0
+        ? Math.round(rawSD * activeExchangeRate)
+        : rawSCost;
     const profCost = Math.round(Number(prof) || 0);
     const isInstInc = Boolean(body.price?.I_price?.includes !== undefined ? body.price?.I_price?.includes : isInstallationIncluded);
     const instCost = isInstInc ? finalInstallPrice : 0;
@@ -176,7 +199,9 @@ export async function POST(request: Request) {
         }),
         processingPriceD: effectivePD,
         processingPriceCRC: pCost,
+        shippingPriceD: effectiveSD,
         shippingPriceCRC: sCost,
+        lockedExchangeRate: activeExchangeRate,
         profitCRC: profCost,
         ivaPercent: ivaRate,
         ivaCRC: finalIvaCRC,
@@ -292,6 +317,7 @@ export async function POST(request: Request) {
           price: {
             P_price_D: newProduct.processingPriceD,
             P_price: newProduct.processingPriceCRC,
+            S_price_D: (newProduct as any).shippingPriceD || effectiveSD,
             S_price: newProduct.shippingPriceCRC,
             I_price: {
               includes: Boolean(newProduct.isInstallationIncluded),

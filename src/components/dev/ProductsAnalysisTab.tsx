@@ -39,6 +39,23 @@ interface CategoryMetric {
 }
 
 interface ProductAnalysisData {
+  exchangeRate?: number;
+  profitAlertProducts?: Array<{
+    id: string;
+    sku: string;
+    slug: string;
+    nameEs: string;
+    nameEn: string;
+    brandName: string;
+    priceCRC: number;
+    profitCRC: number;
+    profitDeltaCRC?: number;
+    profitChangePercent?: number;
+    profitLossPercent?: number;
+    hasProfitAlert?: boolean;
+    suggestedTPriceCRC?: number;
+    marginPct: number;
+  }>;
   totalConfirmedOrders: number;
   totalUnitsSold: number;
   totalRevenueCRC: number;
@@ -82,6 +99,11 @@ interface ProductAnalysisData {
       brandName: string;
       priceCRC: number;
       profitCRC: number;
+      profitDeltaCRC?: number;
+      profitChangePercent?: number;
+      profitLossPercent?: number;
+      hasProfitAlert?: boolean;
+      suggestedTPriceCRC?: number;
       marginPct: number;
       imageUrl: string;
       type: "product";
@@ -108,6 +130,11 @@ interface ProductAnalysisData {
       brandName: string;
       priceCRC: number;
       profitCRC: number;
+      profitDeltaCRC?: number;
+      profitChangePercent?: number;
+      profitLossPercent?: number;
+      hasProfitAlert?: boolean;
+      suggestedTPriceCRC?: number;
       marginPct: number;
       imageUrl: string;
       type: "product" | "combo";
@@ -154,6 +181,11 @@ interface ProductAnalysisData {
       brandName: string;
       priceCRC: number;
       profitCRC: number;
+      profitDeltaCRC?: number;
+      profitChangePercent?: number;
+      profitLossPercent?: number;
+      hasProfitAlert?: boolean;
+      suggestedTPriceCRC?: number;
       marginPct: number;
       imageUrl: string;
       type: "product";
@@ -572,12 +604,12 @@ export function ProductsAnalysisTab({
           </div>
         </div>
 
-        {/* Card 4: Product or Combo with Highest Profit Margin */}
+        {/* Card 4: Product or Combo with Highest Profit Margin (Dollar-Adjusted Live Profit) */}
         <div className="bg-gradient-to-br from-emerald-50/80 via-white to-teal-50/40 rounded-3xl p-5 border-2 border-emerald-300 shadow-xs flex flex-col justify-between space-y-3">
           <div>
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-950 border border-emerald-300">
-                {lang === "es" ? "Mayor Margen de Utilidad" : "Highest Profit Margin"}
+                {lang === "es" ? "Mayor Margen Real (Dólar Hoy)" : "Highest Live Margin (USD Adj.)"}
               </span>
               <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-xs">
                 <TrendingUp className="w-4 h-4" />
@@ -603,13 +635,62 @@ export function ProductsAnalysisTab({
             </div>
           </div>
           <div className="pt-2 border-t border-emerald-100 text-[11px] text-gray-700 flex justify-between items-center">
-            <span>{lang === "es" ? "Ganancia Unitaria:" : "Unit Profit:"}</span>
+            <span>{lang === "es" ? "Ganancia Real (con Dólar):" : "Live Profit (USD Adj.):"}</span>
             <span className="font-mono font-bold text-emerald-800">
               +{currencyPrefix}{Math.round(formatVal(metrics.highestMarginOverall?.profitCRC || 0)).toLocaleString()}
             </span>
           </div>
         </div>
       </section>
+
+      {/* =====================================================================
+          3B. 15% PROFIT LOSS PRECAUTION ALERT (If any products lost >= 15% profit)
+         ===================================================================== */}
+      {data.profitAlertProducts && data.profitAlertProducts.length > 0 && (
+        <section className="bg-rose-50/90 rounded-3xl p-5 border-2 border-rose-300 shadow-xs space-y-3">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-2xl bg-rose-600 text-white flex items-center justify-center shrink-0">
+                <AlertCircle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-xs sm:text-sm font-black uppercase tracking-wider text-rose-950">
+                  {lang === "es"
+                    ? `⚠️ Alerta de Precaución: ${data.profitAlertProducts.length} ${data.profitAlertProducts.length === 1 ? "producto ha perdido" : "productos han perdido"} ≥ 15% de su ganancia por fluctuación del dólar`
+                    : `⚠️ Precaution Alert: ${data.profitAlertProducts.length} ${data.profitAlertProducts.length === 1 ? "product has lost" : "products have lost"} ≥ 15% of profit due to USD fluctuation`}
+                </h3>
+                <p className="text-[11px] text-rose-800">
+                  {lang === "es"
+                    ? "Las ganancias proyectadas aquí ya reflejan el valor actual del dólar. Revisa estos productos en el Catálogo para ajustar su T_price bloqueado."
+                    : "Projected profits shown here already reflect the live dollar value. Review these products in Catalog Manager to adjust their locked T_price."}
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5">
+            {data.profitAlertProducts.map((ap) => (
+              <div key={ap.id} className="bg-white rounded-2xl p-3 border border-rose-200 flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="text-xs font-extrabold text-slate-900 truncate">
+                    {ap.sku} — {lang === "es" ? ap.nameEs : ap.nameEn}
+                  </div>
+                  <div className="text-[10px] font-mono text-slate-500">
+                    T_price: {currencyPrefix}{Math.round(formatVal(ap.priceCRC)).toLocaleString()} → Sugerido: {currencyPrefix}{Math.round(formatVal(ap.suggestedTPriceCRC || ap.priceCRC)).toLocaleString()}
+                  </div>
+                </div>
+                <div className="text-right shrink-0">
+                  <span className="text-[10px] font-mono font-black px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-300 block">
+                    -{ap.profitLossPercent}%
+                  </span>
+                  <span className="text-[10px] font-mono font-bold text-rose-700">
+                    {currencyPrefix}{Math.round(formatVal(ap.profitCRC)).toLocaleString()}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* =====================================================================
           4. COMPARISON OF TOP 5 MOST SOLD CATEGORIES (Core Requested Feature)
@@ -951,10 +1032,10 @@ export function ProductsAnalysisTab({
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-extrabold uppercase tracking-wide text-emerald-950 flex items-center gap-1.5">
                     <ShoppingBag className="w-3.5 h-3.5 text-emerald-700" />
-                    <span>{lang === "es" ? "Productos con Mayor Margen (%)" : "Top Margin Products (%)"}</span>
+                    <span>{lang === "es" ? "Productos con Mayor Margen Real (%)" : "Top Live Margin Products (%)"}</span>
                   </span>
                   <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full">
-                    Catálogo Activo
+                    {lang === "es" ? "Ajustado al Dólar" : "USD-Adjusted"}
                   </span>
                 </div>
                 <div className="divide-y divide-emerald-100/80 max-h-[350px] overflow-y-auto pr-1">
@@ -962,8 +1043,15 @@ export function ProductsAnalysisTab({
                     rankings.topMarginProducts.map((p, idx) => (
                       <div key={p.id || idx} className="py-2.5 flex items-center justify-between gap-2">
                         <div className="min-w-0">
-                          <div className="text-xs font-extrabold text-slate-900 truncate">
-                            {lang === "es" ? p.nameEs : p.nameEn}
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-extrabold text-slate-900 truncate">
+                              {lang === "es" ? p.nameEs : p.nameEn}
+                            </span>
+                            {p.hasProfitAlert && (
+                              <span className="text-[9px] font-mono font-black px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 border border-rose-300 shrink-0">
+                                ⚠️ -{p.profitLossPercent}%
+                              </span>
+                            )}
                           </div>
                           <div className="text-[10px] text-slate-500">
                             {p.brandName} • {currencyPrefix}{Math.round(formatVal(p.priceCRC)).toLocaleString()}
@@ -973,7 +1061,7 @@ export function ProductsAnalysisTab({
                           <div className="text-xs font-black text-emerald-800 font-mono">
                             {p.marginPct}%
                           </div>
-                          <div className="text-[10px] text-emerald-700 font-mono">
+                          <div className={`text-[10px] font-mono font-bold ${p.hasProfitAlert ? "text-rose-700" : "text-emerald-700"}`}>
                             +{currencyPrefix}{Math.round(formatVal(p.profitCRC)).toLocaleString()}
                           </div>
                         </div>

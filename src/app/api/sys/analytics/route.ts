@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import { prisma } from "@/lib/prisma";
 import { requireStealthSession } from "@/lib/stealthAuth";
+import { computeProductLivePricing } from "@/lib/productPricing";
 
 export const dynamic = "force-dynamic";
 
@@ -81,9 +82,15 @@ export async function GET() {
           nameEn: true,
           priceCRC: true,
           profitCRC: true,
+          processingPriceD: true,
           processingPriceCRC: true,
+          shippingPriceD: true,
           shippingPriceCRC: true,
+          lockedExchangeRate: true,
           installationPriceCRC: true,
+          isInstallationIncluded: true,
+          discountPercent: true,
+          ivaPercent: true,
           isArchived: true,
         },
       }),
@@ -324,10 +331,12 @@ export async function GET() {
         const unitPriceCRC = Number(item.priceCRC) || matchedProduct?.priceCRC || 0;
 
         if (matchedProduct) {
-          const unitCost = (matchedProduct.processingPriceCRC || 0) + (matchedProduct.shippingPriceCRC || 0);
+          // Project live profit with USD exchange rate fluctuation reflected (not theoretical initial profit)
+          const livePricing = computeProductLivePricing(matchedProduct, sellRate);
+          const unitCost = livePricing.liveBaseCostCRC;
           const unitProfit =
             matchedProduct.profitCRC > 0
-              ? matchedProduct.profitCRC
+              ? livePricing.effectiveProfitCRC
               : unitCost > 0
               ? Math.max(0, unitPriceCRC - unitCost)
               : Math.round(unitPriceCRC * 0.28);
@@ -621,9 +630,34 @@ export async function GET() {
         ? 100
         : 0;
 
+    const catalogProfitProjections = products
+      .filter((p) => !p.isArchived)
+      .map((p) => ({
+        product: p,
+        livePricing: computeProductLivePricing(p, sellRate),
+      }));
+
+    const profitAlertProducts = catalogProfitProjections
+      .filter((item) => item.livePricing.hasProfitAlert)
+      .map(({ product: p, livePricing }) => ({
+        id: p.id,
+        sku: p.sku,
+        slug: p.slug,
+        nameEs: p.nameEs,
+        nameEn: p.nameEn,
+        lockedTPriceCRC: livePricing.lockedTPriceCRC,
+        initialProfitCRC: livePricing.initialProfitCRC,
+        effectiveProfitCRC: livePricing.effectiveProfitCRC,
+        profitDeltaCRC: livePricing.profitDeltaCRC,
+        profitLossPercent: livePricing.profitLossPercent,
+        alertThresholdProfitCRC: livePricing.alertThresholdProfitCRC,
+        suggestedTPriceCRC: livePricing.suggestedTPriceCRC,
+      }));
+
     return NextResponse.json({
       success: true,
       exchangeRate: sellRate,
+      profitAlertProducts,
       kpis: {
         grossOrdersIncomeCRC,
         ordersProfitCRC,

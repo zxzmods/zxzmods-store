@@ -1,4 +1,6 @@
 import { prisma } from "@/lib/prisma";
+import { computeProductLivePricing } from "@/lib/productPricing";
+import { getLiveExchangeRate } from "@/lib/exchangeRate";
 
 export const MONTH_NAMES_ES = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -37,7 +39,7 @@ export async function syncMonthlyClosure(month: number, year: number, persist = 
   const endDate = new Date(Date.UTC(year, month, 1, 0, 0, 0, 0));
 
   // 1. Fetch real orders and catalog products for this month
-  const [orders, products] = await Promise.all([
+  const [orders, products, ratesConfig] = await Promise.all([
     prisma.order.findMany({
       where: {
         createdAt: {
@@ -56,11 +58,23 @@ export async function syncMonthlyClosure(month: number, year: number, persist = 
         slug: true,
         priceCRC: true,
         profitCRC: true,
+        processingPriceD: true,
         processingPriceCRC: true,
+        shippingPriceD: true,
         shippingPriceCRC: true,
+        lockedExchangeRate: true,
       },
     }),
+    prisma.logisticsRateConfig.findUnique({
+      where: { id: "rates-config" },
+    }),
   ]);
+
+  const liveRateInfo = await getLiveExchangeRate().catch(() => ({ rate: 455.21 }));
+  const sellRate =
+    ratesConfig?.useManualExchangeRate && ratesConfig?.manualExchangeRateCRC
+      ? ratesConfig.manualExchangeRateCRC
+      : liveRateInfo.rate || ratesConfig?.cachedExchangeRateCRC || 455.21;
 
   const productMap = new Map<string, (typeof products)[number]>();
   for (const p of products) {
@@ -154,11 +168,11 @@ export async function syncMonthlyClosure(month: number, year: number, persist = 
         const matched = productMap.get(rawId) || productMap.get(sku);
         const unitPriceCRC = Number(item.priceCRC) || matched?.priceCRC || 0;
         if (matched) {
-          const unitCost =
-            (matched.processingPriceCRC || 0) + (matched.shippingPriceCRC || 0);
+          const livePricing = computeProductLivePricing(matched, sellRate);
+          const unitCost = livePricing.liveBaseCostCRC;
           const unitProfit =
             matched.profitCRC > 0
-              ? matched.profitCRC
+              ? livePricing.effectiveProfitCRC
               : unitCost > 0
               ? Math.max(0, unitPriceCRC - unitCost)
               : Math.round(unitPriceCRC * 0.28);

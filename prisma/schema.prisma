@@ -55,9 +55,11 @@ model Product {
   discountPercent      Int                    @default(0) // Percentage discount (0-100)
   installationPriceCRC Int                    // Installation labor cost in CRC (I_price.I_price)
   processingPriceD     Float                  @default(0) // P_price_D (USD)
-  processingPriceCRC   Int                    @default(0) // P_price (CRC)
-  shippingPriceCRC     Int                    @default(0) // S_price (CRC)
-  profitCRC            Int                    @default(0) // profit (CRC)
+  processingPriceCRC   Int                    @default(0) // P_price (CRC locked at save)
+  shippingPriceD       Float                  @default(0) // S_price (USD)
+  shippingPriceCRC     Int                    @default(0) // S_price (CRC locked at save)
+  lockedExchangeRate   Float                  @default(0) // Exchange rate when T_price was locked
+  profitCRC            Int                    @default(0) // Initial set profit (CRC)
   ivaPercent           Int                    @default(13) // IVA percentage (default 13%)
   ivaCRC               Int                    @default(0) // Calculated IVA in CRC included in priceCRC
   totalPriceD          String                 @default("calculate in checkout with the selling value of dolar to colones") // T_price_D

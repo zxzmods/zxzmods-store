@@ -32,6 +32,18 @@ import type { TimeBucketStat } from "@/app/api/sys/analytics/route";
 
 export interface AnalyticsPayload {
   exchangeRate: number;
+  profitAlertProducts?: Array<{
+    id: string;
+    sku: string;
+    slug: string;
+    nameEs: string;
+    nameEn: string;
+    priceCRC: number;
+    effectiveProfitCRC: number;
+    profitLossPercent: number;
+    suggestedTPriceCRC: number;
+    hasProfitAlert: boolean;
+  }>;
   kpis: {
     grossOrdersIncomeCRC: number;
     ordersProfitCRC: number;
@@ -58,6 +70,7 @@ export interface AnalyticsPayload {
     activeProductsCount: number;
     activeCombosCount: number;
     packagesCount: number;
+    profitAlertCount?: number;
   };
   statusDistribution: Record<string, number>;
   serviceTypeDistribution: Record<string, { count: number; revenueCRC: number }>;
@@ -346,6 +359,36 @@ export function BackdoorOverviewTab({
 
   return (
     <div className="space-y-5">
+      {/* 15% Profit Loss Precaution Alert Banner */}
+      {analytics?.profitAlertProducts && analytics.profitAlertProducts.length > 0 && (
+        <div className="bg-rose-50/90 border-2 border-rose-300 rounded-[24px] p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-rose-600 text-white flex items-center justify-center shrink-0">
+              <AlertCircle className="w-5 h-5" />
+            </div>
+            <div>
+              <span className="text-xs font-extrabold uppercase tracking-wider text-rose-950 block">
+                {lang === "es"
+                  ? `⚠️ Sistema de Precaución: ${analytics.profitAlertProducts.length} ${analytics.profitAlertProducts.length === 1 ? "producto perdió" : "productos perdieron"} ≥ 15% de ganancia por el dólar`
+                  : `⚠️ Precaution System: ${analytics.profitAlertProducts.length} ${analytics.profitAlertProducts.length === 1 ? "product lost" : "products lost"} ≥ 15% profit due to USD fluctuation`}
+              </span>
+              <span className="text-[11px] text-rose-800 block mt-0.5">
+                {lang === "es"
+                  ? `Las estadísticas ya proyectan la ganancia real ajustada al dólar (₡${rate.toFixed(2)}). Revisa el catálogo para actualizar el T_price bloqueado.`
+                  : `Stats project the live dollar-adjusted profit (₡${rate.toFixed(2)}). Open the catalog to adjust locked T_price values.`}
+              </span>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => onNavigateTab("catalog")}
+            className="px-4 py-2 rounded-full bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition shrink-0 cursor-pointer shadow-xs"
+          >
+            {lang === "es" ? "Ajustar Precios en Catálogo →" : "Adjust Prices in Catalog →"}
+          </button>
+        </div>
+      )}
+
       {/* ===================================================================== */}
       {/* TOP BENTO ROW (3 Main Cards matching Vertix Screenshot)              */}
       {/* ===================================================================== */}
