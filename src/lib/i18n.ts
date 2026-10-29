@@ -1940,6 +1940,13 @@ export interface Translations {
   homeProductShowcasePrevious: string;
   homeProductShowcaseNext: string;
   homeProductShowcaseViewMore: string;
+
+  // Catalog Pagination
+  paginationShowing: string;
+  paginationOf: string;
+  paginationPrevious: string;
+  paginationNext: string;
+  paginationPage: string;
 }
 
 
@@ -3861,6 +3868,13 @@ export const translations: Record<Language, Translations> = {
     homeProductShowcasePrevious: "Anterior",
     homeProductShowcaseNext: "Siguiente",
     homeProductShowcaseViewMore: "Ver Más",
+
+    // Catalog Pagination
+    paginationShowing: "Mostrando",
+    paginationOf: "de",
+    paginationPrevious: "Anterior",
+    paginationNext: "Siguiente",
+    paginationPage: "Página",
   },
 
   en: {
@@ -5780,6 +5794,13 @@ export const translations: Record<Language, Translations> = {
     homeProductShowcasePrevious: "Previous",
     homeProductShowcaseNext: "Next",
     homeProductShowcaseViewMore: "View More",
+
+    // Catalog Pagination
+    paginationShowing: "Showing",
+    paginationOf: "of",
+    paginationPrevious: "Previous",
+    paginationNext: "Next",
+    paginationPage: "Page",
   },
 
 };

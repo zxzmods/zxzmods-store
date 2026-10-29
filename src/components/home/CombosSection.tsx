@@ -1,12 +1,14 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useMemo, useRef } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
+import { motion, AnimatePresence } from "framer-motion";
 import { useLanguage } from "@/context/LanguageContext";
 import { useCart } from "@/context/CartContext";
 import { useGarage } from "@/context/GarageContext";
 import { formatCRC } from "@/lib/i18n";
+import { CatalogPagination } from "@/components/ui/CatalogPagination";
 import {
   PackagePlus,
   Wrench,
@@ -53,6 +55,28 @@ export function CombosSection({ combos }: CombosSectionProps) {
   const { addItem } = useCart();
   const router = useRouter();
 
+  const ITEMS_PER_PAGE = 20;
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageDirection, setPageDirection] = useState<"next" | "prev">("next");
+  const gridTopRef = useRef<HTMLDivElement>(null);
+
+  const totalPages = Math.max(1, Math.ceil(combos.length / ITEMS_PER_PAGE));
+  const safeCurrentPage = Math.min(Math.max(1, currentPage), totalPages);
+  const paginatedCombos = useMemo(() => {
+    const startIdx = (safeCurrentPage - 1) * ITEMS_PER_PAGE;
+    return combos.slice(startIdx, startIdx + ITEMS_PER_PAGE);
+  }, [combos, safeCurrentPage, ITEMS_PER_PAGE]);
+
+  const handlePageChange = (newPage: number, direction: "next" | "prev") => {
+    setPageDirection(direction);
+    setCurrentPage(newPage);
+    if (gridTopRef.current) {
+      const yOffset = -100;
+      const y = gridTopRef.current.getBoundingClientRect().top + window.scrollY + yOffset;
+      window.scrollTo({ top: Math.max(0, y), behavior: "smooth" });
+    }
+  };
+
   // Track per-combo installation toggle
   const [installSelections, setInstallSelections] = useState<Record<string, boolean>>({});
 
@@ -85,7 +109,7 @@ export function CombosSection({ combos }: CombosSectionProps) {
 
   return (
     <section id="combos" className="py-20 bg-[#121214] text-[#E6E6E8] border-t border-[#2E2E34]">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8">
         {/* Section Header */}
         <div className="text-center max-w-3xl mx-auto mb-14">
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#C02030]/15 border border-[#C02030]/40 text-xs font-semibold text-[#C02030] uppercase tracking-wider mb-3">
@@ -100,9 +124,19 @@ export function CombosSection({ combos }: CombosSectionProps) {
           </p>
         </div>
 
-        {/* Combos Cards Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {combos.map((combo) => {
+        <div ref={gridTopRef} />
+
+        {/* Combos Cards Grid: 4 per row, max 5 rows (20 items) per page */}
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={`combos-section-page-${safeCurrentPage}`}
+            initial={{ opacity: 0, x: pageDirection === "next" ? 40 : -40 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: pageDirection === "next" ? -40 : 40 }}
+            transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5"
+          >
+            {paginatedCombos.map((combo) => {
             const hasInstall = !!installSelections[combo.id];
 
             return (
@@ -250,7 +284,16 @@ export function CombosSection({ combos }: CombosSectionProps) {
               </div>
             );
           })}
-        </div>
+          </motion.div>
+        </AnimatePresence>
+
+        <CatalogPagination
+          currentPage={safeCurrentPage}
+          totalItems={combos.length}
+          itemsPerPage={ITEMS_PER_PAGE}
+          onPageChange={handlePageChange}
+          layoutIdPrefix="home-combos-pagination"
+        />
       </div>
     </section>
   );

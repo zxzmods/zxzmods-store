@@ -1,14 +1,16 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { motion, AnimatePresence } from "framer-motion";
 import { Navbar } from "@/components/layout/Navbar";
 import { NotificationBanner } from "@/components/layout/NotificationBanner";
 import { GarageModal } from "@/components/garage/GarageModal";
 import { CartDrawer } from "@/components/cart/CartDrawer";
 import { FloatingConcierge } from "@/components/home/FloatingConcierge";
+import { CatalogPagination } from "@/components/ui/CatalogPagination";
 import { useLanguage } from "@/context/LanguageContext";
 import { useCart } from "@/context/CartContext";
 import { useGarage } from "@/context/GarageContext";
@@ -59,6 +61,7 @@ export default function CombosPage() {
   const { vehicle, openModal } = useGarage();
   const router = useRouter();
 
+  const ITEMS_PER_PAGE = 20; // 4 combos per row × 5 rows = 20 items max per page
   const [combos, setCombos] = useState<ComboItem[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
@@ -68,6 +71,9 @@ export default function CombosPage() {
   const [discountedOnly, setDiscountedOnly] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [loading, setLoading] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageDirection, setPageDirection] = useState<"next" | "prev">("next");
+  const gridTopRef = useRef<HTMLDivElement>(null);
 
   const [availableVehicleBrands, setAvailableVehicleBrands] = useState<Array<{ slug: string; title: string; count: number }>>([]);
   const [availableDistributorBrands, setAvailableDistributorBrands] = useState<Array<{ name: string; count: number }>>([]);
@@ -130,6 +136,30 @@ export default function CombosPage() {
   // Filter combos based on active category & search query
   const filteredCombos = combos;
 
+  // Reset pagination to page 1 when filters or search query change
+  useEffect(() => {
+    setCurrentPage(1);
+    setPageDirection("next");
+  }, [searchQuery, selectedCategory, selectedVehicleBrand, selectedDistributorBrand, inStockOnly, discountedOnly]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredCombos.length / ITEMS_PER_PAGE));
+  const safeCurrentPage = Math.min(Math.max(1, currentPage), totalPages);
+
+  const paginatedCombos = useMemo(() => {
+    const startIdx = (safeCurrentPage - 1) * ITEMS_PER_PAGE;
+    return filteredCombos.slice(startIdx, startIdx + ITEMS_PER_PAGE);
+  }, [filteredCombos, safeCurrentPage, ITEMS_PER_PAGE]);
+
+  const handlePageChange = (newPage: number, direction: "next" | "prev") => {
+    setPageDirection(direction);
+    setCurrentPage(newPage);
+    if (gridTopRef.current) {
+      const yOffset = -100;
+      const y = gridTopRef.current.getBoundingClientRect().top + window.scrollY + yOffset;
+      window.scrollTo({ top: Math.max(0, y), behavior: "smooth" });
+    }
+  };
+
   // Compute counts per category dynamically
   const categoryCounts = useMemo(() => {
     const counts: Record<string, number> = { all: combos.length };
@@ -144,7 +174,7 @@ export default function CombosPage() {
       <NotificationBanner />
       <Navbar />
 
-      <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-24 sm:pt-28 pb-16 w-full">
+      <main className="flex-1 max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 pt-24 sm:pt-28 pb-16 w-full">
         {/* Minimalist Top Bar: Breadcrumb + Sleek Vehicle Fitment Chip */}
         <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
           <div className="flex items-center gap-2 text-xs text-gray-500">
@@ -459,15 +489,17 @@ export default function CombosPage() {
           </div>
         </div>
 
-        {/* Real Loading Skeleton (Rule 7: Mandatory Animated Skeleton Loaders) */}
+        <div ref={gridTopRef} />
+
+        {/* Real Loading Skeleton (Rule 7: Mandatory Animated Skeleton Loaders, 4 columns per row) */}
         {loading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {[1, 2, 3].map((i) => (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+            {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
               <div
                 key={i}
                 className="bg-white border border-gray-200 rounded-3xl overflow-hidden p-5 space-y-4 animate-pulse shadow-sm"
               >
-                <div className="w-full h-56 bg-gray-200 rounded-2xl" />
+                <div className="w-full h-48 bg-gray-200 rounded-2xl" />
                 <div className="space-y-2">
                   <div className="h-3 bg-gray-200 rounded w-1/3" />
                   <div className="h-5 bg-gray-200 rounded w-4/5" />
@@ -500,129 +532,170 @@ export default function CombosPage() {
             </button>
           </div>
         ) : (
-          /* Simplified Minimalist Combo Cards (Click to Redirect) */
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredCombos.map((combo) => {
-              const displayPrice =
-                currency === "USD"
-                  ? formatUSD(convertCRCToUSD(combo.priceCRC, sellRate))
-                  : formatCRC(combo.priceCRC);
+          /* Simplified Minimalist Combo Cards: 4 combos per row, max 5 rows (20 items) per page */
+          <>
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={`combos-page-${safeCurrentPage}`}
+                initial={{
+                  opacity: 0,
+                  x: pageDirection === "next" ? 40 : -40,
+                  scale: 0.99,
+                }}
+                animate={{
+                  opacity: 1,
+                  x: 0,
+                  scale: 1,
+                }}
+                exit={{
+                  opacity: 0,
+                  x: pageDirection === "next" ? -40 : 40,
+                  scale: 0.99,
+                }}
+                transition={{
+                  duration: 0.35,
+                  ease: [0.22, 1, 0.36, 1],
+                }}
+                className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5"
+              >
+                {paginatedCombos.map((combo, idx) => {
+                  const displayPrice =
+                    currency === "USD"
+                      ? formatUSD(convertCRCToUSD(combo.priceCRC, sellRate))
+                      : formatCRC(combo.priceCRC);
 
-              const displayOriginalPrice =
-                currency === "USD"
-                  ? formatUSD(convertCRCToUSD(combo.originalPriceCRC, sellRate))
-                  : formatCRC(combo.originalPriceCRC);
+                  const displayOriginalPrice =
+                    currency === "USD"
+                      ? formatUSD(convertCRCToUSD(combo.originalPriceCRC, sellRate))
+                      : formatCRC(combo.originalPriceCRC);
 
-              return (
-                <div
-                  key={combo.id}
-                  onClick={() => router.push(`/combos/${combo.slug}`)}
-                  className="group bg-white rounded-3xl border border-gray-200/90 hover:border-gray-400 overflow-hidden shadow-xs hover:shadow-lg transition-all duration-300 flex flex-col justify-between cursor-pointer"
-                >
-                  <div>
-                    {/* Minimalist Image Showcase */}
-                    <div className="relative w-full h-56 bg-[#F4F5F7] overflow-hidden flex items-center justify-center p-4">
-                      <Image
-                        src={combo.imageUrl}
-                        alt={lang === "es" ? combo.titleEs : combo.titleEn}
-                        fill
-                        className="object-contain p-4 group-hover:scale-105 transition-transform duration-500"
-                        sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-                      />
+                  return (
+                    <motion.div
+                      key={combo.id}
+                      initial={{ opacity: 0, y: 14 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{
+                        duration: 0.3,
+                        delay: Math.min(idx * 0.02, 0.3),
+                        ease: [0.22, 1, 0.36, 1],
+                      }}
+                      onClick={() => router.push(`/combos/${combo.slug}`)}
+                      className="group bg-white rounded-3xl border border-gray-200/90 hover:border-gray-400 overflow-hidden shadow-xs hover:shadow-lg transition-all duration-300 flex flex-col justify-between cursor-pointer h-full"
+                    >
+                      <div>
+                        {/* Minimalist Image Showcase */}
+                        <div className="relative w-full h-48 bg-[#F4F5F7] overflow-hidden flex items-center justify-center p-4">
+                          <Image
+                            src={combo.imageUrl}
+                            alt={lang === "es" ? combo.titleEs : combo.titleEn}
+                            fill
+                            className="object-contain p-3 group-hover:scale-105 transition-transform duration-500"
+                            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
+                          />
 
-                      {/* Clean Badge & Discount Tags */}
-                      <div className="absolute top-3.5 left-3.5 flex items-center gap-1.5 flex-wrap">
-                        <span className="bg-black/85 backdrop-blur-md text-white text-[10px] font-semibold tracking-wider uppercase px-2.5 py-0.5 rounded-full">
-                          {getCategoryLabel(combo.category)}
-                        </span>
-                        {/* Dynamic Stock Status Chip based on listed products */}
-                        {combo.stockStatus === "OUT_OF_STOCK" || combo.isAvailable === false ? (
-                          <span className="bg-rose-600/90 backdrop-blur-md text-white text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-full flex items-center gap-1 shadow-xs">
-                            <AlertCircle className="w-2.5 h-2.5" />
-                            <span>{t.devComboStockOutOfStock}</span>
-                          </span>
-                        ) : combo.stockStatus === "PRE_ORDER" ? (
-                          <span className="bg-blue-600/90 backdrop-blur-md text-white text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-full flex items-center gap-1 shadow-xs">
-                            <Calendar className="w-2.5 h-2.5" />
-                            <span>{t.devComboStockPreOrder}</span>
-                          </span>
-                        ) : combo.stockStatus === "LOW_STOCK" ? (
-                          <span className="bg-amber-600/90 backdrop-blur-md text-white text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-full flex items-center gap-1 shadow-xs">
-                            <AlertTriangle className="w-2.5 h-2.5" />
-                            <span>{t.devComboStockLowStock}</span>
-                          </span>
-                        ) : (
-                          <span className="bg-emerald-600/90 backdrop-blur-md text-white text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-full flex items-center gap-1 shadow-xs">
-                            <CheckCircle2 className="w-2.5 h-2.5" />
-                            <span>{t.devComboStockInStock}</span>
-                          </span>
-                        )}
-                      </div>
-
-                      {combo.discountPercent > 0 && (
-                        <div className="absolute top-3.5 right-3.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 text-[11px] font-mono font-bold px-2 py-0.5 rounded-full backdrop-blur-md">
-                          -{combo.discountPercent}%
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Product Details (Removed boxed items per request) */}
-                    <div className="p-5">
-                      <div className="mb-2">
-                        <span className="text-[11px] font-bold text-[#C02030] tracking-wide uppercase">
-                          {lang === "es" ? combo.badgeEs : combo.badgeEn}
-                        </span>
-                        <h2 className="text-base font-bold text-gray-900 tracking-tight leading-snug mt-0.5 group-hover:text-[#C02030] transition-colors">
-                          {lang === "es" ? combo.titleEs : combo.titleEn}
-                        </h2>
-                      </div>
-
-                      {/* Clean Price Block */}
-                      <div className="pt-2 mb-1">
-                        <div className="flex items-baseline gap-2">
-                          <span className="text-xl font-extrabold font-mono text-gray-900">
-                            {displayPrice}
-                          </span>
-                          {combo.originalPriceCRC > combo.priceCRC && (
-                            <span className="text-xs text-gray-400 line-through font-mono">
-                              {displayOriginalPrice}
+                          {/* Clean Badge & Discount Tags */}
+                          <div className="absolute top-3 left-3 flex items-center gap-1.5 flex-wrap">
+                            <span className="bg-black/85 backdrop-blur-md text-white text-[10px] font-semibold tracking-wider uppercase px-2.5 py-0.5 rounded-full">
+                              {getCategoryLabel(combo.category)}
                             </span>
+                            {/* Dynamic Stock Status Chip based on listed products */}
+                            {combo.stockStatus === "OUT_OF_STOCK" || combo.isAvailable === false ? (
+                              <span className="bg-rose-600/90 backdrop-blur-md text-white text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-full flex items-center gap-1 shadow-xs">
+                                <AlertCircle className="w-2.5 h-2.5" />
+                                <span>{t.devComboStockOutOfStock}</span>
+                              </span>
+                            ) : combo.stockStatus === "PRE_ORDER" ? (
+                              <span className="bg-blue-600/90 backdrop-blur-md text-white text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-full flex items-center gap-1 shadow-xs">
+                                <Calendar className="w-2.5 h-2.5" />
+                                <span>{t.devComboStockPreOrder}</span>
+                              </span>
+                            ) : combo.stockStatus === "LOW_STOCK" ? (
+                              <span className="bg-amber-600/90 backdrop-blur-md text-white text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-full flex items-center gap-1 shadow-xs">
+                                <AlertTriangle className="w-2.5 h-2.5" />
+                                <span>{t.devComboStockLowStock}</span>
+                              </span>
+                            ) : (
+                              <span className="bg-emerald-600/90 backdrop-blur-md text-white text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-full flex items-center gap-1 shadow-xs">
+                                <CheckCircle2 className="w-2.5 h-2.5" />
+                                <span>{t.devComboStockInStock}</span>
+                              </span>
+                            )}
+                          </div>
+
+                          {combo.discountPercent > 0 && (
+                            <div className="absolute top-3 right-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 text-[11px] font-mono font-bold px-2 py-0.5 rounded-full backdrop-blur-md">
+                              -{combo.discountPercent}%
+                            </div>
                           )}
                         </div>
+
+                        {/* Product Details */}
+                        <div className="p-4 sm:p-5">
+                          <div className="mb-2">
+                            <span className="text-[10px] font-bold text-[#C02030] tracking-wide uppercase">
+                              {lang === "es" ? combo.badgeEs : combo.badgeEn}
+                            </span>
+                            <h2 className="text-base font-bold text-gray-900 tracking-tight leading-snug mt-0.5 group-hover:text-[#C02030] transition-colors line-clamp-2">
+                              {lang === "es" ? combo.titleEs : combo.titleEn}
+                            </h2>
+                          </div>
+
+                          {/* Clean Price Block */}
+                          <div className="pt-2 mb-1">
+                            <div className="flex items-baseline gap-2">
+                              <span className="text-xl font-extrabold font-mono text-gray-900">
+                                {displayPrice}
+                              </span>
+                              {combo.originalPriceCRC > combo.priceCRC && (
+                                <span className="text-xs text-gray-400 line-through font-mono">
+                                  {displayOriginalPrice}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  </div>
 
-                  {/* Minimalist CTA Section - Entices User to Click and Redirect */}
-                  <div className="p-5 pt-0 flex items-center gap-2">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        router.push(`/combos/${combo.slug}`);
-                      }}
-                      className="flex-1 flex items-center justify-center gap-1.5 py-3 px-4 rounded-2xl bg-[#111827] hover:bg-[#C02030] text-white font-bold text-xs tracking-wider uppercase transition-colors shadow-sm group-hover:bg-[#C02030]"
-                    >
-                      <span>{t.comboViewDetails}</span>
-                      <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
-                    </button>
+                      {/* Minimalist CTA Section - Entices User to Click and Redirect */}
+                      <div className="p-4 sm:p-5 pt-0 flex items-center gap-2">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            router.push(`/combos/${combo.slug}`);
+                          }}
+                          className="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3.5 rounded-2xl bg-[#111827] hover:bg-[#C02030] text-white font-bold text-xs tracking-wider uppercase transition-colors shadow-sm group-hover:bg-[#C02030]"
+                        >
+                          <span>{t.comboViewDetails}</span>
+                          <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+                        </button>
 
-                    <Link
-                      href={`/cotizar?tipo=combo&id=${combo.slug}`}
-                      onClick={(e) => e.stopPropagation()}
-                      className="p-3 rounded-2xl bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors"
-                      title={
-                        lang === "es"
-                          ? "Cotizar por WhatsApp o consultar"
-                          : "Inquire or custom quote"
-                      }
-                    >
-                      <MessageCircle className="w-4 h-4" />
-                    </Link>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                        <Link
+                          href={`/cotizar?tipo=combo&id=${combo.slug}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="p-2.5 rounded-2xl bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors"
+                          title={
+                            lang === "es"
+                              ? "Cotizar por WhatsApp o consultar"
+                              : "Inquire or custom quote"
+                          }
+                        >
+                          <MessageCircle className="w-4 h-4" />
+                        </Link>
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </motion.div>
+            </AnimatePresence>
+
+            <CatalogPagination
+              currentPage={safeCurrentPage}
+              totalItems={filteredCombos.length}
+              itemsPerPage={ITEMS_PER_PAGE}
+              onPageChange={handlePageChange}
+              layoutIdPrefix="combos-pagination"
+            />
+          </>
         )}
       </main>
 

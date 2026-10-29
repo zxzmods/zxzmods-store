@@ -77,6 +77,16 @@ const nextConfig = {
         permanent: true,
       },
       {
+        source: "/products",
+        destination: "/productos",
+        permanent: true,
+      },
+      {
+        source: "/products/:slug*",
+        destination: "/productos/:slug*",
+        permanent: true,
+      },
+      {
         source: "/garaje/configurar",
         destination: "/garaje/registrar",
         permanent: true,

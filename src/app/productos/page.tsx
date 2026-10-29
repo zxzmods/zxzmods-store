@@ -15,6 +15,8 @@ import { useGarage } from "@/context/GarageContext";
 import { getWhatsAppUrl } from "@/config/company";
 import { formatCRC, getCategoryLabel } from "@/lib/i18n";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { CatalogPagination } from "@/components/ui/CatalogPagination";
+import { motion, AnimatePresence } from "framer-motion";
 import { ProductItem, normalizeBrandList, isPlatformOrVehicleMatch, detectVehiclePlatform, isUniversalFit, SelectedParameterItem } from "@/lib/products";
 import { getSxsBrandBySlug } from "@/lib/sxsBrands";
 import { SxsBrandIntro } from "@/components/intro/SxsBrandIntro";
@@ -187,11 +189,11 @@ function ProductCatalogCard({
   return (
     <div
       onClick={onClick}
-      className="rounded-3xl bg-gradient-to-b from-[#FBFBFC] via-[#FFFFFF] to-[#F4F5F7] border border-gray-200/90 hover:border-gray-400 transition-all duration-300 p-7 flex flex-col justify-between shadow-sm hover:shadow-md group relative cursor-pointer"
+      className="rounded-3xl bg-gradient-to-b from-[#FBFBFC] via-[#FFFFFF] to-[#F4F5F7] border border-gray-200/90 hover:border-gray-400 transition-all duration-300 p-5 flex flex-col justify-between shadow-sm hover:shadow-md group relative cursor-pointer h-full"
     >
       <div>
         {/* Header: Category & Brand Badges */}
-        <div className="flex items-center justify-between gap-2 mb-3">
+        <div className="flex items-center justify-between gap-2 mb-2.5">
           <div className="flex flex-wrap items-center gap-1.5">
             {product.category?.map((cat) => (
               <span
@@ -216,7 +218,7 @@ function ProductCatalogCard({
         </div>
 
         {/* Product Image Showcase (Updates when variant/color button is selected) */}
-        <div className="relative h-56 w-full my-3 flex items-center justify-center bg-white/60 rounded-2xl border border-gray-100 overflow-hidden">
+        <div className="relative h-48 w-full my-2.5 flex items-center justify-center bg-white/60 rounded-2xl border border-gray-100 overflow-hidden">
           {Boolean(product.discountPercent && product.discountPercent > 0) && (
             <span className="absolute top-2.5 left-2.5 z-10 bg-[#C02030] text-white text-[10px] font-black px-2.5 py-1 rounded-full shadow-md tracking-wider uppercase">
               -{product.discountPercent}% OFF
@@ -232,19 +234,19 @@ function ProductCatalogCard({
             src={imgSrc}
             alt={lang === "en" && (product as any).nameEn ? (product as any).nameEn : product.p_title}
             fill
-            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
             className="object-contain p-2 group-hover:scale-105 transition-transform duration-500"
             onError={() => setImgSrc("/images/logo.png")}
           />
         </div>
 
         {/* Star Reviews */}
-        <div className="mb-2">
+        <div className="mb-1.5">
           <StarRating reviews={product.reviews} />
         </div>
 
         {/* Title */}
-        <h3 className="text-lg font-bold text-[#111827] mb-2 leading-snug group-hover:text-[#C02030] transition-colors">
+        <h3 className="text-base font-bold text-[#111827] mb-1.5 leading-snug group-hover:text-[#C02030] transition-colors line-clamp-2">
           {lang === "en" && (product as any).nameEn ? (product as any).nameEn : product.p_title}
         </h3>
 
@@ -381,8 +383,12 @@ function ProductsContent() {
   const { requireVehicleBeforeAction, vehicle } = useGarage();
 
   // Component state
+  const ITEMS_PER_PAGE = 20; // 4 products per row × 5 rows = 20 items max per page
   const [products, setProducts] = useState<ProductItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageDirection, setPageDirection] = useState<"next" | "prev">("next");
+  const gridTopRef = useRef<HTMLDivElement>(null);
   const [searchQuery, setSearchQuery] = useState(initialQuery);
   const [selectedCategory, setSelectedCategory] = useState(initialCategory);
   const [selectedVehicleBrand, setSelectedVehicleBrand] = useState(initialVehicleBrand);
@@ -726,6 +732,40 @@ function ProductsContent() {
     discountedOnly ||
     onlyCompatibleWithGarage;
 
+  // Reset pagination to page 1 when filters or search query change
+  useEffect(() => {
+    setCurrentPage(1);
+    setPageDirection("next");
+  }, [
+    searchQuery,
+    selectedCategory,
+    selectedVehicleBrand,
+    selectedDistributorBrand,
+    inStockOnly,
+    discountedOnly,
+    sortBy,
+    onlyCompatibleWithGarage,
+    vehicle,
+  ]);
+
+  const totalPages = Math.max(1, Math.ceil(products.length / ITEMS_PER_PAGE));
+  const safeCurrentPage = Math.min(Math.max(1, currentPage), totalPages);
+
+  const paginatedProducts = useMemo(() => {
+    const startIdx = (safeCurrentPage - 1) * ITEMS_PER_PAGE;
+    return products.slice(startIdx, startIdx + ITEMS_PER_PAGE);
+  }, [products, safeCurrentPage, ITEMS_PER_PAGE]);
+
+  const handlePageChange = (newPage: number, direction: "next" | "prev") => {
+    setPageDirection(direction);
+    setCurrentPage(newPage);
+    if (gridTopRef.current) {
+      const yOffset = -100;
+      const y = gridTopRef.current.getBoundingClientRect().top + window.scrollY + yOffset;
+      window.scrollTo({ top: Math.max(0, y), behavior: "smooth" });
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#FFFFFF] text-[#1A1A1D] flex flex-col justify-between selection:bg-[#C02030] selection:text-white">
       {activeIntroBrand && (
@@ -737,7 +777,7 @@ function ProductsContent() {
       <NotificationBanner />
       <Navbar />
 
-      <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 sm:pt-24 pb-16 w-full">
+      <main className="flex-1 max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 pt-20 sm:pt-24 pb-16 w-full">
         {/* Navigation Breadcrumb: To the right of 'Inicio', show the words used in search or '...' */}
         <div className="flex items-center gap-2 text-xs text-gray-500 mb-4">
           <Link href="/" className="hover:text-black flex items-center gap-1 transition-colors">
@@ -1226,29 +1266,31 @@ function ProductsContent() {
           </div>
         </div>
 
-        {/* Mandatory Animated Skeleton Screen on the Same Layout */}
+        <div ref={gridTopRef} />
+
+        {/* Mandatory Animated Skeleton Screen on the Same Layout (4 columns per row) */}
         {loading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {[1, 2, 3].map((idx) => (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+            {[1, 2, 3, 4, 5, 6, 7, 8].map((idx) => (
               <div
                 key={idx}
-                className="rounded-3xl border border-gray-200 bg-white p-7 space-y-4 shadow-sm"
+                className="rounded-3xl border border-gray-200 bg-white p-5 space-y-3.5 shadow-sm"
               >
                 <div className="flex justify-between items-center">
                   <Skeleton className="h-5 w-20 rounded-full" />
                   <Skeleton className="h-4 w-16" />
                 </div>
-                <Skeleton className="h-56 w-full rounded-2xl" />
+                <Skeleton className="h-48 w-full rounded-2xl" />
                 <Skeleton className="h-4 w-24 rounded-md" />
-                <Skeleton className="h-6 w-3/4 rounded-md" />
+                <Skeleton className="h-5 w-3/4 rounded-md" />
                 <Skeleton className="h-4 w-full rounded-md" />
-                <Skeleton className="h-6 w-1/2 rounded-md" />
-                <div className="pt-4 border-t border-gray-200 space-y-2">
+                <Skeleton className="h-5 w-1/2 rounded-md" />
+                <div className="pt-3.5 border-t border-gray-200 space-y-2">
                   <div className="flex justify-between items-center">
                     <Skeleton className="h-4 w-24" />
                     <Skeleton className="h-6 w-28" />
                   </div>
-                  <Skeleton className="h-11 w-full rounded-full" />
+                  <Skeleton className="h-10 w-full rounded-full" />
                 </div>
               </div>
             ))}
@@ -1283,21 +1325,66 @@ function ProductsContent() {
             )}
           </div>
         ) : (
-          /* Products Grid */
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {products.map((product) => (
-              <ProductCatalogCard
-                key={product.id}
-                product={product}
-                lang={lang}
-                t={t}
-                vehicle={vehicle}
-                checkVehicleCompatibility={checkVehicleCompatibility}
-                onAddToCart={handleAddToCart}
-                onClick={() => router.push(`/productos/${product.id}`)}
-              />
-            ))}
-          </div>
+          /* Products Grid: 4 products per row, max 5 rows (20 items) per page with DJI page transition */
+          <>
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={`products-page-${safeCurrentPage}`}
+                initial={{
+                  opacity: 0,
+                  x: pageDirection === "next" ? 40 : -40,
+                  scale: 0.99,
+                }}
+                animate={{
+                  opacity: 1,
+                  x: 0,
+                  scale: 1,
+                }}
+                exit={{
+                  opacity: 0,
+                  x: pageDirection === "next" ? -40 : 40,
+                  scale: 0.99,
+                }}
+                transition={{
+                  duration: 0.35,
+                  ease: [0.22, 1, 0.36, 1],
+                }}
+                className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5"
+              >
+                {paginatedProducts.map((product, idx) => (
+                  <motion.div
+                    key={product.id}
+                    initial={{ opacity: 0, y: 14 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{
+                      duration: 0.3,
+                      delay: Math.min(idx * 0.02, 0.3),
+                      ease: [0.22, 1, 0.36, 1],
+                    }}
+                    className="h-full"
+                  >
+                    <ProductCatalogCard
+                      product={product}
+                      lang={lang}
+                      t={t}
+                      vehicle={vehicle}
+                      checkVehicleCompatibility={checkVehicleCompatibility}
+                      onAddToCart={handleAddToCart}
+                      onClick={() => router.push(`/productos/${product.id}`)}
+                    />
+                  </motion.div>
+                ))}
+              </motion.div>
+            </AnimatePresence>
+
+            <CatalogPagination
+              currentPage={safeCurrentPage}
+              totalItems={products.length}
+              itemsPerPage={ITEMS_PER_PAGE}
+              onPageChange={handlePageChange}
+              layoutIdPrefix="products-pagination"
+            />
+          </>
         )}
       </main>
 
