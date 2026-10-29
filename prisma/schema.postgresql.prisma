@@ -62,7 +62,9 @@ model Product {
   installationPriceCRC Int                    // Installation labor cost in CRC (I_price.I_price)
   processingPriceD     Float                  @default(0) // P_price_D (USD)
   processingPriceCRC   Int                    @default(0) // P_price (CRC)
+  shippingPriceD       Float                  @default(0) // S_price_D (USD)
   shippingPriceCRC     Int                    @default(0) // S_price (CRC)
+  lockedExchangeRate   Float                  @default(0) // Exchange rate (CRC per 1 USD) locked when T_price was saved
   profitCRC            Int                    @default(0) // profit (CRC)
   ivaPercent           Int                    @default(13) // IVA percentage (default 13%)
   ivaCRC               Int                    @default(0) // Calculated IVA in CRC included in priceCRC

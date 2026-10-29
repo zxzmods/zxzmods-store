@@ -911,6 +911,29 @@ async function main() {
     console.log(`✓ Documento legal bilingüe sincronizado: [${upserted.order}] ${upserted.titleEs} / ${upserted.titleEn}`);
   }
 
+  // One-time idempotent migration of existing S_price (shippingPriceCRC) to USD at 456.23 colones
+  try {
+    const productsToMigrate = await prisma.product.findMany({
+      where: {
+        shippingPriceCRC: { gt: 0 },
+        shippingPriceD: 0,
+      },
+    });
+    for (const prod of productsToMigrate) {
+      const sPriceUSD = Number((prod.shippingPriceCRC / 456.23).toFixed(2));
+      await prisma.product.update({
+        where: { id: prod.id },
+        data: {
+          shippingPriceD: sPriceUSD,
+          ...(prod.lockedExchangeRate === 0 ? { lockedExchangeRate: 456.23 } : {}),
+        },
+      });
+      console.log(`✓ Migrado S_price de [${prod.sku}]: ₡${prod.shippingPriceCRC} -> $${sPriceUSD} USD (@ 456.23)`);
+    }
+  } catch (migErr) {
+    console.warn("Aviso al verificar migración de S_price a USD:", migErr?.message || migErr);
+  }
+
   console.log("Sembrado bilingüe de documentos legales finalizado con éxito.");
 }
 

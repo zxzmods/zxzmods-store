@@ -1898,12 +1898,27 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
   const [liveExchangeRate, setLiveExchangeRate] = useState<number>(455.21);
   const [adjustingProductId, setAdjustingProductId] = useState<string | null>(null);
 
+  const refreshLiveExchangeRate = useCallback(async (): Promise<number> => {
+    try {
+      const rateRes = await fetch("/api/exchange-rate", { cache: "no-store" });
+      if (rateRes.ok) {
+        const rateData = await rateRes.json().catch(() => null);
+        const extractedRate = Number(rateData?.data?.rate || rateData?.rate || 0);
+        if (extractedRate > 300) {
+          setLiveExchangeRate(extractedRate);
+          return extractedRate;
+        }
+      }
+    } catch {}
+    return liveExchangeRate > 300 ? liveExchangeRate : 455.21;
+  }, [liveExchangeRate]);
+
   const fetchCatalog = useCallback(async () => {
     setLoading(true);
     try {
       const [res, rateRes] = await Promise.all([
-        fetch("/api/sys/catalog"),
-        fetch("/api/exchange-rate").catch(() => null),
+        fetch("/api/sys/catalog", { cache: "no-store" }),
+        fetch("/api/exchange-rate", { cache: "no-store" }).catch(() => null),
       ]);
       const data = await res.json();
       if (res.ok && data.success) {
@@ -1982,24 +1997,34 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       setTestingSupplier(true);
       if (!silent) setSupplierTestResult(null);
       try {
-        const res = await fetch("/api/sys/catalog/supplier-check", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            url: trimmed,
-            saveToProductId: editingProduct?.id,
+        const [res, currentRate] = await Promise.all([
+          fetch("/api/sys/catalog/supplier-check", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              url: trimmed,
+              saveToProductId: editingProduct?.id,
+            }),
           }),
-        });
+          refreshLiveExchangeRate(),
+        ]);
         const data = await res.json();
         if (data.success && data.result) {
           setSupplierTestResult(data.result);
           const fetchedPriceUSD = Number(data.result.supplierPriceUSD);
+          const activeRate = currentRate > 300 ? currentRate : (liveExchangeRate || 455.21);
           setProductForm((prev) => {
             const hasValidUSD = Number.isFinite(fetchedPriceUSD) && fetchedPriceUSD > 0;
             const nextPPriceD = hasValidUSD ? Number(fetchedPriceUSD.toFixed(2)) : prev.P_price_D;
             const nextPPriceCRC = hasValidUSD
-              ? Math.round(nextPPriceD * (liveExchangeRate || 455.21))
+              ? Math.round(nextPPriceD * activeRate)
               : prev.P_price;
+            const nextSPriceCRC = Number(prev.S_price_D) > 0
+              ? Math.round(Number(prev.S_price_D) * activeRate)
+              : prev.S_price;
+            const ivaRate = prev.ivaPercent ?? 13;
+            const nextIva = calculateIvaAmount(nextPPriceCRC, nextSPriceCRC, prev.profit, prev.I_price, prev.I_price_includes, prev.discountPercent, ivaRate);
+            const nextTotal = recalculateTPrice(nextPPriceCRC, nextSPriceCRC, prev.profit, prev.I_price, prev.I_price_includes, prev.discountPercent, ivaRate);
             return {
               ...prev,
               supplierUrl: trimmed,
@@ -2011,13 +2036,17 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
               supplierLastPriceUSD: hasValidUSD ? nextPPriceD : (data.result.supplierPriceUSD ?? prev.supplierLastPriceUSD),
               P_price_D: nextPPriceD,
               P_price: nextPPriceCRC,
+              S_price: nextSPriceCRC,
+              ivaCRC: nextIva,
+              priceCRC: nextTotal,
+              T_price: nextTotal,
               supplierStockCheckedAt: data.result.checkedAt || new Date().toISOString(),
             };
           });
           if (!silent) {
             const priceLabel =
               Number.isFinite(fetchedPriceUSD) && fetchedPriceUSD > 0
-                ? ` — P_price_D actualizado a $${fetchedPriceUSD.toFixed(2)} USD`
+                ? ` — P_price_D actualizado a $${fetchedPriceUSD.toFixed(2)} USD (₡${Math.round(fetchedPriceUSD * activeRate).toLocaleString()} @ ₡${activeRate.toFixed(2)})`
                 : "";
             setFeedback({
               type: "success",
@@ -2026,7 +2055,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                   ? `Enlace verificado con éxito: Estado [${data.result.status}] - Plataforma [${data.result.platform}]${priceLabel}.`
                   : `Supplier link verified: Status [${data.result.status}] - Platform [${data.result.platform}]${
                       Number.isFinite(fetchedPriceUSD) && fetchedPriceUSD > 0
-                        ? ` — P_price_D auto-updated to $${fetchedPriceUSD.toFixed(2)} USD`
+                        ? ` — P_price_D auto-updated to $${fetchedPriceUSD.toFixed(2)} USD (₡${Math.round(fetchedPriceUSD * activeRate).toLocaleString()} @ ₡${activeRate.toFixed(2)})`
                         : ""
                     }.`,
             });
@@ -2056,13 +2085,14 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
         setTestingSupplier(false);
       }
     },
-    [editingProduct?.id, liveExchangeRate, lang]
+    [editingProduct?.id, liveExchangeRate, refreshLiveExchangeRate, lang]
   );
 
   // OPEN EDIT PRODUCT: Populates ALL information of the product matching JSON structure
   const handleOpenEditProduct = (prod: Product) => {
     setEditingProduct(prod);
     setValidationErrors([]);
+    refreshLiveExchangeRate();
 
     // 1. Compatibility matrix formatting
     let modelYearFormatted = "";
@@ -2326,6 +2356,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
     setEditingProduct(null);
     setValidationErrors([]);
     setIsSkuManuallyEdited(false);
+    refreshLiveExchangeRate();
     const defaultCat = categories.length > 0 ? categories[0].slug : "performance";
     const defaultVehicle = registeredVehicleBrands[0]?.models?.[0]?.slug || "zforce-z10";
     const initialCreateVehicles = [defaultVehicle];
@@ -2601,11 +2632,19 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
     setProductForm((prev) => ({ ...prev, T_price: total, priceCRC: total, ivaCRC: ivaAmount }));
   };
 
-  // Automatically sync productForm.T_price, productForm.priceCRC, and productForm.ivaCRC whenever price components or IVA rate change
+  // Automatically sync productForm.P_price, productForm.S_price, productForm.T_price, productForm.priceCRC, and productForm.ivaCRC
+  // whenever USD prices (P_price_D, S_price_D), liveExchangeRate, profit, installation, or IVA rate change
   useEffect(() => {
+    const activeRate = liveExchangeRate > 300 ? liveExchangeRate : 455.21;
+    const pPriceUSD = Number(productForm.P_price_D) || 0;
+    const sPriceUSD = Number(productForm.S_price_D) || 0;
+
+    const translatedPPrice = pPriceUSD > 0 ? Math.round(pPriceUSD * activeRate) : 0;
+    const translatedSPrice = sPriceUSD > 0 ? Math.round(sPriceUSD * activeRate) : 0;
+
     const total = recalculateTPrice(
-      productForm.P_price,
-      productForm.S_price,
+      translatedPPrice,
+      translatedSPrice,
       productForm.profit,
       productForm.I_price,
       productForm.I_price_includes,
@@ -2613,23 +2652,33 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       productForm.ivaPercent ?? 13
     );
     const ivaAmount = calculateIvaAmount(
-      productForm.P_price,
-      productForm.S_price,
+      translatedPPrice,
+      translatedSPrice,
       productForm.profit,
       productForm.I_price,
       productForm.I_price_includes,
       productForm.discountPercent,
       productForm.ivaPercent ?? 13
     );
-    if (total > 0 && (productForm.T_price !== total || productForm.ivaCRC !== ivaAmount || productForm.priceCRC !== total)) {
+    if (
+      productForm.P_price !== translatedPPrice ||
+      productForm.S_price !== translatedSPrice ||
+      productForm.T_price !== total ||
+      productForm.ivaCRC !== ivaAmount ||
+      productForm.priceCRC !== total
+    ) {
       setProductForm((prev) => ({
         ...prev,
+        P_price: translatedPPrice,
+        S_price: translatedSPrice,
         T_price: total,
         priceCRC: total,
         ivaCRC: ivaAmount,
       }));
     }
   }, [
+    productForm.P_price_D,
+    productForm.S_price_D,
     productForm.P_price,
     productForm.S_price,
     productForm.profit,
@@ -2640,6 +2689,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
     productForm.T_price,
     productForm.ivaCRC,
     productForm.priceCRC,
+    liveExchangeRate,
   ]);
 
   // VALIDATION & SAVE PRODUCT
@@ -6256,10 +6306,11 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                       </label>
                       <button
                         type="button"
-                        onClick={() => {
-                          const rate = liveExchangeRate > 300 ? liveExchangeRate : 455.21;
-                          const nextP = productForm.P_price_D > 0 ? Math.round(Number(productForm.P_price_D) * rate) : productForm.P_price;
-                          const nextS = productForm.S_price_D > 0 ? Math.round(Number(productForm.S_price_D) * rate) : productForm.S_price;
+                        onClick={async () => {
+                          const latestRate = await refreshLiveExchangeRate();
+                          const rate = latestRate > 300 ? latestRate : (liveExchangeRate > 300 ? liveExchangeRate : 455.21);
+                          const nextP = productForm.P_price_D > 0 ? Math.round(Number(productForm.P_price_D) * rate) : 0;
+                          const nextS = productForm.S_price_D > 0 ? Math.round(Number(productForm.S_price_D) * rate) : 0;
                           setProductForm((prev) => {
                             const ivaRate = prev.ivaPercent ?? 13;
                             return {
