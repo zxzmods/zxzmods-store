@@ -195,7 +195,7 @@ export function generateReceiptHtml(
   }
 
   const currency = String(order.paidCurrency || "CRC").toUpperCase() === "USD" ? "USD" : "CRC";
-  const sellRate = 520;
+  const sellRate = 455.21;
 
   const formatPrice = (crcAmount: number) => {
     if (currency === "USD") {

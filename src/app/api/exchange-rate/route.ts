@@ -58,19 +58,32 @@ async function readPersistentCache(): Promise<ExchangeRateData | null> {
           ? dbConfig.manualExchangeRateCRC
           : dbConfig.cachedExchangeRateCRC;
       if (typeof activeRate === "number" && activeRate > 300 && activeRate < 1500) {
+        const rawSource = dbConfig.exchangeRateSource || "";
+        const [parsedSource, parsedBuyStr, parsedDate, parsedNotes] = rawSource.split("|");
+        const parsedBuy = parsedBuyStr ? Number(parsedBuyStr) : NaN;
+        const cleanSource =
+          parsedSource && parsedSource !== "BCCR_AUTO" && parsedSource !== "HACIENDA_CR"
+            ? parsedSource
+            : dbConfig.useManualExchangeRate
+            ? "Manual (Backdoor Admin)"
+            : "Banco Central de Costa Rica (BCCR)";
+        const effectiveBuyRate =
+          !isNaN(parsedBuy) && parsedBuy > 300 && parsedBuy < 1500
+            ? Number(parsedBuy.toFixed(2))
+            : Number((activeRate - 3.75).toFixed(2));
         return {
           rate: Number(activeRate.toFixed(2)),
-          buyRate: Number((activeRate - 5.21).toFixed(2)),
+          buyRate: effectiveBuyRate,
           currency: "USD",
           baseCurrency: "CRC",
-          source:
-            dbConfig.exchangeRateSource ||
-            (dbConfig.useManualExchangeRate
-              ? "Manual (Backdoor Admin)"
-              : "Banco Central de Costa Rica (BCCR)"),
-          date: getCostaRicaDateString(),
+          source: cleanSource,
+          date:
+            parsedDate && /^\d{4}-\d{2}-\d{2}$/.test(parsedDate)
+              ? parsedDate
+              : getCostaRicaDateString(),
           override: Boolean(dbConfig.useManualExchangeRate),
           updatedAt: (dbConfig.exchangeRateUpdatedAt || dbConfig.updatedAt).toISOString(),
+          ...(parsedNotes ? { notes: parsedNotes } : {}),
         };
       }
     }
@@ -98,13 +111,23 @@ async function readPersistentCache(): Promise<ExchangeRateData | null> {
 // Helper to write persistent cache (Database primary, local disk in dev only)
 async function writePersistentCache(data: ExchangeRateData) {
   try {
+    const cleanSourceLabel =
+      data.source ||
+      (data.override ? "Manual (Backdoor Admin)" : "Banco Central de Costa Rica (BCCR)");
+    const encodedSource = [
+      cleanSourceLabel.split("|")[0],
+      Number(data.buyRate || data.rate - 3.75).toFixed(2),
+      data.date || getCostaRicaDateString(),
+      data.notes ? String(data.notes).replace(/\|/g, "/") : "",
+    ].join("|");
+
     await prisma.logisticsRateConfig.upsert({
       where: { id: "rates-config" },
       update: {
         cachedExchangeRateCRC: data.rate,
         ...(data.override ? { manualExchangeRateCRC: data.rate } : {}),
         useManualExchangeRate: Boolean(data.override),
-        exchangeRateSource: data.source,
+        exchangeRateSource: encodedSource,
         exchangeRateUpdatedAt: new Date(),
       },
       create: {
@@ -112,7 +135,7 @@ async function writePersistentCache(data: ExchangeRateData) {
         cachedExchangeRateCRC: data.rate,
         manualExchangeRateCRC: data.override ? data.rate : null,
         useManualExchangeRate: Boolean(data.override),
-        exchangeRateSource: data.source,
+        exchangeRateSource: encodedSource,
         exchangeRateUpdatedAt: new Date(),
       },
     });
@@ -197,95 +220,136 @@ const PROVIDERS: ProviderConfig[] = [
     extract: (json) => {
       if (json?.dolar?.venta?.valor !== undefined) {
         const v = Number(json.dolar.venta.valor);
-        const c = Number(json?.dolar?.compra?.valor ?? v - 4);
+        const c = Number(json?.dolar?.compra?.valor ?? v - 3.75);
         const d = String(json?.dolar?.venta?.fecha || json?.dolar?.compra?.fecha || "").slice(0, 10);
         return { ventaVal: v, compraVal: c, dateVal: d };
       }
       return null;
     },
   },
+  {
+    name: "Open Exchange Rate API (Respaldo Global USD/CRC)",
+    url: "https://open.er-api.com/v6/latest/USD",
+    extract: (json) => {
+      if (json?.rates?.CRC !== undefined) {
+        const mid = Number(json.rates.CRC);
+        if (!isNaN(mid) && mid > 300 && mid < 1500) {
+          // Open ER API gives mid-market rate; BCCR Venta is typically ~1.85 CRC above mid and Compra ~1.90 CRC below mid
+          const v = Number((mid + 1.85).toFixed(2));
+          const c = Number((mid - 1.9).toFixed(2));
+          return { ventaVal: v, compraVal: c, dateVal: getCostaRicaDateString() };
+        }
+      }
+      return null;
+    },
+  },
+  {
+    name: "Currency API CDN (Respaldo Global USD/CRC)",
+    url: "https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json",
+    extract: (json) => {
+      if (json?.usd?.crc !== undefined) {
+        const mid = Number(json.usd.crc);
+        if (!isNaN(mid) && mid > 300 && mid < 1500) {
+          const v = Number((mid + 1.85).toFixed(2));
+          const c = Number((mid - 1.9).toFixed(2));
+          const d = typeof json.date === "string" ? json.date.slice(0, 10) : getCostaRicaDateString();
+          return { ventaVal: v, compraVal: c, dateVal: d };
+        }
+      }
+      return null;
+    },
+  },
 ];
 
-// Query all providers with latency tracking
+// Query all providers in parallel with latency tracking and priority selection
 async function queryProvidersDiagnostics(): Promise<{
   diagnostics: ProviderDiagnostic[];
   bestResult: { rate: number; buyRate: number; date: string; source: string } | null;
 }> {
-  const diagnostics: ProviderDiagnostic[] = [];
-  let bestResult: { rate: number; buyRate: number; date: string; source: string } | null = null;
+  const results = await Promise.all(
+    PROVIDERS.map(async (provider) => {
+      const start = Date.now();
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 4500);
 
-  for (const provider of PROVIDERS) {
-    const start = Date.now();
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5500);
+        const res = await fetch(provider.url, {
+          headers: {
+            Accept: "application/json",
+            "User-Agent": "Mozilla/5.0 (compatible; ZxZ-Mods/1.0; +https://zxzmods.com)",
+          },
+          signal: controller.signal,
+          cache: "no-store",
+        });
+        clearTimeout(timeoutId);
+        const latencyMs = Date.now() - start;
 
-      const res = await fetch(provider.url, {
-        headers: {
-          Accept: "application/json",
-          "User-Agent": "ZxZ-Mods/1.0 (Costa Rica BCCR Monitor)",
-        },
-        signal: controller.signal,
-        cache: "no-store",
-      });
-      clearTimeout(timeoutId);
-      const latencyMs = Date.now() - start;
+        if (res.ok) {
+          const json = await res.json();
+          const extracted = provider.extract(json);
 
-      if (res.ok) {
-        const json = await res.json();
-        const extracted = provider.extract(json);
+          if (
+            extracted &&
+            !isNaN(extracted.ventaVal) &&
+            extracted.ventaVal > 300 &&
+            extracted.ventaVal < 1500
+          ) {
+            const sellRate = Number(extracted.ventaVal.toFixed(2));
+            const buyRate = Number(extracted.compraVal.toFixed(2));
+            const date = extracted.dateVal || getCostaRicaDateString();
 
-        if (
-          extracted &&
-          !isNaN(extracted.ventaVal) &&
-          extracted.ventaVal > 300 &&
-          extracted.ventaVal < 1500
-        ) {
-          const sellRate = Number(extracted.ventaVal.toFixed(2));
-          const buyRate = Number(extracted.compraVal.toFixed(2));
-          const date = extracted.dateVal || getCostaRicaDateString();
-
-          diagnostics.push({
-            name: provider.name,
-            url: provider.url,
-            status: "ONLINE",
-            sellRate,
-            buyRate,
-            date,
-            latencyMs,
-          });
-
-          if (!bestResult) {
-            bestResult = {
-              rate: sellRate,
-              buyRate,
-              date,
-              source: `Banco Central de Costa Rica (BCCR via ${provider.name})`,
+            return {
+              diagnostic: {
+                name: provider.name,
+                url: provider.url,
+                status: "ONLINE" as const,
+                sellRate,
+                buyRate,
+                date,
+                latencyMs,
+              },
+              extractedResult: {
+                rate: sellRate,
+                buyRate,
+                date,
+                source: `Banco Central de Costa Rica (BCCR via ${provider.name})`,
+              },
             };
           }
-          continue;
         }
+
+        return {
+          diagnostic: {
+            name: provider.name,
+            url: provider.url,
+            status: "ERROR" as const,
+            latencyMs,
+            error: `HTTP ${res.status} o respuesta de formato no reconocido`,
+          },
+          extractedResult: null,
+        };
+      } catch (err: any) {
+        return {
+          diagnostic: {
+            name: provider.name,
+            url: provider.url,
+            status: "OFFLINE" as const,
+            latencyMs: Date.now() - start,
+            error: err?.message || "Tiempo de espera agotado",
+          },
+          extractedResult: null,
+        };
       }
+    })
+  );
 
-      diagnostics.push({
-        name: provider.name,
-        url: provider.url,
-        status: "ERROR",
-        latencyMs,
-        error: `HTTP ${res.status} o respuesta de formato no reconocido`,
-      });
-    } catch (err: any) {
-      diagnostics.push({
-        name: provider.name,
-        url: provider.url,
-        status: "OFFLINE",
-        latencyMs: Date.now() - start,
-        error: err?.message || "Tiempo de espera agotado",
-      });
-    }
-  }
+  const diagnostics = results.map((r) => r.diagnostic);
+  const firstOnline = results.find((r) => r.extractedResult !== null);
 
-  return { diagnostics, bestResult };
+  return {
+    diagnostics,
+    bestResult: firstOnline ? firstOnline.extractedResult : null,
+  };
 }
 
 // Fetch live from official BCCR feeds with multi-endpoint fallback
@@ -335,12 +399,13 @@ export async function GET(request: Request) {
     });
   }
 
-  // 2. Return memory cache if still fresh within TTL and not forced
+  // 2. Return memory cache if still fresh within TTL, same day, and not forced
   if (
     !forceFresh &&
     !forceLive &&
     memoryCache &&
-    now - memoryCache.fetchedAt < CACHE_TTL_MS
+    now - memoryCache.fetchedAt < CACHE_TTL_MS &&
+    memoryCache.data.date === getCostaRicaDateString()
   ) {
     let resultData = { ...memoryCache.data, cached: true };
     if (includeDiagnostics && !resultData.diagnostics) {
@@ -411,8 +476,8 @@ export async function GET(request: Request) {
 
   // 5. Safe baseline if disk was also unavailable
   const baselineData: ExchangeRateData = {
-    rate: 454.56,
-    buyRate: 449.35,
+    rate: 455.21,
+    buyRate: 451.46,
     currency: "USD",
     baseCurrency: "CRC",
     source: "Banco Central de Costa Rica (BCCR)",

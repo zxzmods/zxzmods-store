@@ -48,7 +48,8 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json().catch(() => ({}));
-    const { url, productId, save = false, syncAll = false, forceAll = false } = body;
+    const { url, productId, saveToProductId, save = false, syncAll = false, forceAll = false } = body;
+    const targetProductId = productId || saveToProductId;
 
     // Batch sync trigger (Restricted to MASTER only)
     if (syncAll) {
@@ -84,10 +85,10 @@ export async function POST(request: Request) {
     // Inspect live availability from US website
     const result = await fetchLiveSupplierAvailability(url);
 
-    // Optionally save to product
-    if (save && productId && result.success) {
+    // Optionally save to product (and auto-sync processingPriceD when supplierPriceUSD is found)
+    if ((save || Boolean(saveToProductId)) && targetProductId && result.success) {
       const updated = await prisma.product.update({
-        where: { id: productId },
+        where: { id: targetProductId },
         data: {
           supplierUrl: result.url,
           supplierPlatform: result.platform,
@@ -99,6 +100,9 @@ export async function POST(request: Request) {
           supplierLeadDaysMin: result.leadDaysMin,
           supplierLeadDaysMax: result.leadDaysMax,
           supplierLastPriceUSD: result.supplierPriceUSD,
+          ...(result.supplierPriceUSD && result.supplierPriceUSD > 0
+            ? { processingPriceD: result.supplierPriceUSD }
+            : {}),
           updatedAt: new Date(),
         },
       });

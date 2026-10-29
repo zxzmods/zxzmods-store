@@ -4,6 +4,40 @@ import { prisma } from "@/lib/prisma";
 import { recordAuditLog, AuditAction } from "@/lib/audit";
 import { ensureDealerBrandRegistered } from "@/lib/dealerBrands";
 import { normalizeAudioUrl, normalizeVideoUrl, cleanDescriptionText } from "@/lib/products";
+import { cleanupRemovedMediaUrls } from "@/lib/storage";
+import { fetchLiveSupplierAvailability } from "@/lib/supplierAvailability";
+
+function collectProductMediaUrls(p: any): string[] {
+  if (!p) return [];
+  const urls: string[] = [];
+  const pushUrl = (u: any) => {
+    if (typeof u === "string" && u.trim()) urls.push(u.trim());
+  };
+  pushUrl(p.imageUrl);
+  pushUrl(p.videoUrl);
+  pushUrl(p.audioUrl);
+  for (const field of [p.imagesJson, p.additionalImagesJson, p.videosJson, p.audiosJson]) {
+    if (typeof field === "string" && field.trim()) {
+      try {
+        const parsed = JSON.parse(field);
+        if (Array.isArray(parsed)) parsed.forEach(pushUrl);
+      } catch {}
+    }
+  }
+  if (typeof p.parametersJson === "string" && p.parametersJson.trim()) {
+    try {
+      const params = JSON.parse(p.parametersJson);
+      if (Array.isArray(params)) {
+        params.forEach((param: any) => {
+          if (Array.isArray(param?.options)) {
+            param.options.forEach((opt: any) => pushUrl(opt?.imageUrl));
+          }
+        });
+      }
+    } catch {}
+  }
+  return urls;
+}
 
 export async function PATCH(
   request: Request,
@@ -124,16 +158,12 @@ export async function PATCH(
     const explicitImageUrl = typeof body.imageUrl === "string" && body.imageUrl.trim() ? body.imageUrl.trim() : null;
 
     if (body.imgs !== undefined) {
-      let imgsArray = (Array.isArray(body.imgs) ? body.imgs : [body.imgs])
+      const imgsArray = (Array.isArray(body.imgs) ? body.imgs : [body.imgs])
         .map((s: any) => (typeof s === "string" ? s.trim() : ""))
         .filter(Boolean);
-      if (explicitImageUrl) {
-        imgsArray = [explicitImageUrl, ...imgsArray.filter((u: string) => u !== explicitImageUrl)];
-        updateData.imageUrl = explicitImageUrl;
-      } else if (imgsArray.length > 0) {
-        updateData.imageUrl = imgsArray[0];
-      }
       updateData.imagesJson = JSON.stringify(imgsArray);
+      updateData.imageUrl = imgsArray[0] || explicitImageUrl || "/images/logo.png";
+      updateData.additionalImagesJson = JSON.stringify(imgsArray.slice(1));
     } else if (body.imagesJson !== undefined) {
       let imgsArray: string[] = [];
       try {
@@ -142,11 +172,9 @@ export async function PATCH(
           imgsArray = parsed.map((s: any) => (typeof s === "string" ? s.trim() : "")).filter(Boolean);
         }
       } catch {}
-      if (explicitImageUrl) {
-        imgsArray = [explicitImageUrl, ...imgsArray.filter((u: string) => u !== explicitImageUrl)];
-        updateData.imageUrl = explicitImageUrl;
-      }
       updateData.imagesJson = JSON.stringify(imgsArray);
+      updateData.imageUrl = imgsArray[0] || explicitImageUrl || "/images/logo.png";
+      updateData.additionalImagesJson = JSON.stringify(imgsArray.slice(1));
     } else if (explicitImageUrl) {
       updateData.imageUrl = explicitImageUrl;
     }
@@ -155,38 +183,42 @@ export async function PATCH(
       const vidsArray = (Array.isArray(body.vids) ? body.vids : [body.vids]).map(normalizeVideoUrl).filter(Boolean);
       updateData.videosJson = JSON.stringify(vidsArray);
       updateData.videoUrl = vidsArray[0] || null;
-    } else if (body.videoUrl !== undefined) {
-      const norm = normalizeVideoUrl(body.videoUrl);
-      updateData.videoUrl = norm || null;
-      if (norm) updateData.videosJson = JSON.stringify([norm]);
     } else if (body.videosJson !== undefined) {
       try {
-        const parsed = JSON.parse(body.videosJson);
+        const parsed = typeof body.videosJson === "string" ? JSON.parse(body.videosJson) : body.videosJson;
         if (Array.isArray(parsed)) {
-          updateData.videosJson = JSON.stringify(parsed.map(normalizeVideoUrl).filter(Boolean));
+          const vidsArray = parsed.map(normalizeVideoUrl).filter(Boolean);
+          updateData.videosJson = JSON.stringify(vidsArray);
+          updateData.videoUrl = vidsArray[0] || null;
         }
       } catch {
         updateData.videosJson = typeof body.videosJson === "string" ? body.videosJson : JSON.stringify(body.videosJson);
       }
+    } else if (body.videoUrl !== undefined) {
+      const norm = normalizeVideoUrl(body.videoUrl);
+      updateData.videoUrl = norm || null;
+      updateData.videosJson = JSON.stringify(norm ? [norm] : []);
     }
 
     if (body.audios !== undefined) {
       const audsArray = (Array.isArray(body.audios) ? body.audios : [body.audios]).map(normalizeAudioUrl).filter(Boolean);
       updateData.audiosJson = JSON.stringify(audsArray);
       updateData.audioUrl = audsArray[0] || null;
-    } else if (body.audioUrl !== undefined) {
-      const norm = normalizeAudioUrl(body.audioUrl);
-      updateData.audioUrl = norm || null;
-      if (norm) updateData.audiosJson = JSON.stringify([norm]);
     } else if (body.audiosJson !== undefined) {
       try {
-        const parsed = JSON.parse(body.audiosJson);
+        const parsed = typeof body.audiosJson === "string" ? JSON.parse(body.audiosJson) : body.audiosJson;
         if (Array.isArray(parsed)) {
-          updateData.audiosJson = JSON.stringify(parsed.map(normalizeAudioUrl).filter(Boolean));
+          const audsArray = parsed.map(normalizeAudioUrl).filter(Boolean);
+          updateData.audiosJson = JSON.stringify(audsArray);
+          updateData.audioUrl = audsArray[0] || null;
         }
       } catch {
         updateData.audiosJson = typeof body.audiosJson === "string" ? body.audiosJson : JSON.stringify(body.audiosJson);
       }
+    } else if (body.audioUrl !== undefined) {
+      const norm = normalizeAudioUrl(body.audioUrl);
+      updateData.audioUrl = norm || null;
+      updateData.audiosJson = JSON.stringify(norm ? [norm] : []);
     }
 
     if (body.reviews !== undefined) {
@@ -203,6 +235,39 @@ export async function PATCH(
     if (body.supplierLeadDaysMax !== undefined) updateData.supplierLeadDaysMax = Number(body.supplierLeadDaysMax) || 12;
     if (body.supplierLastPriceUSD !== undefined) updateData.supplierLastPriceUSD = body.supplierLastPriceUSD !== null ? Number(body.supplierLastPriceUSD) : null;
     if (body.supplierStockCheckedAt !== undefined) updateData.supplierStockCheckedAt = body.supplierStockCheckedAt ? new Date(body.supplierStockCheckedAt) : null;
+
+    // Auto-fetch supplier price & availability if supplierUrl changed and wasn't just checked
+    if (
+      body.supplierUrl &&
+      body.supplierUrl !== existingProduct.supplierUrl &&
+      !body.supplierLastPriceUSD
+    ) {
+      try {
+        const live = await fetchLiveSupplierAvailability(body.supplierUrl);
+        if (live.success) {
+          updateData.supplierPlatform = live.platform;
+          updateData.supplierStockStatus = live.status;
+          updateData.supplierStockCount = live.stockCount;
+          updateData.supplierStockMessageEs = live.messageEs;
+          updateData.supplierStockMessageEn = live.messageEn;
+          updateData.supplierStockCheckedAt = new Date();
+          updateData.supplierLeadDaysMin = live.leadDaysMin;
+          updateData.supplierLeadDaysMax = live.leadDaysMax;
+          if (live.supplierPriceUSD && live.supplierPriceUSD > 0) {
+            updateData.supplierLastPriceUSD = live.supplierPriceUSD;
+            updateData.processingPriceD = live.supplierPriceUSD;
+          }
+        }
+      } catch (checkErr) {
+        console.warn("[AUTO_SUPPLIER_CHECK_ON_PATCH_WARN]:", checkErr);
+      }
+    } else if (
+      updateData.supplierLastPriceUSD &&
+      updateData.supplierLastPriceUSD > 0 &&
+      (!updateData.processingPriceD || updateData.processingPriceD === existingProduct.processingPriceD)
+    ) {
+      updateData.processingPriceD = updateData.supplierLastPriceUSD;
+    }
 
     const homeInst = body.inHome_install !== undefined ? body.inHome_install : body.homeInstallation !== undefined ? body.homeInstallation : body.homeInstallationAvailable;
     if (homeInst !== undefined) updateData.homeInstallationAvailable = Boolean(homeInst);
@@ -320,10 +385,20 @@ export async function PATCH(
       updateData.ivaCRC = Math.round(Number(body.ivaCRC));
     }
 
+    const previousMediaUrls = collectProductMediaUrls(existingProduct);
+
     const updatedProduct = await prisma.product.update({
       where: { id: productId },
       data: updateData,
     });
+
+    // Eliminate any replaced or removed media files from cloud/local storage
+    try {
+      const nextMediaUrls = collectProductMediaUrls(updatedProduct);
+      await cleanupRemovedMediaUrls(previousMediaUrls, nextMediaUrls);
+    } catch (cleanErr) {
+      console.warn("[PRODUCT_MEDIA_CLEANUP_WARN]:", cleanErr);
+    }
 
     // Synchronize relational ProductCompatibility records
     if (body.compatibilities !== undefined || body.comp !== undefined) {
@@ -790,8 +865,17 @@ export async function DELETE(
     // Cascade delete compatibilities
     await prisma.productCompatibility.deleteMany({ where: { productId } });
 
-    // Hard delete from SQLite
+    const mediaToEliminate = collectProductMediaUrls(existing);
+
+    // Hard delete from database
     await prisma.product.delete({ where: { id: productId } });
+
+    // Hard delete associated media from storage
+    try {
+      await cleanupRemovedMediaUrls(mediaToEliminate, []);
+    } catch (cleanErr) {
+      console.warn("[PRODUCT_DELETE_MEDIA_CLEANUP_WARN]:", cleanErr);
+    }
 
     // Hard delete from products.json
     try {

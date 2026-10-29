@@ -670,9 +670,6 @@ export async function getAllProducts(): Promise<ProductItem[]> {
             if (cat.length === 0) cat = ["performance"];
 
             let imgs: string[] = [];
-            if (p.imageUrl && typeof p.imageUrl === "string" && p.imageUrl.trim()) {
-              imgs.push(p.imageUrl.trim());
-            }
             if (p.imagesJson) {
               try {
                 const parsed = JSON.parse(p.imagesJson);
@@ -684,16 +681,8 @@ export async function getAllProducts(): Promise<ProductItem[]> {
                 }
               } catch {}
             }
-            if (p.additionalImagesJson) {
-              try {
-                const parsed = JSON.parse(p.additionalImagesJson);
-                if (Array.isArray(parsed)) {
-                  parsed.forEach((img: any) => {
-                    const s = typeof img === "string" ? img.trim() : "";
-                    if (s && !imgs.includes(s)) imgs.push(s);
-                  });
-                }
-              } catch {}
+            if (imgs.length === 0 && p.imageUrl && typeof p.imageUrl === "string" && p.imageUrl.trim()) {
+              imgs.push(p.imageUrl.trim());
             }
             if (p.parametersJson) {
               try {

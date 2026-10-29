@@ -336,9 +336,25 @@ export function FinancialDashboardTab({
     return { raw, subtotal, iva };
   }, [modalForm.totalAmount]);
 
-  // Currency Formatter
+  // Currency Formatter & Live Exchange Rate
   const currencyPrefix = currency === "CRC" ? "₡" : "$";
-  const exchangeRate = 515; // Standard CR live rate
+  const [exchangeRate, setExchangeRate] = useState<number>(455.21);
+
+  useEffect(() => {
+    let mounted = true;
+    fetch("/api/exchange-rate", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((res) => {
+        if (mounted && res?.data?.rate && res.data.rate > 300) {
+          setExchangeRate(Number(res.data.rate));
+        }
+      })
+      .catch(() => {});
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   const formatVal = useCallback(
     (crcVal: number) => {
       if (currency === "USD") {
@@ -346,7 +362,7 @@ export function FinancialDashboardTab({
       }
       return crcVal;
     },
-    [currency]
+    [currency, exchangeRate]
   );
 
   // Filtered expense transactions

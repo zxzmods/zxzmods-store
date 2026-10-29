@@ -1286,24 +1286,37 @@ function MinimalistSuggestionsTagger({
 
   const filteredCandidates = useMemo(() => {
     if (!searchTerm.trim()) return [];
-    const q = searchTerm.toLowerCase().trim();
+    const norm = (str: string) =>
+      String(str || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase();
+    const q = norm(searchTerm.trim());
 
     const matchedProducts = filterType === "combos" ? [] : allProducts
       .filter((p) => {
         if (currentId && (p.id === currentId || p.sku === currentId || p.slug === currentId)) return false;
         if (currentSku && p.sku === currentSku) return false;
         if (suggestedProductIds.includes(p.id) || (p.sku && suggestedProductIds.includes(p.sku))) return false;
-        const name = (p.nameEs || p.p_title || p.nameEn || "").toLowerCase();
-        const sku = (p.sku || "").toLowerCase();
-        const brand = (p.brandName || "").toLowerCase();
-        return name.includes(q) || sku.includes(q) || brand.includes(q);
+        const haystack = norm(
+          [
+            p.nameEs,
+            p.nameEn,
+            p.p_title,
+            p.sku,
+            p.slug,
+            p.brandName,
+            ...(Array.isArray(p.brand) ? p.brand : []),
+          ].join(" ")
+        );
+        return haystack.includes(q);
       })
       .slice(0, 6)
       .map((p) => ({
         type: "product" as const,
         id: p.id,
         sku: p.sku,
-        title: p.nameEs || p.p_title,
+        title: lang === "es" ? (p.nameEs || p.p_title || p.nameEn) : (p.nameEn || p.nameEs || p.p_title),
         priceCRC: p.priceCRC || p.price?.T_price || 0,
         imageUrl: p.imageUrl || "/images/logo.png",
       }));
@@ -1312,23 +1325,21 @@ function MinimalistSuggestionsTagger({
       .filter((c) => {
         if (currentId && (c.id === currentId || c.slug === currentId)) return false;
         if (suggestedComboIds.includes(c.id) || (c.slug && suggestedComboIds.includes(c.slug))) return false;
-        const title = (c.titleEs || c.titleEn || "").toLowerCase();
-        const slug = (c.slug || "").toLowerCase();
-        const badge = (c.badgeEs || "").toLowerCase();
-        return title.includes(q) || slug.includes(q) || badge.includes(q);
+        const haystack = norm([c.titleEs, c.titleEn, c.slug, c.badgeEs, c.badgeEn, c.category].join(" "));
+        return haystack.includes(q);
       })
       .slice(0, 6)
       .map((c) => ({
         type: "combo" as const,
         id: c.id,
         sku: c.slug,
-        title: c.titleEs || c.titleEn,
+        title: lang === "es" ? (c.titleEs || c.titleEn) : (c.titleEn || c.titleEs),
         priceCRC: c.priceCRC || 0,
         imageUrl: c.imageUrl || "/images/logo.png",
       }));
 
     return [...matchedProducts, ...matchedCombos].slice(0, 8);
-  }, [searchTerm, filterType, allProducts, allCombos, currentId, currentSku, suggestedProductIds, suggestedComboIds]);
+  }, [searchTerm, filterType, allProducts, allCombos, currentId, currentSku, suggestedProductIds, suggestedComboIds, lang]);
 
   const handleAdd = (item: { type: "product" | "combo"; id: string }) => {
     if (item.type === "product") {
@@ -1495,8 +1506,8 @@ function MinimalistSuggestionsTagger({
                   <span className="text-[8px] font-black uppercase tracking-wider text-blue-700 bg-blue-100/80 px-1 py-0.2 rounded font-mono">
                     Prod
                   </span>
-                  <span className="font-semibold text-slate-800 max-w-[170px] truncate" title={prod?.nameEs || prod?.p_title || pId}>
-                    {prod?.nameEs || prod?.p_title || pId}
+                  <span className="font-semibold text-slate-800 max-w-[170px] truncate" title={lang === "es" ? (prod?.nameEs || prod?.p_title || pId) : (prod?.nameEn || prod?.nameEs || prod?.p_title || pId)}>
+                    {lang === "es" ? (prod?.nameEs || prod?.p_title || pId) : (prod?.nameEn || prod?.nameEs || prod?.p_title || pId)}
                   </span>
                   {prod && (
                     <span className="text-[10px] text-blue-700 font-mono font-bold">
@@ -1507,7 +1518,7 @@ function MinimalistSuggestionsTagger({
                     type="button"
                     onClick={() => handleRemoveProduct(pId)}
                     className="p-0.5 text-blue-400 hover:text-red-600 hover:bg-white rounded-md transition"
-                    title="Remover sugerencia"
+                    title={lang === "es" ? "Remover sugerencia" : "Remove suggestion"}
                   >
                     <X className="w-3 h-3" />
                   </button>
@@ -1526,8 +1537,8 @@ function MinimalistSuggestionsTagger({
                   <span className="text-[8px] font-black uppercase tracking-wider text-amber-800 bg-amber-100/90 px-1 py-0.2 rounded font-mono">
                     Combo
                   </span>
-                  <span className="font-semibold text-slate-800 max-w-[170px] truncate" title={combo?.titleEs || combo?.titleEn || cId}>
-                    {combo?.titleEs || combo?.titleEn || cId}
+                  <span className="font-semibold text-slate-800 max-w-[170px] truncate" title={lang === "es" ? (combo?.titleEs || combo?.titleEn || cId) : (combo?.titleEn || combo?.titleEs || cId)}>
+                    {lang === "es" ? (combo?.titleEs || combo?.titleEn || cId) : (combo?.titleEn || combo?.titleEs || cId)}
                   </span>
                   {combo && (
                     <span className="text-[10px] text-amber-800 font-mono font-bold">
@@ -1538,7 +1549,7 @@ function MinimalistSuggestionsTagger({
                     type="button"
                     onClick={() => handleRemoveCombo(cId)}
                     className="p-0.5 text-amber-400 hover:text-red-600 hover:bg-white rounded-md transition"
-                    title="Remover sugerencia"
+                    title={lang === "es" ? "Remover sugerencia" : "Remove suggestion"}
                   >
                     <X className="w-3 h-3" />
                   </button>
@@ -1869,10 +1880,15 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
     }
   }, [productForm.brandName, selectedVehicles, products, dealerBrands, brands, editingProduct?.id, lang]);
 
+  const [liveExchangeRate, setLiveExchangeRate] = useState<number>(455.21);
+
   const fetchCatalog = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/sys/catalog");
+      const [res, rateRes] = await Promise.all([
+        fetch("/api/sys/catalog"),
+        fetch("/api/exchange-rate").catch(() => null),
+      ]);
       const data = await res.json();
       if (res.ok && data.success) {
         setProducts(data.products || []);
@@ -1880,6 +1896,12 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
         setCategories(data.categories || []);
         setBrands(data.brands || []);
         setDealerBrands(data.dealerBrands || []);
+      }
+      if (rateRes && rateRes.ok) {
+        const rateData = await rateRes.json().catch(() => null);
+        if (rateData?.rate && Number(rateData.rate) > 300) {
+          setLiveExchangeRate(Number(rateData.rate));
+        }
       }
     } catch (err) {
       console.error("Failed to fetch catalog:", err);
@@ -1891,6 +1913,90 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
   useEffect(() => {
     fetchCatalog();
   }, [fetchCatalog]);
+
+  const syncSupplierUrlPrice = useCallback(
+    async (urlToTest: string, silent = false) => {
+      const trimmed = (urlToTest || "").trim();
+      if (!trimmed || !/^https?:\/\//i.test(trimmed)) return;
+      setTestingSupplier(true);
+      if (!silent) setSupplierTestResult(null);
+      try {
+        const res = await fetch("/api/sys/catalog/supplier-check", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            url: trimmed,
+            saveToProductId: editingProduct?.id,
+          }),
+        });
+        const data = await res.json();
+        if (data.success && data.result) {
+          setSupplierTestResult(data.result);
+          const fetchedPriceUSD = Number(data.result.supplierPriceUSD);
+          setProductForm((prev) => {
+            const hasValidUSD = Number.isFinite(fetchedPriceUSD) && fetchedPriceUSD > 0;
+            const nextPPriceD = hasValidUSD ? Number(fetchedPriceUSD.toFixed(2)) : prev.P_price_D;
+            const nextPPriceCRC = hasValidUSD
+              ? Math.round(nextPPriceD * (liveExchangeRate || 455.21))
+              : prev.P_price;
+            return {
+              ...prev,
+              supplierUrl: trimmed,
+              supplierPlatform: data.result.platform || prev.supplierPlatform,
+              supplierStockStatus: data.result.status || prev.supplierStockStatus,
+              supplierStockCount: data.result.stockCount ?? prev.supplierStockCount,
+              supplierLeadDaysMin: data.result.leadDaysMin || prev.supplierLeadDaysMin,
+              supplierLeadDaysMax: data.result.leadDaysMax || prev.supplierLeadDaysMax,
+              supplierLastPriceUSD: hasValidUSD ? nextPPriceD : (data.result.supplierPriceUSD ?? prev.supplierLastPriceUSD),
+              P_price_D: nextPPriceD,
+              P_price: nextPPriceCRC,
+              supplierStockCheckedAt: data.result.checkedAt || new Date().toISOString(),
+            };
+          });
+          if (!silent) {
+            const priceLabel =
+              Number.isFinite(fetchedPriceUSD) && fetchedPriceUSD > 0
+                ? ` — P_price_D actualizado a $${fetchedPriceUSD.toFixed(2)} USD`
+                : "";
+            setFeedback({
+              type: "success",
+              msg:
+                lang === "es"
+                  ? `Enlace verificado con éxito: Estado [${data.result.status}] - Plataforma [${data.result.platform}]${priceLabel}.`
+                  : `Supplier link verified: Status [${data.result.status}] - Platform [${data.result.platform}]${
+                      Number.isFinite(fetchedPriceUSD) && fetchedPriceUSD > 0
+                        ? ` — P_price_D auto-updated to $${fetchedPriceUSD.toFixed(2)} USD`
+                        : ""
+                    }.`,
+            });
+          }
+        } else if (!silent) {
+          setFeedback({
+            type: "error",
+            msg:
+              data.error ||
+              (lang === "es"
+                ? "No se pudo verificar el enlace del proveedor"
+                : "Could not verify supplier link"),
+          });
+        }
+      } catch (err: any) {
+        if (!silent) {
+          setFeedback({
+            type: "error",
+            msg:
+              err?.message ||
+              (lang === "es"
+                ? "Error al conectar con el proveedor"
+                : "Error connecting to supplier"),
+          });
+        }
+      } finally {
+        setTestingSupplier(false);
+      }
+    },
+    [editingProduct?.id, liveExchangeRate, lang]
+  );
 
   // OPEN EDIT PRODUCT: Populates ALL information of the product matching JSON structure
   const handleOpenEditProduct = (prod: Product) => {
@@ -2516,17 +2622,27 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
         .replace(/[^a-z0-9]+/g, "-")
         .replace(/(^-|-$)/g, "");
 
-    const parsedImgs = productForm.imgsText
-      .split("\n")
-      .map((s) => s.trim())
-      .filter(Boolean);
-    const chosenPrimaryImage = productForm.imageUrl.trim() || parsedImgs[0] || "/images/logo.png";
-    const orderedImgs = chosenPrimaryImage && chosenPrimaryImage !== "/images/logo.png"
-      ? [chosenPrimaryImage, ...parsedImgs.filter((u) => u !== chosenPrimaryImage)]
-      : parsedImgs;
-    if (orderedImgs.length === 0 && chosenPrimaryImage) {
-      orderedImgs.push(chosenPrimaryImage);
-    }
+    const parsedImgs = Array.from(
+      new Set(
+        productForm.imgsText
+          .split("\n")
+          .map((s) => s.trim())
+          .filter(Boolean)
+      )
+    );
+    const trimmedPrimary = productForm.imageUrl.trim();
+    const chosenPrimaryImage =
+      parsedImgs.length > 0
+        ? parsedImgs.includes(trimmedPrimary)
+          ? trimmedPrimary
+          : parsedImgs[0]
+        : trimmedPrimary || "/images/logo.png";
+    const orderedImgs =
+      parsedImgs.length > 0
+        ? [chosenPrimaryImage, ...parsedImgs.filter((u) => u !== chosenPrimaryImage)]
+        : trimmedPrimary
+        ? [trimmedPrimary]
+        : [];
 
     const parsedVids = productForm.vidsText
       .split("\n")
@@ -3213,17 +3329,27 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       }
     }
 
-    const comboImgs = comboForm.imgsText
-      .split("\n")
-      .map((s) => s.trim())
-      .filter(Boolean);
-    const chosenComboPrimary = comboForm.imageUrl.trim() || comboImgs[0] || "/images/logo.png";
-    const orderedComboImgs = chosenComboPrimary && chosenComboPrimary !== "/images/logo.png"
-      ? [chosenComboPrimary, ...comboImgs.filter((u) => u !== chosenComboPrimary)]
-      : comboImgs;
-    if (orderedComboImgs.length === 0 && chosenComboPrimary) {
-      orderedComboImgs.push(chosenComboPrimary);
-    }
+    const comboImgs = Array.from(
+      new Set(
+        comboForm.imgsText
+          .split("\n")
+          .map((s) => s.trim())
+          .filter(Boolean)
+      )
+    );
+    const trimmedComboPrimary = comboForm.imageUrl.trim();
+    const chosenComboPrimary =
+      comboImgs.length > 0
+        ? comboImgs.includes(trimmedComboPrimary)
+          ? trimmedComboPrimary
+          : comboImgs[0]
+        : trimmedComboPrimary || "/images/logo.png";
+    const orderedComboImgs =
+      comboImgs.length > 0
+        ? [chosenComboPrimary, ...comboImgs.filter((u) => u !== chosenComboPrimary)]
+        : trimmedComboPrimary
+        ? [trimmedComboPrimary]
+        : [];
 
     try {
       const res = await fetch(url, {
@@ -3386,7 +3512,11 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
     }
   };
 
-  const handleMediaUpload = async (e: React.ChangeEvent<HTMLInputElement>, mediaType: "image" | "video" | "audio" = "image") => {
+  const handleMediaUpload = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    mediaType: "image" | "video" | "audio" = "image",
+    replaceIndex?: number
+  ) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -3410,58 +3540,117 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       const data = { url: fileUrl };
 
       if (isEditingProductView) {
-          if (mediaType === "image") {
-            setProductForm((prev) => {
-              const list = prev.imgsText ? prev.imgsText.split("\n").map((s) => s.trim()).filter(Boolean) : [];
+        if (mediaType === "image") {
+          setProductForm((prev) => {
+            const list = prev.imgsText
+              ? prev.imgsText.split("\n").map((s) => s.trim()).filter(Boolean)
+              : prev.imageUrl
+              ? [prev.imageUrl]
+              : [];
+            let nextPrimary = prev.imageUrl;
+            if (replaceIndex !== undefined && replaceIndex >= 0 && replaceIndex < list.length) {
+              const oldUrl = list[replaceIndex];
+              list[replaceIndex] = data.url;
+              if (prev.imageUrl === oldUrl || replaceIndex === 0) {
+                nextPrimary = data.url;
+              }
+            } else {
               if (!list.includes(data.url)) list.push(data.url);
-              return {
-                ...prev,
-                imageUrl: prev.imageUrl || data.url,
-                imgsText: list.join("\n"),
-              };
-            });
-          } else if (mediaType === "video") {
-            setProductForm((prev) => {
-              const list = prev.vidsText ? prev.vidsText.split("\n").map((s) => s.trim()).filter(Boolean) : [];
-              if (!list.includes(data.url)) list.push(data.url);
-              return {
-                ...prev,
-                videoUrl: prev.videoUrl || data.url,
-                vidsText: list.join("\n"),
-              };
-            });
-          } else if (mediaType === "audio") {
-            setProductForm((prev) => {
-              const list = prev.audiosText ? prev.audiosText.split("\n").map((s) => s.trim()).filter(Boolean) : [];
-              if (!list.includes(data.url)) list.push(data.url);
-              return {
-                ...prev,
-                audioUrl: prev.audioUrl || data.url,
-                audiosText: list.join("\n"),
-              };
-            });
-          }
-        } else {
-          setComboForm((prev) => {
-            const list = prev.imgsText ? prev.imgsText.split("\n").map((s) => s.trim()).filter(Boolean) : [];
-            if (!list.includes(data.url)) list.push(data.url);
+              if (!nextPrimary) nextPrimary = data.url;
+            }
+            const deduped = Array.from(new Set(list));
             return {
               ...prev,
-              imageUrl: prev.imageUrl || data.url,
-              imgsText: list.join("\n"),
+              imageUrl: nextPrimary || deduped[0] || "",
+              imgsText: deduped.join("\n"),
+            };
+          });
+        } else if (mediaType === "video") {
+          setProductForm((prev) => {
+            const list = prev.vidsText
+              ? prev.vidsText.split("\n").map((s) => s.trim()).filter(Boolean)
+              : prev.videoUrl
+              ? [prev.videoUrl]
+              : [];
+            if (replaceIndex !== undefined && replaceIndex >= 0 && replaceIndex < list.length) {
+              list[replaceIndex] = data.url;
+            } else if (!list.includes(data.url)) {
+              list.push(data.url);
+            }
+            const deduped = Array.from(new Set(list));
+            return {
+              ...prev,
+              videoUrl: deduped[0] || "",
+              vidsText: deduped.join("\n"),
+            };
+          });
+        } else if (mediaType === "audio") {
+          setProductForm((prev) => {
+            const list = prev.audiosText
+              ? prev.audiosText.split("\n").map((s) => s.trim()).filter(Boolean)
+              : prev.audioUrl
+              ? [prev.audioUrl]
+              : [];
+            if (replaceIndex !== undefined && replaceIndex >= 0 && replaceIndex < list.length) {
+              list[replaceIndex] = data.url;
+            } else if (!list.includes(data.url)) {
+              list.push(data.url);
+            }
+            const deduped = Array.from(new Set(list));
+            return {
+              ...prev,
+              audioUrl: deduped[0] || "",
+              audiosText: deduped.join("\n"),
             };
           });
         }
-        setFeedback({
-          type: "success",
-          msg: lang === "es" ? "Archivo multimedia subido exitosamente." : "Media file uploaded successfully.",
+      } else {
+        setComboForm((prev) => {
+          const list = prev.imgsText
+            ? prev.imgsText.split("\n").map((s) => s.trim()).filter(Boolean)
+            : prev.imageUrl
+            ? [prev.imageUrl]
+            : [];
+          let nextPrimary = prev.imageUrl;
+          if (replaceIndex !== undefined && replaceIndex >= 0 && replaceIndex < list.length) {
+            const oldUrl = list[replaceIndex];
+            list[replaceIndex] = data.url;
+            if (prev.imageUrl === oldUrl || replaceIndex === 0) {
+              nextPrimary = data.url;
+            }
+          } else {
+            if (!list.includes(data.url)) list.push(data.url);
+            if (!nextPrimary || nextPrimary === "/images/sxs/z10_front.png") nextPrimary = data.url;
+          }
+          const deduped = Array.from(new Set(list));
+          return {
+            ...prev,
+            imageUrl: nextPrimary || deduped[0] || "",
+            imgsText: deduped.join("\n"),
+          };
         });
+      }
+      setFeedback({
+        type: "success",
+        msg:
+          replaceIndex !== undefined
+            ? lang === "es"
+              ? "Archivo multimedia reemplazado exitosamente. Guarda los cambios para aplicarlo en la base de datos."
+              : "Media file replaced successfully. Save changes to apply in database."
+            : lang === "es"
+            ? "Archivo multimedia subido exitosamente."
+            : "Media file uploaded successfully.",
+      });
     } catch (err) {
       console.error("Upload error:", err);
-      setFeedback({ type: "error", msg: "Error al conectar para subir archivo." });
+      setFeedback({
+        type: "error",
+        msg: lang === "es" ? "Error al conectar para subir archivo." : "Connection error while uploading file.",
+      });
     } finally {
       setUploadingMediaType(null);
       setUploadingImage(false);
+      e.target.value = "";
     }
   };
 
@@ -3677,15 +3866,36 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
   }, [comboSelectedProducts]);
 
   // Filtered lists
-  const filteredProducts = products.filter((p) => {
-    const qLower = search.toLowerCase();
-    const matchesSearch =
-      p.nameEn.toLowerCase().includes(qLower) ||
-      p.nameEs.toLowerCase().includes(qLower) ||
-      p.sku.toLowerCase().includes(qLower) ||
-      (p.brandName && p.brandName.toLowerCase().includes(qLower));
+  const normalizeSearchStr = (val: any) =>
+    String(val || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase();
 
-    if (!matchesSearch) return false;
+  const filteredProducts = products.filter((p) => {
+    const qNorm = normalizeSearchStr(search).trim();
+    if (qNorm) {
+      const catNames = (Array.isArray(p.category) ? p.category : p.category ? [p.category] : []).flatMap((cSlug) => {
+        const cObj = categories.find((cat: any) => cat.slug === cSlug || cat.id === cSlug);
+        return cObj ? [cSlug, cObj.nameEn, cObj.nameEs] : [cSlug];
+      });
+      const haystack = normalizeSearchStr(
+        [
+          p.nameEn,
+          p.nameEs,
+          p.p_title,
+          p.sku,
+          p.slug,
+          p.brandName,
+          ...(Array.isArray(p.brand) ? p.brand : []),
+          ...catNames,
+          p.descriptionEn,
+          p.descriptionEs,
+          typeof p.description === "object" && p.description ? `${p.description.en || ""} ${p.description.es || ""}` : "",
+        ].join(" ")
+      );
+      if (!haystack.includes(qNorm)) return false;
+    }
 
     if (productFilterStatus === "active" && p.isArchived) return false;
     if (productFilterStatus === "archived" && !p.isArchived) return false;
@@ -3730,14 +3940,26 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
   const archivedProductsCount = products.filter((p) => Boolean(p.isArchived)).length;
 
   const filteredCombos = combos.filter((c) => {
-    const qLower = search.toLowerCase();
-    const matchesSearch =
-      c.titleEn.toLowerCase().includes(qLower) ||
-      c.titleEs.toLowerCase().includes(qLower) ||
-      c.slug.toLowerCase().includes(qLower) ||
-      c.category.toLowerCase().includes(qLower);
-
-    if (!matchesSearch) return false;
+    const qNorm = normalizeSearchStr(search).trim();
+    if (qNorm) {
+      const cCatObj = categories.find((cat: any) => cat.slug === c.category || cat.id === c.category);
+      const haystack = normalizeSearchStr(
+        [
+          c.titleEn,
+          c.titleEs,
+          c.slug,
+          c.category,
+          cCatObj?.nameEn,
+          cCatObj?.nameEs,
+          c.badgeEn,
+          c.badgeEs,
+          c.descriptionEn,
+          c.descriptionEs,
+          c.itemsJson,
+        ].join(" ")
+      );
+      if (!haystack.includes(qNorm)) return false;
+    }
 
     if (comboFilterStatus === "active" && c.isArchived) return false;
     if (comboFilterStatus === "archived" && !c.isArchived) return false;
@@ -4628,7 +4850,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                     <span>{t.devImagesListLabel}</span>
                   </span>
                   <span className="text-[10px] font-mono text-slate-500">
-                    {parsedImgsList.length} {parsedImgsList.length === 1 ? "imagen" : "imágenes"}
+                    {parsedImgsList.length} {lang === "es" ? (parsedImgsList.length === 1 ? "imagen" : "imágenes") : (parsedImgsList.length === 1 ? "image" : "images")}
                   </span>
                 </div>
 
@@ -4643,7 +4865,9 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                   ) : (
                     <div className="text-center p-6 text-slate-400 space-y-2">
                       <Package className="w-10 h-10 mx-auto text-slate-300" />
-                      <p className="text-xs">Sin imagen asignada. Sube o escribe URLs abajo.</p>
+                      <p className="text-xs">
+                        {lang === "es" ? "Sin imagen asignada. Sube o escribe URLs abajo." : "No image assigned. Upload or enter URLs below."}
+                      </p>
                     </div>
                   )}
                 </div>
@@ -4668,20 +4892,33 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                               imgsText: reordered.join("\n"),
                             });
                           }}
-                          title={`Click para establecer como principal (${imgUrl})`}
+                          title={lang === "es" ? `Click para establecer como principal (${imgUrl})` : `Click to set as primary (${imgUrl})`}
                         >
                           <img src={imgUrl} alt={`Thumb ${idx + 1}`} className="w-full h-full object-contain p-1 bg-white" />
                           {isPrimary && (
                             <span className="absolute bottom-0 inset-x-0 bg-[#C02030] text-white text-[8px] font-bold text-center py-0.5 leading-none">
-                              Principal
+                              {lang === "es" ? "Principal" : "Primary"}
                             </span>
                           )}
+                          <label
+                            onClick={(e) => e.stopPropagation()}
+                            className="absolute top-0.5 left-0.5 w-4 h-4 bg-slate-900/85 hover:bg-slate-900 text-white rounded-full text-[9px] leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 transition shadow cursor-pointer"
+                            title={lang === "es" ? "Reemplazar imagen" : "Replace image"}
+                          >
+                            <Upload className="w-2.5 h-2.5" />
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={(e) => handleMediaUpload(e, "image", idx)}
+                              className="hidden"
+                            />
+                          </label>
                           <button
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
                               const updated = parsedImgsList.filter((_, i) => i !== idx);
-                              const newPrimary = isPrimary ? (updated[0] || "") : productForm.imageUrl;
+                              const newPrimary = isPrimary ? (updated[0] || "") : (updated.includes(productForm.imageUrl) ? productForm.imageUrl : (updated[0] || ""));
                               setProductForm({
                                 ...productForm,
                                 imageUrl: newPrimary,
@@ -4689,7 +4926,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                               });
                             }}
                             className="absolute top-0.5 right-0.5 w-4 h-4 bg-red-600 text-white rounded-full text-[10px] leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 transition shadow"
-                            title="Eliminar de la lista"
+                            title={lang === "es" ? "Eliminar de la lista y base de datos" : "Delete from list & database"}
                           >
                             ✕
                           </button>
@@ -4703,7 +4940,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                 <div className="pt-2 border-t border-red-100 flex flex-col sm:flex-row items-center gap-2">
                   <div className="flex-1 w-full">
                     <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
-                      URL Imagen Principal <span className="text-red-500">*</span>:
+                      {lang === "es" ? "URL Imagen Principal" : "Primary Image URL"} <span className="text-red-500">*</span>:
                     </label>
                     <input
                       type="text"
@@ -4712,14 +4949,26 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                       onChange={(e) => {
                         const newUrl = e.target.value;
                         const list = productForm.imgsText.split("\n").map((s) => s.trim()).filter(Boolean);
-                        if (newUrl && !list.includes(newUrl)) {
-                          list.unshift(newUrl);
+                        if (!newUrl.trim()) {
+                          const filtered = list.filter((u) => u !== productForm.imageUrl);
+                          setProductForm({
+                            ...productForm,
+                            imageUrl: "",
+                            imgsText: filtered.join("\n"),
+                          });
+                        } else {
+                          const prevIdx = list.indexOf(productForm.imageUrl);
+                          if (prevIdx === 0) {
+                            list[0] = newUrl;
+                          } else if (!list.includes(newUrl)) {
+                            list.unshift(newUrl);
+                          }
+                          setProductForm({
+                            ...productForm,
+                            imageUrl: newUrl,
+                            imgsText: Array.from(new Set(list)).join("\n"),
+                          });
                         }
-                        setProductForm({
-                          ...productForm,
-                          imageUrl: newUrl,
-                          imgsText: list.join("\n"),
-                        });
                       }}
                       placeholder="/products/nombre-imagen.webp"
                       className="w-full bg-slate-50 border border-red-200 rounded-xl px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-red-500 font-mono"
@@ -4736,20 +4985,23 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="text-[11px] font-bold text-slate-700">
-                      Galería Completa de Imágenes (<span className="font-mono text-[#C02030]">imgs</span> - Una por línea) <span className="text-red-500">*</span>:
+                      {lang === "es" ? "Galería Completa de Imágenes" : "Complete Image Gallery"} (<span className="font-mono text-[#C02030]">imgs</span> - {lang === "es" ? "Una por línea" : "One per line"}) <span className="text-red-500">*</span>:
                     </label>
-                    <span className="text-[10px] text-slate-500">Primera URL = Imagen Principal</span>
+                    <span className="text-[10px] text-slate-500">
+                      {lang === "es" ? "Primera URL = Imagen Principal" : "First URL = Primary Image"}
+                    </span>
                   </div>
                   <textarea
                     rows={3}
                     value={productForm.imgsText}
                     onChange={(e) => {
                       const text = e.target.value;
-                      const firstLine = text.split("\n").map((s) => s.trim()).filter(Boolean)[0] || "";
+                      const lines = text.split("\n").map((s) => s.trim()).filter(Boolean);
+                      const firstLine = lines[0] || "";
                       setProductForm({
                         ...productForm,
                         imgsText: text,
-                        imageUrl: productForm.imageUrl || firstLine,
+                        imageUrl: firstLine,
                       });
                     }}
                     placeholder="/products/bmp_z10_side_exhaust_01.webp&#10;/products/bmp_z10_side_exhaust_02.webp"
@@ -4762,21 +5014,33 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
               <div className="p-5 sm:p-6 rounded-3xl bg-white border border-red-200 shadow-sm space-y-4">
                 <span className="text-xs font-bold text-slate-900 flex items-center gap-2 border-b border-red-100 pb-2">
                   <Volume2 className="w-4 h-4 text-[#C02030]" />
-                  <span>Multimedia Técnica (<span className="font-mono text-[#C02030]">audios</span> & <span className="font-mono text-[#C02030]">vids</span>)</span>
+                  <span>
+                    {lang === "es" ? "Multimedia Técnica" : "Technical Multimedia"} (<span className="font-mono text-[#C02030]">audios</span> & <span className="font-mono text-[#C02030]">vids</span>)
+                  </span>
                 </span>
 
                 {/* audios */}
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="text-[11px] font-bold text-slate-700">
-                      {t.devAudiosListLabel} (<span className="font-mono text-[#C02030]">audios</span> - Una por línea):
+                      {t.devAudiosListLabel} (<span className="font-mono text-[#C02030]">audios</span> - {lang === "es" ? "Una por línea" : "One per line"}):
                     </label>
-                    <span className="text-[10px] text-slate-500">{parsedAudiosList.length} muestras</span>
+                    <span className="text-[10px] text-slate-500">
+                      {parsedAudiosList.length} {lang === "es" ? "muestras" : "samples"}
+                    </span>
                   </div>
                   <textarea
                     rows={2}
                     value={productForm.audiosText}
-                    onChange={(e) => setProductForm({ ...productForm, audiosText: e.target.value })}
+                    onChange={(e) => {
+                      const text = e.target.value;
+                      const firstAudio = text.split("\n").map((s) => s.trim()).filter(Boolean)[0] || "";
+                      setProductForm({
+                        ...productForm,
+                        audiosText: text,
+                        audioUrl: firstAudio ? normalizeAudioUrl(firstAudio) : "",
+                      });
+                    }}
                     placeholder="/audio/CFMOTO_Z10_Side-exit_exhaust-IDLE.wav&#10;/audio/CFMOTO_Z10_Side-exit_exhaust-REV.wav"
                     className="w-full bg-slate-50 border border-red-200 rounded-xl p-2.5 text-xs font-mono text-slate-800 focus:outline-none focus:border-red-500 leading-relaxed"
                   />
@@ -4789,7 +5053,36 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                         return (
                           <div key={idx} className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 p-2 bg-slate-50 rounded-xl border border-red-100">
                             <span className="text-[10px] font-mono text-slate-600 truncate max-w-xs">{audioUrl}</span>
-                            <audio controls preload="none" className="h-7 w-full sm:w-60 outline-none" src={audioUrl} />
+                            <div className="flex items-center gap-1.5">
+                              <audio controls preload="none" className="h-7 w-full sm:w-52 outline-none" src={audioUrl} />
+                              <label
+                                className="p-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition cursor-pointer shrink-0"
+                                title={lang === "es" ? "Reemplazar audio" : "Replace audio"}
+                              >
+                                <Upload className="w-3.5 h-3.5" />
+                                <input
+                                  type="file"
+                                  accept="audio/*"
+                                  onChange={(e) => handleMediaUpload(e, "audio", idx)}
+                                  className="hidden"
+                                />
+                              </label>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const updated = parsedAudiosList.filter((_, i) => i !== idx);
+                                  setProductForm({
+                                    ...productForm,
+                                    audiosText: updated.join("\n"),
+                                    audioUrl: updated[0] ? normalizeAudioUrl(updated[0]) : "",
+                                  });
+                                }}
+                                className="p-1.5 rounded-lg bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 transition shrink-0"
+                                title={lang === "es" ? "Eliminar audio" : "Delete audio"}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           </div>
                         );
                       })}
@@ -4801,14 +5094,22 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="text-[11px] font-bold text-slate-700">
-                      {t.devVideosListLabel} (<span className="font-mono text-[#C02030]">vids</span> - Una por línea):
+                      {t.devVideosListLabel} (<span className="font-mono text-[#C02030]">vids</span> - {lang === "es" ? "Una por línea" : "One per line"}):
                     </label>
                     <span className="text-[10px] text-slate-500">{parsedVidsList.length} videos</span>
                   </div>
                   <textarea
                     rows={2}
                     value={productForm.vidsText}
-                    onChange={(e) => setProductForm({ ...productForm, vidsText: e.target.value })}
+                    onChange={(e) => {
+                      const text = e.target.value;
+                      const firstVid = text.split("\n").map((s) => s.trim()).filter(Boolean)[0] || "";
+                      setProductForm({
+                        ...productForm,
+                        vidsText: text,
+                        videoUrl: firstVid,
+                      });
+                    }}
                     placeholder="/videos/demostracion-z10.mp4&#10;https://youtube.com/watch?v=..."
                     className="w-full bg-slate-50 border border-red-200 rounded-xl p-2.5 text-xs font-mono text-slate-800 focus:outline-none focus:border-red-500 leading-relaxed"
                   />
@@ -4817,13 +5118,44 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                   {parsedVidsList.length > 0 && (
                     <div className="mt-2.5 space-y-2">
                       {parsedVidsList.map((vidUrl, idx) => (
-                        <div key={idx} className="p-2 bg-slate-50 rounded-xl border border-red-100 space-y-1">
-                          <span className="text-[10px] font-mono text-slate-600 truncate block">{vidUrl}</span>
+                        <div key={idx} className="p-2 bg-slate-50 rounded-xl border border-red-100 space-y-1.5">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[10px] font-mono text-slate-600 truncate block">{vidUrl}</span>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <label
+                                className="p-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition cursor-pointer"
+                                title={lang === "es" ? "Reemplazar video" : "Replace video"}
+                              >
+                                <Upload className="w-3.5 h-3.5" />
+                                <input
+                                  type="file"
+                                  accept="video/*"
+                                  onChange={(e) => handleMediaUpload(e, "video", idx)}
+                                  className="hidden"
+                                />
+                              </label>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const updated = parsedVidsList.filter((_, i) => i !== idx);
+                                  setProductForm({
+                                    ...productForm,
+                                    vidsText: updated.join("\n"),
+                                    videoUrl: updated[0] || "",
+                                  });
+                                }}
+                                className="p-1.5 rounded-lg bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 transition"
+                                title={lang === "es" ? "Eliminar video" : "Delete video"}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
                           {vidUrl.match(/\.(mp4|webm|ogg)$/i) ? (
                             <video controls preload="metadata" className="w-full max-h-44 rounded-lg bg-black" src={vidUrl} />
                           ) : (
                             <a href={vidUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-[#C02030] hover:underline font-semibold flex items-center gap-1">
-                              <span>Abrir video en nueva pestaña</span> ↗
+                              <span>{lang === "es" ? "Abrir video en nueva pestaña" : "Open video in new tab"}</span> ↗
                             </a>
                           )}
                         </div>
@@ -5424,11 +5756,13 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                 <div className="flex items-center justify-between border-b border-red-100 pb-2">
                   <span className="text-xs font-extrabold uppercase tracking-wider text-slate-900 flex items-center gap-1.5">
                     <ShieldCheck className="w-4 h-4 text-[#C02030]" />
-                    <span>Disponibilidad & Seguimiento del Proveedor</span>
+                    <span>
+                      {lang === "es" ? "Disponibilidad & Seguimiento del Proveedor" : "Supplier Availability & Price Sync"}
+                    </span>
                   </span>
                   {productForm.supplierStockCheckedAt && (
                     <span className="text-[10px] font-mono text-slate-500">
-                      Última sync: {new Date(productForm.supplierStockCheckedAt).toLocaleString()}
+                      {lang === "es" ? "Última sync" : "Last sync"}: {new Date(productForm.supplierStockCheckedAt).toLocaleString()}
                     </span>
                   )}
                 </div>
@@ -5436,101 +5770,93 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                 {/* Supplier URL Input + Test Button */}
                 <div>
                   <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                    Enlace Oficial del Producto (<span className="font-mono text-[#C02030]">supplierUrl</span>):
+                    {lang === "es" ? "Enlace Oficial del Producto" : "Official Supplier Product Link"} (<span className="font-mono text-[#C02030]">supplierUrl</span>):
                   </label>
                   <div className="flex flex-col sm:flex-row gap-2">
                     <input
                       type="url"
                       value={productForm.supplierUrl}
                       onChange={(e) => setProductForm({ ...productForm, supplierUrl: e.target.value })}
+                      onPaste={(e) => {
+                        const pasted = e.clipboardData?.getData("text")?.trim();
+                        if (pasted && /^https?:\/\//i.test(pasted)) {
+                          setTimeout(() => syncSupplierUrlPrice(pasted, false), 120);
+                        }
+                      }}
+                      onBlur={(e) => {
+                        const urlVal = e.target.value.trim();
+                        if (urlVal && /^https?:\/\//i.test(urlVal) && (!editingProduct || urlVal !== editingProduct.supplierUrl)) {
+                          syncSupplierUrlPrice(urlVal, true);
+                        }
+                      }}
                       placeholder="https://bikemanperformance.com/products/... o https://ggbexhaust.com/products/..."
                       className="flex-1 bg-slate-50 border border-red-200 rounded-xl p-2.5 text-xs font-mono text-slate-900 focus:outline-none focus:border-red-500"
                     />
                     <button
                       type="button"
                       disabled={testingSupplier || !productForm.supplierUrl.trim()}
-                      onClick={async () => {
-                        setTestingSupplier(true);
-                        setSupplierTestResult(null);
-                        try {
-                          const res = await fetch("/api/sys/catalog/supplier-check", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({
-                              url: productForm.supplierUrl.trim(),
-                              saveToProductId: editingProduct?.id,
-                            }),
-                          });
-                          const data = await res.json();
-                          if (data.success && data.result) {
-                            setSupplierTestResult(data.result);
-                            setProductForm((prev) => ({
-                              ...prev,
-                              supplierPlatform: data.result.platform || prev.supplierPlatform,
-                              supplierStockStatus: data.result.status || prev.supplierStockStatus,
-                              supplierStockCount: data.result.stockCount ?? prev.supplierStockCount,
-                              supplierLeadDaysMin: data.result.leadDaysMin || prev.supplierLeadDaysMin,
-                              supplierLeadDaysMax: data.result.leadDaysMax || prev.supplierLeadDaysMax,
-                              supplierLastPriceUSD: data.result.supplierPriceUSD ?? prev.supplierLastPriceUSD,
-                              supplierStockCheckedAt: data.result.checkedAt || new Date().toISOString(),
-                            }));
-                            setFeedback({
-                              type: "success",
-                              msg: `Enlace verificado con éxito: Estado [${data.result.status}] - Plataforma [${data.result.platform}].`,
-                            });
-                          } else {
-                            setFeedback({
-                              type: "error",
-                              msg: data.error || "No se pudo verificar el enlace del proveedor",
-                            });
-                          }
-                        } catch (err: any) {
-                          setFeedback({
-                            type: "error",
-                            msg: err?.message || "Error al conectar con el proveedor",
-                          });
-                        } finally {
-                          setTestingSupplier(false);
-                        }
-                      }}
+                      onClick={() => syncSupplierUrlPrice(productForm.supplierUrl, false)}
                       className="px-4 py-2 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5 shrink-0 disabled:opacity-50 cursor-pointer"
                     >
                       <RefreshCw className={`w-3.5 h-3.5 ${testingSupplier ? "animate-spin text-[#C02030]" : ""}`} />
-                      <span>{testingSupplier ? "Verificando..." : "Probar y Sincronizar"}</span>
+                      <span>
+                        {testingSupplier
+                          ? lang === "es"
+                            ? "Verificando..."
+                            : "Checking..."
+                          : lang === "es"
+                          ? "Probar y Sincronizar"
+                          : "Test & Sync Price"}
+                      </span>
                     </button>
                   </div>
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    {lang === "es"
+                      ? `Al ingresar o sincronizar el enlace del proveedor, el precio en USD se asigna automáticamente a P_price_D (y P_price en ₡ a tasa BCCR ₡${liveExchangeRate.toFixed(2)}).`
+                      : `When entering or syncing the supplier link, the USD price automatically updates P_price_D (and P_price in ₡ at BCCR rate ₡${liveExchangeRate.toFixed(2)}).`}
+                  </p>
                 </div>
 
                 {/* Live Supplier Results Preview Box */}
                 {supplierTestResult && (
                   <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs space-y-2">
                     <div className="flex items-center justify-between">
-                      <span className="font-bold text-slate-800">Resultado de Detección:</span>
+                      <span className="font-bold text-slate-800">
+                        {lang === "es" ? "Resultado de Detección:" : "Detection Result:"}
+                      </span>
                       <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-slate-200 text-slate-800">
                         {supplierTestResult.platform}
                       </span>
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
                       <div className="bg-white p-2 rounded-xl border border-slate-200">
-                        <span className="text-slate-500 block text-[10px]">Estado Stock:</span>
+                        <span className="text-slate-500 block text-[10px]">
+                          {lang === "es" ? "Estado Stock:" : "Stock Status:"}
+                        </span>
                         <span className="font-bold font-mono text-[#C02030]">{supplierTestResult.status}</span>
                       </div>
                       <div className="bg-white p-2 rounded-xl border border-slate-200">
-                        <span className="text-slate-500 block text-[10px]">Precio USD:</span>
+                        <span className="text-slate-500 block text-[10px]">
+                          {lang === "es" ? "Precio USD (P_price_D):" : "USD Price (P_price_D):"}
+                        </span>
                         <span className="font-bold font-mono text-emerald-700">
                           {supplierTestResult.supplierPriceUSD ? `$${supplierTestResult.supplierPriceUSD}` : "N/D"}
                         </span>
                       </div>
                       <div className="bg-white p-2 rounded-xl border border-slate-200">
-                        <span className="text-slate-500 block text-[10px]">Días Entrega:</span>
+                        <span className="text-slate-500 block text-[10px]">
+                          {lang === "es" ? "Días Entrega:" : "Lead Days:"}
+                        </span>
                         <span className="font-bold font-mono text-slate-800">
                           {supplierTestResult.leadDaysMin} - {supplierTestResult.leadDaysMax} d
                         </span>
                       </div>
                       <div className="bg-white p-2 rounded-xl border border-slate-200">
-                        <span className="text-slate-500 block text-[10px]">Disponible:</span>
+                        <span className="text-slate-500 block text-[10px]">
+                          {lang === "es" ? "Disponible:" : "Available:"}
+                        </span>
                         <span className="font-bold font-mono text-slate-800">
-                          {supplierTestResult.available ? "SÍ" : "NO"}
+                          {supplierTestResult.available ? (lang === "es" ? "SÍ" : "YES") : "NO"}
                         </span>
                       </div>
                     </div>
@@ -5541,24 +5867,24 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
                     <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                      Estado Proyectado en Web:
+                      {lang === "es" ? "Estado Proyectado en Web:" : "Projected Web Status:"}
                     </label>
                     <select
                       value={productForm.supplierStockStatus}
                       onChange={(e) => setProductForm({ ...productForm, supplierStockStatus: e.target.value })}
                       className="w-full bg-slate-50 border border-red-200 rounded-xl p-2 text-xs font-semibold text-slate-800 focus:outline-none focus:border-red-500"
                     >
-                      <option value="IN_STOCK">IN_STOCK (En Stock con Proveedor)</option>
-                      <option value="PRE_ORDER">PRE_ORDER (Preventa de Fábrica)</option>
-                      <option value="LOW_STOCK">LOW_STOCK (Últimas Unidades)</option>
-                      <option value="OUT_OF_STOCK">OUT_OF_STOCK (Agotado - Cotización Reserva)</option>
-                      <option value="UNAVAILABLE">UNAVAILABLE (No Disponible)</option>
+                      <option value="IN_STOCK">IN_STOCK ({lang === "es" ? "En Stock con Proveedor" : "In Stock with Supplier"})</option>
+                      <option value="PRE_ORDER">PRE_ORDER ({lang === "es" ? "Preventa de Fábrica" : "Factory Pre-Order"})</option>
+                      <option value="LOW_STOCK">LOW_STOCK ({lang === "es" ? "Últimas Unidades" : "Low Stock"})</option>
+                      <option value="OUT_OF_STOCK">OUT_OF_STOCK ({lang === "es" ? "Agotado - Cotización Reserva" : "Out of Stock"})</option>
+                      <option value="UNAVAILABLE">UNAVAILABLE ({lang === "es" ? "No Disponible" : "Unavailable"})</option>
                     </select>
                   </div>
 
                   <div>
                     <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                      Días Mínimos Entrega:
+                      {lang === "es" ? "Días Mínimos Entrega:" : "Min Delivery Days:"}
                     </label>
                     <input
                       type="number"
@@ -5572,7 +5898,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
 
                   <div>
                     <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                      Días Máximos Entrega:
+                      {lang === "es" ? "Días Máximos Entrega:" : "Max Delivery Days:"}
                     </label>
                     <input
                       type="number"
@@ -5589,13 +5915,26 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                      Precio del Proveedor (USD $):
+                      {lang === "es" ? "Precio del Proveedor (USD $) → P_price_D:" : "Supplier Price (USD $) → P_price_D:"}
                     </label>
                     <input
                       type="number"
                       step="0.01"
                       value={productForm.supplierLastPriceUSD}
-                      onChange={(e) => setProductForm({ ...productForm, supplierLastPriceUSD: e.target.value })}
+                      onChange={(e) => {
+                        const rawVal = e.target.value;
+                        const numVal = parseFloat(rawVal);
+                        setProductForm((prev) => {
+                          const hasValid = Number.isFinite(numVal) && numVal >= 0;
+                          const nextPPriceCRC = hasValid && numVal > 0 ? Math.round(numVal * (liveExchangeRate || 455.21)) : prev.P_price;
+                          return {
+                            ...prev,
+                            supplierLastPriceUSD: rawVal,
+                            P_price_D: hasValid ? numVal : prev.P_price_D,
+                            P_price: nextPPriceCRC,
+                          };
+                        });
+                      }}
                       placeholder="e.g. 979.95"
                       className="w-full bg-slate-50 border border-red-200 rounded-xl p-2 text-xs font-mono text-slate-900 focus:outline-none focus:border-red-500"
                     />
@@ -5603,7 +5942,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
 
                   <div>
                     <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                      Plataforma Detectada:
+                      {lang === "es" ? "Plataforma Detectada:" : "Detected Platform:"}
                     </label>
                     <input
                       type="text"
@@ -5624,7 +5963,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                     <span>{t.devPriceBreakdownTitle}</span>
                   </span>
                   <span className="text-xs font-mono font-bold text-[#C02030]">
-                    Total Tienda: {formatCRC(recalculateTPrice(productForm.P_price, productForm.S_price, productForm.profit, productForm.I_price, productForm.I_price_includes, productForm.discountPercent, productForm.ivaPercent ?? 13))}
+                    {lang === "es" ? "Total Tienda" : "Store Total"}: {formatCRC(recalculateTPrice(productForm.P_price, productForm.S_price, productForm.profit, productForm.I_price, productForm.I_price_includes, productForm.discountPercent, productForm.ivaPercent ?? 13))}
                   </span>
                 </div>
 
@@ -5634,7 +5973,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                   <div>
                     <p className="font-semibold">{t.devPriceDollarNotice}</p>
                     <p className="text-[10px] text-red-700/80 mt-0.5 font-mono">
-                      Referencia JSON: <span className="font-bold">T_price_D</span> = &quot;{productForm.T_price_D}&quot;
+                      {lang === "es" ? "Tipo de Cambio Venta BCCR" : "BCCR Sell Exchange Rate"}: <span className="font-bold">₡{liveExchangeRate.toFixed(2)} / $1 USD</span> · <span className="font-bold">T_price_D</span> = &quot;{productForm.T_price_D}&quot;
                     </p>
                   </div>
                 </div>
@@ -5645,7 +5984,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                   <div className="p-3 bg-slate-50 rounded-2xl border border-red-200/80 space-y-1">
                     <div className="flex items-center justify-between">
                       <label className="text-[11px] font-bold text-slate-800 flex items-center gap-1">
-                        <span>Precio de Adquisición en Dólares (P_price_D)</span>
+                        <span>{lang === "es" ? "Precio de Adquisición en Dólares (P_price_D)" : "Acquisition Price in USD (P_price_D)"}</span>
                         {!isMaster && <Lock className="w-3 h-3 text-slate-400" />}
                       </label>
                       <span className="text-xs font-bold font-mono text-slate-600">
@@ -5658,19 +5997,29 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                       step="any"
                       disabled={!isMaster}
                       value={productForm.P_price_D}
-                      onChange={(e) =>
-                        setProductForm({ ...productForm, P_price_D: parseFloat(e.target.value) || 0 })
-                      }
+                      onChange={(e) => {
+                        const usdVal = parseFloat(e.target.value) || 0;
+                        setProductForm((prev) => ({
+                          ...prev,
+                          P_price_D: usdVal,
+                          supplierLastPriceUSD: usdVal > 0 ? usdVal : prev.supplierLastPriceUSD,
+                          P_price: usdVal > 0 ? Math.round(usdVal * (liveExchangeRate || 455.21)) : prev.P_price,
+                        }));
+                      }}
                       className="w-full bg-white border border-red-200 rounded-xl p-2 text-xs font-mono text-slate-900 disabled:bg-slate-100 disabled:text-slate-400 focus:outline-none focus:border-red-500"
                     />
-                    <p className="text-[9px] text-slate-400">Precio adquisición en $ USD</p>
+                    <p className="text-[9px] text-slate-400">
+                      {lang === "es"
+                        ? `Precio adquisición en $ USD (auto-sincronizado desde supplierUrl · 1 USD = ₡${liveExchangeRate.toFixed(2)})`
+                        : `Acquisition price in $ USD (auto-synced from supplierUrl · 1 USD = ₡${liveExchangeRate.toFixed(2)})`}
+                    </p>
                   </div>
 
                   {/* P_price (Acquisition in CRC) */}
                   <div className="p-3 bg-slate-50 rounded-2xl border border-red-200/80 space-y-1">
                     <div className="flex items-center justify-between">
                       <label className="text-[11px] font-bold text-slate-800 flex items-center gap-1">
-                        <span>Precio Base de Hardware en Colones (P_price)</span>
+                        <span>{lang === "es" ? "Precio Base de Hardware en Colones (P_price)" : "Base Hardware Price in Colones (P_price)"}</span>
                         {!isMaster && <Lock className="w-3 h-3 text-slate-400" />}
                       </label>
                       <span className="text-xs font-bold font-mono text-slate-600">
@@ -5697,7 +6046,9 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                       }}
                       className="w-full bg-white border border-red-200 rounded-xl p-2 text-xs font-mono text-slate-900 disabled:bg-slate-100 disabled:text-slate-400 focus:outline-none focus:border-red-500"
                     />
-                    <p className="text-[9px] text-slate-400">Precio base en ₡ (actualiza el total en vivo)</p>
+                    <p className="text-[9px] text-slate-400">
+                      {lang === "es" ? "Precio base en ₡ (actualiza el total en vivo)" : "Base price in ₡ (updates total live)"}
+                    </p>
                   </div>
 
                   {/* S_price (Shipping in CRC) */}
@@ -6209,11 +6560,11 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                         .filter((p) => {
                           if (editingProduct && (p.id === editingProduct.id || p.sku === editingProduct.sku)) return false;
                           if ((productForm.relatedProductIds || []).includes(p.id) || (p.sku && (productForm.relatedProductIds || []).includes(p.sku))) return false;
-                          const q = relatedProductSearch.toLowerCase().trim();
-                          const name = (p.nameEs || p.p_title || p.nameEn || "").toLowerCase();
-                          const sku = (p.sku || "").toLowerCase();
-                          const brand = (p.brandName || "").toLowerCase();
-                          return name.includes(q) || sku.includes(q) || brand.includes(q);
+                          const q = normalizeSearchStr(relatedProductSearch).trim();
+                          const haystack = normalizeSearchStr(
+                            [p.nameEs, p.nameEn, p.p_title, p.sku, p.slug, p.brandName, ...(Array.isArray(p.brand) ? p.brand : [])].join(" ")
+                          );
+                          return haystack.includes(q);
                         })
                         .slice(0, 8)
                         .map((candidate) => (
@@ -6241,7 +6592,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                               </div>
                               <div className="min-w-0">
                                 <span className="text-xs font-bold text-slate-800 block truncate">
-                                  {candidate.nameEs || candidate.p_title}
+                                  {lang === "es" ? (candidate.nameEs || candidate.p_title || candidate.nameEn) : (candidate.nameEn || candidate.nameEs || candidate.p_title)}
                                 </span>
                                 <span className="text-[10px] text-slate-500 font-mono">
                                   #{candidate.sku} · {formatCRC(candidate.priceCRC || candidate.price?.T_price || 0)}
@@ -6282,7 +6633,9 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                             </div>
                             <div className="min-w-0">
                               <span className="text-xs font-bold text-slate-900 block truncate">
-                                {matchedProd?.nameEs || matchedProd?.p_title || relId}
+                                {lang === "es"
+                                  ? (matchedProd?.nameEs || matchedProd?.p_title || matchedProd?.nameEn || relId)
+                                  : (matchedProd?.nameEn || matchedProd?.nameEs || matchedProd?.p_title || relId)}
                               </span>
                               <div className="flex items-center gap-2 text-[10px] text-slate-500 font-mono">
                                 {matchedProd?.sku && <span>#{matchedProd.sku}</span>}
@@ -6303,7 +6656,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                               }));
                             }}
                             className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-100/60 rounded-xl transition"
-                            title="Quitar de recomendados"
+                            title={lang === "es" ? "Quitar de recomendados" : "Remove from recommended"}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -6345,7 +6698,17 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                   className="flex-1 py-3.5 px-6 rounded-2xl bg-[#C02030] hover:bg-[#A01825] text-white text-xs font-bold uppercase tracking-wider transition shadow-md flex items-center justify-center gap-2 disabled:opacity-50"
                 >
                   <Check className="w-4 h-4" />
-                  <span>{saving ? t.devSaving : isEdit ? "Guardar Todos los Cambios" : "Publicar Nuevo Producto"}</span>
+                  <span>
+                    {saving
+                      ? t.devSaving
+                      : isEdit
+                      ? lang === "es"
+                        ? "Guardar Todos los Cambios"
+                        : "Save All Changes"
+                      : lang === "es"
+                      ? "Publicar Nuevo Producto"
+                      : "Publish New Product"}
+                  </span>
                 </button>
               </div>
             </div>
@@ -6394,13 +6757,11 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
     const filteredProductOptions: Product[] = comboProductSearch.trim()
       ? products
           .filter((p: Product) => {
-            const q = comboProductSearch.toLowerCase();
-            return (
-              p.nameEs?.toLowerCase().includes(q) ||
-              p.nameEn?.toLowerCase().includes(q) ||
-              p.sku?.toLowerCase().includes(q) ||
-              p.brandName?.toLowerCase().includes(q)
+            const q = normalizeSearchStr(comboProductSearch).trim();
+            const haystack = normalizeSearchStr(
+              [p.nameEs, p.nameEn, p.p_title, p.sku, p.slug, p.brandName, ...(Array.isArray(p.brand) ? p.brand : [])].join(" ")
             );
+            return haystack.includes(q);
           })
           .slice(0, 8)
       : [];
@@ -7573,22 +7934,28 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
               <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                 <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-900 flex items-center gap-2">
                   <ImageIcon className="w-4 h-4 text-purple-600" />
-                  <span>Galería Multimedia del Combo</span>
+                  <span>{lang === "es" ? "Galería Multimedia del Combo" : "Combo Media Gallery"}</span>
                 </h3>
                 {(() => {
-                  const list = comboForm.imgsText ? comboForm.imgsText.split("\n").map((s) => s.trim()).filter(Boolean) : [];
-                  if (comboForm.imageUrl && !list.includes(comboForm.imageUrl)) list.unshift(comboForm.imageUrl);
+                  const list = comboForm.imgsText
+                    ? comboForm.imgsText.split("\n").map((s) => s.trim()).filter(Boolean)
+                    : comboForm.imageUrl
+                    ? [comboForm.imageUrl]
+                    : [];
                   return (
                     <span className="text-[10px] font-mono text-slate-500">
-                      {list.length} {list.length === 1 ? "imagen" : "imágenes"}
+                      {list.length} {lang === "es" ? (list.length === 1 ? "imagen" : "imágenes") : (list.length === 1 ? "image" : "images")}
                     </span>
                   );
                 })()}
               </div>
 
               {(() => {
-                const list = comboForm.imgsText ? comboForm.imgsText.split("\n").map((s) => s.trim()).filter(Boolean) : [];
-                if (comboForm.imageUrl && !list.includes(comboForm.imageUrl)) list.unshift(comboForm.imageUrl);
+                const list = comboForm.imgsText
+                  ? comboForm.imgsText.split("\n").map((s) => s.trim()).filter(Boolean)
+                  : comboForm.imageUrl
+                  ? [comboForm.imageUrl]
+                  : [];
 
                 return (
                   <div className="space-y-4">
@@ -7601,11 +7968,11 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                       />
                     </div>
 
-                    {/* Thumbnail strip with Delete buttons */}
+                    {/* Thumbnail strip with Replace & Delete buttons */}
                     {list.length > 0 && (
                       <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
                         {list.map((imgUrl, idx) => {
-                          const isPrimary = comboForm.imageUrl === imgUrl;
+                          const isPrimary = (comboForm.imageUrl || list[0]) === imgUrl;
                           return (
                             <div
                               key={idx}
@@ -7629,24 +7996,37 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                                   }));
                                 }}
                               />
+                              <label
+                                onClick={(e) => e.stopPropagation()}
+                                className="absolute top-1 left-1 w-5 h-5 bg-slate-900/85 hover:bg-slate-900 text-white rounded-full flex items-center justify-center opacity-80 group-hover:opacity-100 transition shadow-xs cursor-pointer"
+                                title={lang === "es" ? "Reemplazar imagen" : "Replace image"}
+                              >
+                                <Upload className="w-2.5 h-2.5" />
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  onChange={(e) => handleMediaUpload(e, "image", idx)}
+                                  className="hidden"
+                                />
+                              </label>
                               <button
                                 type="button"
                                 onClick={() => {
                                   const updated = list.filter((_, i) => i !== idx);
                                   setComboForm((prev) => ({
                                     ...prev,
-                                    imageUrl: isPrimary ? (updated[0] || "/images/sxs/z10_front.png") : prev.imageUrl,
+                                    imageUrl: isPrimary ? (updated[0] || "") : (updated.includes(prev.imageUrl) ? prev.imageUrl : (updated[0] || "")),
                                     imgsText: updated.join("\n"),
                                   }));
                                 }}
                                 className="absolute top-1 right-1 w-5 h-5 bg-red-600 hover:bg-red-700 text-white rounded-full flex items-center justify-center opacity-80 group-hover:opacity-100 transition shadow-xs"
-                                title="Eliminar imagen"
+                                title={lang === "es" ? "Eliminar imagen" : "Delete image"}
                               >
                                 <X className="w-3 h-3" />
                               </button>
                               {isPrimary && (
                                 <span className="absolute bottom-1 left-1 bg-purple-600 text-[8px] font-bold text-white px-1.5 py-0.5 rounded-full uppercase">
-                                  Principal
+                                  {lang === "es" ? "Principal" : "Primary"}
                                 </span>
                               )}
                             </div>
@@ -7658,7 +8038,13 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                     {/* Direct Upload Button */}
                     <label className="cursor-pointer w-full py-2.5 px-4 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold text-xs transition flex items-center justify-center gap-2 border border-purple-200 shadow-2xs">
                       <Upload className="w-3.5 h-3.5 text-purple-600" />
-                      <span>{uploadingImage ? t.devSaving : "Subir Imagen Adicional al Combo"}</span>
+                      <span>
+                        {uploadingImage
+                          ? t.devSaving
+                          : lang === "es"
+                          ? "Subir Imagen Adicional al Combo"
+                          : "Upload Additional Combo Image"}
+                      </span>
                       <input
                         type="file"
                         accept="image/*"
@@ -7671,7 +8057,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                     {/* Manual URLs textarea */}
                     <div>
                       <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                        URLs de Imágenes (una por línea):
+                        {lang === "es" ? "URLs de Imágenes (una por línea):" : "Image URLs (one per line):"}
                       </label>
                       <textarea
                         rows={3}
@@ -7682,7 +8068,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                           setComboForm((prev) => ({
                             ...prev,
                             imgsText: text,
-                            imageUrl: lines[0] || prev.imageUrl,
+                            imageUrl: lines[0] || "",
                           }));
                         }}
                         placeholder="/images/sxs/z10_front.png&#10;https://..."
@@ -7734,7 +8120,17 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                 className="flex-1 py-3.5 px-6 rounded-2xl bg-[#C02030] hover:bg-[#A01825] text-white text-xs font-bold uppercase tracking-wider transition shadow-md flex items-center justify-center gap-2 disabled:opacity-50"
               >
                 <Check className="w-4 h-4" />
-                <span>{saving ? t.devSaving : isEdit ? "Guardar Cambios del Combo" : "Publicar Combo"}</span>
+                <span>
+                  {saving
+                    ? t.devSaving
+                    : isEdit
+                    ? lang === "es"
+                      ? "Guardar Cambios del Combo"
+                      : "Save Combo Changes"
+                    : lang === "es"
+                    ? "Publicar Combo"
+                    : "Publish Combo"}
+                </span>
               </button>
             </div>
           </div>
@@ -7789,7 +8185,9 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
             }`}
           >
             <Package className="w-3.5 h-3.5" />
-            <span>Productos ({products.length})</span>
+            <span>
+              {lang === "es" ? "Productos" : "Products"} ({products.length})
+            </span>
           </button>
           <button
             type="button"
@@ -7812,7 +8210,15 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder={activeCatalogType === "products" ? "Filtrar por SKU o nombre..." : "Filtrar combos..."}
+              placeholder={
+                activeCatalogType === "products"
+                  ? lang === "es"
+                    ? "Filtrar por SKU, nombre (ES/EN) o marca..."
+                    : "Search by SKU, name (EN/ES), or brand..."
+                  : lang === "es"
+                  ? "Filtrar combos (ES/EN)..."
+                  : "Search combos (EN/ES)..."
+              }
               className="w-56 sm:w-64 bg-slate-50 border border-slate-200 rounded-xl pl-8 pr-3 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-slate-900 focus:bg-white"
             />
           </div>
@@ -7903,7 +8309,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                 className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold py-1.5 px-3.5 rounded-xl flex items-center gap-1.5 transition shadow-sm"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>Nuevo Producto</span>
+                <span>{lang === "es" ? "Nuevo Producto" : "New Product"}</span>
               </button>
             ) : (
               <button
@@ -7912,7 +8318,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                 className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold py-1.5 px-3.5 rounded-xl flex items-center gap-1.5 transition shadow-sm"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>Nuevo Combo</span>
+                <span>{lang === "es" ? "Nuevo Combo" : "New Combo"}</span>
               </button>
             )}
           </div>
@@ -7925,7 +8331,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
           {/* Category Parameter Dropdown (Zero Mock Data: strictly present categories only) */}
           <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs">
             <Layers className="w-3.5 h-3.5 text-blue-600" />
-            <span className="font-bold text-slate-700">{t.productsFilterCategory || "Categoría"}:</span>
+            <span className="font-bold text-slate-700">{t.productsFilterCategory || (lang === "es" ? "Categoría" : "Category")}:</span>
             <select
               value={backdoorCategory}
               onChange={(e) => setBackdoorCategory(e.target.value)}
@@ -7933,8 +8339,8 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
             >
               <option value="all">
                 {availableCategories.length === 0
-                  ? (t.productsAllCategories || "Todas las Categorías")
-                  : `${t.productsAllCategories || "Todas las Categorías"} (${availableCategories.length})`}
+                  ? (t.productsAllCategories || (lang === "es" ? "Todas las Categorías" : "All Categories"))
+                  : `${t.productsAllCategories || (lang === "es" ? "Todas las Categorías" : "All Categories")} (${availableCategories.length})`}
               </option>
               {availableCategories.map((c) => (
                 <option key={c.slug} value={c.slug}>
@@ -7947,7 +8353,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
           {/* Vehicle Brand Parameter Dropdown (Zero Mock Data: strictly present brands only) */}
           <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs">
             <Car className="w-3.5 h-3.5 text-[#C02030]" />
-            <span className="font-bold text-slate-700">{t.productsFilterVehicleBrand || "Marca de Vehículo"}:</span>
+            <span className="font-bold text-slate-700">{t.productsFilterVehicleBrand || (lang === "es" ? "Marca de Vehículo" : "Vehicle Brand")}:</span>
             <select
               value={backdoorVehicleBrand}
               onChange={(e) => setBackdoorVehicleBrand(e.target.value)}
@@ -7955,8 +8361,8 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
             >
               <option value="all">
                 {availableVehicleBrands.length === 0
-                  ? (t.productsAllVehicleBrands || "Todos los Vehículos")
-                  : `${t.productsAllVehicleBrands || "Todos los Vehículos"} (${availableVehicleBrands.length})`}
+                  ? (t.productsAllVehicleBrands || (lang === "es" ? "Todos los Vehículos" : "All Vehicles"))
+                  : `${t.productsAllVehicleBrands || (lang === "es" ? "Todos los Vehículos" : "All Vehicles")} (${availableVehicleBrands.length})`}
               </option>
               {availableVehicleBrands.map((vb) => (
                 <option key={vb.slug} value={vb.slug}>
@@ -7969,7 +8375,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
           {/* Distributor Brand Parameter Dropdown (Zero Mock Data: strictly present brands only) */}
           <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs">
             <Tag className="w-3.5 h-3.5 text-slate-500" />
-            <span className="font-bold text-slate-700">{t.productsFilterDistributorBrand || "Marca Fabricante"}:</span>
+            <span className="font-bold text-slate-700">{t.productsFilterDistributorBrand || (lang === "es" ? "Marca Fabricante" : "Dealer Brand")}:</span>
             <select
               value={backdoorDistributorBrand}
               onChange={(e) => setBackdoorDistributorBrand(e.target.value)}
@@ -7977,8 +8383,8 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
             >
               <option value="all">
                 {availableDistributorBrands.length === 0
-                  ? (t.productsAllDistributorBrands || "Todas las Marcas")
-                  : `${t.productsAllDistributorBrands || "Todas las Marcas"} (${availableDistributorBrands.length})`}
+                  ? (t.productsAllDistributorBrands || (lang === "es" ? "Todas las Marcas" : "All Brands"))
+                  : `${t.productsAllDistributorBrands || (lang === "es" ? "Todas las Marcas" : "All Brands")} (${availableDistributorBrands.length})`}
               </option>
               {availableDistributorBrands.map((db) => (
                 <option key={db.name} value={db.name}>
@@ -8002,7 +8408,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
             }`}
           >
             <span className={`w-2 h-2 rounded-full ${backdoorInStockOnly ? "bg-white" : "bg-emerald-500"}`} />
-            <span>{t.productsFilterInStock || "En Stock"}</span>
+            <span>{t.productsFilterInStock || (lang === "es" ? "En Stock" : "In Stock")}</span>
           </button>
 
           {/* Discounted Toggle Parameter */}
@@ -8019,7 +8425,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
             }`}
           >
             <Sparkles className="w-3.5 h-3.5" />
-            <span>{t.productsFilterDiscounted || "En Oferta"}</span>
+            <span>{t.productsFilterDiscounted || (lang === "es" ? "En Oferta" : "On Sale")}</span>
           </button>
         </div>
 
@@ -8031,7 +8437,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
             className="text-xs font-bold text-slate-500 hover:text-red-600 flex items-center gap-1 px-2.5 py-1 rounded-lg hover:bg-red-50 transition"
           >
             <X className="w-3.5 h-3.5" />
-            <span>{t.productsClearFilters || "Limpiar filtros"}</span>
+            <span>{t.productsClearFilters || (lang === "es" ? "Limpiar filtros" : "Clear filters")}</span>
           </button>
         )}
       </div>
@@ -8039,46 +8445,57 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       {/* Active Filter Pills Bar */}
       {hasActiveBackdoorFilters && (
         <div className="flex flex-wrap items-center gap-2 pt-1 text-xs">
-          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Filtros activos:</span>
+          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+            {lang === "es" ? "Filtros activos:" : "Active filters:"}
+          </span>
           {search.trim() && (
             <span className="inline-flex items-center gap-1 bg-slate-900 text-white px-2.5 py-1 rounded-full text-[11px] font-semibold">
-              <span>Búsqueda: &ldquo;{search}&rdquo;</span>
+              <span>{lang === "es" ? "Búsqueda" : "Search"}: &ldquo;{search}&rdquo;</span>
               <button type="button" onClick={() => setSearch("")} className="hover:text-red-300">✕</button>
             </span>
           )}
           {backdoorCategory !== "all" && (
             <span className="inline-flex items-center gap-1 bg-blue-700 text-white px-2.5 py-1 rounded-full text-[11px] font-semibold">
-              <span>Categoría: {availableCategories.find((c) => c.slug === backdoorCategory)?.title || backdoorCategory}</span>
+              <span>{lang === "es" ? "Categoría" : "Category"}: {availableCategories.find((c) => c.slug === backdoorCategory)?.title || backdoorCategory}</span>
               <button type="button" onClick={() => setBackdoorCategory("all")} className="hover:text-blue-200">✕</button>
             </span>
           )}
           {backdoorVehicleBrand !== "all" && (
             <span className="inline-flex items-center gap-1 bg-[#C02030] text-white px-2.5 py-1 rounded-full text-[11px] font-semibold">
-              <span>Vehículo: {availableVehicleBrands.find((b) => b.slug === backdoorVehicleBrand)?.title || backdoorVehicleBrand.toUpperCase()}</span>
+              <span>{lang === "es" ? "Vehículo" : "Vehicle"}: {availableVehicleBrands.find((b) => b.slug === backdoorVehicleBrand)?.title || backdoorVehicleBrand.toUpperCase()}</span>
               <button type="button" onClick={() => setBackdoorVehicleBrand("all")} className="hover:text-red-200">✕</button>
             </span>
           )}
           {backdoorDistributorBrand !== "all" && (
             <span className="inline-flex items-center gap-1 bg-slate-800 text-white px-2.5 py-1 rounded-full text-[11px] font-semibold">
-              <span>Distribuidor: {backdoorDistributorBrand}</span>
+              <span>{lang === "es" ? "Distribuidor" : "Brand"}: {backdoorDistributorBrand}</span>
               <button type="button" onClick={() => setBackdoorDistributorBrand("all")} className="hover:text-red-300">✕</button>
             </span>
           )}
           {backdoorInStockOnly && (
             <span className="inline-flex items-center gap-1 bg-emerald-700 text-white px-2.5 py-1 rounded-full text-[11px] font-semibold">
-              <span>En Stock</span>
+              <span>{lang === "es" ? "En Stock" : "In Stock"}</span>
               <button type="button" onClick={() => setBackdoorInStockOnly(false)} className="hover:text-emerald-200">✕</button>
             </span>
           )}
           {backdoorDiscountedOnly && (
             <span className="inline-flex items-center gap-1 bg-rose-700 text-white px-2.5 py-1 rounded-full text-[11px] font-semibold">
-              <span>En Oferta</span>
+              <span>{lang === "es" ? "En Oferta" : "On Sale"}</span>
               <button type="button" onClick={() => setBackdoorDiscountedOnly(false)} className="hover:text-rose-200">✕</button>
             </span>
           )}
           {(activeCatalogType === "products" ? productFilterStatus !== "all" : comboFilterStatus !== "all") && (
             <span className="inline-flex items-center gap-1 bg-amber-700 text-white px-2.5 py-1 rounded-full text-[11px] font-semibold">
-              <span>Estado: {(activeCatalogType === "products" ? productFilterStatus : comboFilterStatus) === "active" ? "Activos" : "Archivados"}</span>
+              <span>
+                {lang === "es" ? "Estado" : "Status"}:{" "}
+                {(activeCatalogType === "products" ? productFilterStatus : comboFilterStatus) === "active"
+                  ? lang === "es"
+                    ? "Activos"
+                    : "Active"
+                  : lang === "es"
+                  ? "Archivados"
+                  : "Archived"}
+              </span>
               <button type="button" onClick={() => activeCatalogType === "products" ? setProductFilterStatus("all") : setComboFilterStatus("all")} className="hover:text-amber-200">✕</button>
             </span>
           )}
@@ -8091,11 +8508,11 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase text-[10px] font-bold tracking-wider">
               <tr>
-                <th className="p-3.5">SKU / Producto</th>
-                <th className="p-3.5">Estado Stock</th>
-                <th className="p-3.5">Precio Base (₡)</th>
-                <th className="p-3.5">Mano de Obra / Inst.</th>
-                <th className="p-3.5 text-right">Acciones</th>
+                <th className="p-3.5">{lang === "es" ? "SKU / Producto" : "SKU / Product"}</th>
+                <th className="p-3.5">{lang === "es" ? "Estado Stock" : "Stock Status"}</th>
+                <th className="p-3.5">{lang === "es" ? "Precio Base (₡)" : "Base Price (₡)"}</th>
+                <th className="p-3.5">{lang === "es" ? "Mano de Obra / Inst." : "Labor / Install"}</th>
+                <th className="p-3.5 text-right">{lang === "es" ? "Acciones" : "Actions"}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -8113,7 +8530,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                       <div>
                         <span className="font-mono font-bold text-slate-900 block">{prod.sku}</span>
                         <span className="text-slate-600 text-[11px] line-clamp-1">
-                          {lang === "es" ? prod.nameEs : prod.nameEn}
+                          {lang === "es" ? (prod.nameEs || prod.p_title || prod.nameEn) : (prod.nameEn || prod.nameEs || prod.p_title)}
                         </span>
                       </div>
                     </div>
@@ -8127,21 +8544,21 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                       {prod.supplierStockStatus === "PRE_ORDER" ? (
                         <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-blue-50 text-blue-700 px-2 py-0.5 rounded-md border border-blue-200">
                           <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                          <span>Preventa</span>
+                          <span>{lang === "es" ? "Preventa" : "Pre-Order"}</span>
                         </span>
                       ) : prod.supplierStockStatus === "OUT_OF_STOCK" || prod.supplierStockStatus === "UNAVAILABLE" ? (
                         <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-rose-50 text-rose-700 px-2 py-0.5 rounded-md border border-rose-200">
                           <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
-                          <span>Agotado</span>
+                          <span>{lang === "es" ? "Agotado" : "Out of Stock"}</span>
                         </span>
                       ) : prod.supplierUrl ? (
                         <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-md border border-emerald-200">
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                          <span>En Stock</span>
+                          <span>{lang === "es" ? "En Stock" : "In Stock"}</span>
                         </span>
                       ) : (
                         <span className="inline-flex items-center gap-1 text-[10px] text-slate-400">
-                          Sin enlace
+                          {lang === "es" ? "Sin enlace" : "No link"}
                         </span>
                       )}
                     </div>
@@ -8154,7 +8571,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                           {formatCRC(prod.priceCRC)}
                         </span>
                         {!isMaster && (
-                          <span title="Precio base exclusivo de Master">
+                          <span title={lang === "es" ? "Precio base exclusivo de Master" : "Master-only base price"}>
                             <Lock className="w-3 h-3 text-slate-400" />
                           </span>
                         )}
@@ -8196,10 +8613,10 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                         type="button"
                         onClick={() => handleOpenEditProduct(prod)}
                         className="px-2.5 py-1 text-slate-700 hover:text-white bg-slate-100 hover:bg-[#C02030] rounded-lg text-xs font-semibold flex items-center gap-1 transition"
-                        title="Abrir editor visual con fondo rojo"
+                        title={lang === "es" ? "Abrir editor visual" : "Open visual editor"}
                       >
                         <Edit2 className="w-3 h-3" />
-                        <span>Editar</span>
+                        <span>{lang === "es" ? "Editar" : "Edit"}</span>
                       </button>
                       <button
                         type="button"
@@ -8233,14 +8650,18 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                 <tr>
                   <td colSpan={5} className="py-12 text-center text-slate-400 space-y-2">
                     <Package className="w-8 h-8 mx-auto text-slate-300" />
-                    <p className="font-semibold text-xs text-slate-600">No se encontraron productos con los filtros seleccionados.</p>
+                    <p className="font-semibold text-xs text-slate-600">
+                      {lang === "es"
+                        ? "No se encontraron productos con los filtros seleccionados."
+                        : "No products found matching the selected filters."}
+                    </p>
                     {hasActiveBackdoorFilters && (
                       <button
                         type="button"
                         onClick={handleClearBackdoorFilters}
                         className="text-xs font-bold text-[#C02030] hover:underline"
                       >
-                        Limpiar todos los filtros
+                        {lang === "es" ? "Limpiar todos los filtros" : "Clear all filters"}
                       </button>
                     )}
                   </td>
@@ -8258,13 +8679,13 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase text-[10px] font-bold tracking-wider">
                 <tr>
-                  <th className="p-3.5">Combo / Título</th>
-                  <th className="p-3.5">Categoría</th>
+                  <th className="p-3.5">{lang === "es" ? "Combo / Título" : "Combo / Title"}</th>
+                  <th className="p-3.5">{lang === "es" ? "Categoría" : "Category"}</th>
                   <th className="p-3.5">{t.devComboAvailabilityCol}</th>
-                  <th className="p-3.5">Descuento</th>
-                  <th className="p-3.5">Precio Combo</th>
-                  <th className="p-3.5">Mano de Obra / Inst.</th>
-                  <th className="p-3.5 text-right">Acciones</th>
+                  <th className="p-3.5">{lang === "es" ? "Descuento" : "Discount"}</th>
+                  <th className="p-3.5">{lang === "es" ? "Precio Combo" : "Combo Price"}</th>
+                  <th className="p-3.5">{lang === "es" ? "Mano de Obra / Inst." : "Labor / Install"}</th>
+                  <th className="p-3.5 text-right">{lang === "es" ? "Acciones" : "Actions"}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -8291,7 +8712,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                           <div>
                             <div className="flex items-center gap-1.5">
                               <span className="font-bold text-slate-900 block text-xs">
-                                {lang === "es" ? combo.titleEs : combo.titleEn}
+                                {lang === "es" ? (combo.titleEs || combo.titleEn) : (combo.titleEn || combo.titleEs)}
                               </span>
                               {combo.isArchived && (
                                 <span className="text-[9px] font-bold bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded border border-amber-200">
@@ -8364,7 +8785,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                             </span>
                           )}
                           {!isMaster && (
-                            <span title="Precio base exclusivo de Master">
+                            <span title={lang === "es" ? "Precio base exclusivo de Master" : "Master-only base price"}>
                               <Lock className="w-3 h-3 text-slate-400" />
                             </span>
                           )}
@@ -8388,10 +8809,10 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                             type="button"
                             onClick={() => handleOpenEditCombo(combo)}
                             className="px-2.5 py-1 text-slate-700 hover:text-white bg-slate-100 hover:bg-slate-900 rounded-lg text-xs font-semibold flex items-center gap-1 transition"
-                            title="Editar Combo"
+                            title={lang === "es" ? "Editar Combo" : "Edit Combo"}
                           >
                             <Edit2 className="w-3 h-3" />
-                            <span>Editar</span>
+                            <span>{lang === "es" ? "Editar" : "Edit"}</span>
                           </button>
                           <button
                             type="button"
@@ -8426,14 +8847,18 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                   <tr>
                     <td colSpan={7} className="py-12 text-center text-slate-400 space-y-2">
                       <Layers className="w-8 h-8 mx-auto text-slate-300" />
-                      <p className="font-semibold text-xs text-slate-600">No se encontraron combos con los filtros seleccionados.</p>
+                      <p className="font-semibold text-xs text-slate-600">
+                        {lang === "es"
+                          ? "No se encontraron combos con los filtros seleccionados."
+                          : "No combos found matching the selected filters."}
+                      </p>
                       {hasActiveBackdoorFilters && (
                         <button
                           type="button"
                           onClick={handleClearBackdoorFilters}
                           className="text-xs font-bold text-[#C02030] hover:underline"
                         >
-                          Limpiar todos los filtros
+                          {lang === "es" ? "Limpiar todos los filtros" : "Clear all filters"}
                         </button>
                       )}
                     </td>

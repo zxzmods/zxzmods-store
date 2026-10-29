@@ -33,11 +33,8 @@ function dbProductToProductItem(dbProd: any, jsonProd?: ProductItem | null, isSt
     } catch (e) {}
   }
 
-  // Image list
+  // Image list (Database imagesJson is authoritative; only fall back if empty)
   let imgs: string[] = [];
-  if (dbProd.imageUrl && typeof dbProd.imageUrl === "string" && dbProd.imageUrl.trim()) {
-    imgs.push(dbProd.imageUrl.trim());
-  }
   if (dbProd.imagesJson) {
     try {
       const parsed = JSON.parse(dbProd.imagesJson);
@@ -49,18 +46,10 @@ function dbProductToProductItem(dbProd: any, jsonProd?: ProductItem | null, isSt
       }
     } catch (e) {}
   }
-  if (dbProd.additionalImagesJson) {
-    try {
-      const addImgs = JSON.parse(dbProd.additionalImagesJson);
-      if (Array.isArray(addImgs)) {
-        addImgs.forEach((img: any) => {
-          const s = typeof img === "string" ? img.trim() : "";
-          if (s && !imgs.includes(s)) imgs.push(s);
-        });
-      }
-    } catch (e) {}
+  if (imgs.length === 0 && dbProd.imageUrl && typeof dbProd.imageUrl === "string" && dbProd.imageUrl.trim()) {
+    imgs.push(dbProd.imageUrl.trim());
   }
-  if (jsonProd?.imgs && Array.isArray(jsonProd.imgs)) {
+  if (imgs.length === 0 && jsonProd?.imgs && Array.isArray(jsonProd.imgs)) {
     jsonProd.imgs.forEach((img: string) => {
       const s = typeof img === "string" ? img.trim() : "";
       if (s && !imgs.includes(s)) imgs.push(s);
@@ -100,33 +89,41 @@ function dbProductToProductItem(dbProd: any, jsonProd?: ProductItem | null, isSt
   }
   if (comp.length === 0) comp = ["all"];
 
-  // Audio & Video
+  // Audio & Video (Database audiosJson & videosJson are authoritative)
   let rawAudios: string[] = [];
+  let hasDbAudiosJson = false;
   if (dbProd.audiosJson) {
     try {
       const parsed = JSON.parse(dbProd.audiosJson);
-      if (Array.isArray(parsed) && parsed.length > 0) rawAudios = parsed;
+      if (Array.isArray(parsed)) {
+        rawAudios = parsed;
+        hasDbAudiosJson = true;
+      }
     } catch {}
   }
-  if (rawAudios.length === 0 && dbProd.audioUrl) {
+  if (!hasDbAudiosJson && dbProd.audioUrl) {
     rawAudios = [dbProd.audioUrl];
   }
-  if (rawAudios.length === 0 && jsonProd?.audios && jsonProd.audios.length > 0) {
+  if (!hasDbAudiosJson && rawAudios.length === 0 && jsonProd?.audios && jsonProd.audios.length > 0) {
     rawAudios = jsonProd.audios;
   }
   const audios: string[] = rawAudios.map((a: string) => normalizeAudioUrl(a)).filter((s): s is string => Boolean(s));
 
   let rawVids: string[] = [];
+  let hasDbVideosJson = false;
   if (dbProd.videosJson) {
     try {
       const parsed = JSON.parse(dbProd.videosJson);
-      if (Array.isArray(parsed) && parsed.length > 0) rawVids = parsed;
+      if (Array.isArray(parsed)) {
+        rawVids = parsed;
+        hasDbVideosJson = true;
+      }
     } catch {}
   }
-  if (rawVids.length === 0 && dbProd.videoUrl) {
+  if (!hasDbVideosJson && dbProd.videoUrl) {
     rawVids = [dbProd.videoUrl];
   }
-  if (rawVids.length === 0 && jsonProd?.vids && jsonProd.vids.length > 0) {
+  if (!hasDbVideosJson && rawVids.length === 0 && jsonProd?.vids && jsonProd.vids.length > 0) {
     rawVids = jsonProd.vids;
   }
   const vids: string[] = rawVids.map((v: string) => normalizeVideoUrl(v)).filter((s): s is string => Boolean(s));

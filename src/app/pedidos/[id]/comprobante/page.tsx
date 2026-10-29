@@ -101,7 +101,22 @@ export default function OrderReceiptPage() {
   }, [order]);
 
   const currency = String(order?.paidCurrency || "CRC").toUpperCase() === "USD" ? "USD" : "CRC";
-  const sellRate = 520;
+  const [sellRate, setSellRate] = useState<number>(455.21);
+
+  useEffect(() => {
+    let mounted = true;
+    fetch("/api/exchange-rate", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((res) => {
+        if (mounted && res?.data?.rate && res.data.rate > 300) {
+          setSellRate(Number(res.data.rate));
+        }
+      })
+      .catch(() => {});
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const formatPrice = (crcAmount: number) => {
     if (currency === "USD") {

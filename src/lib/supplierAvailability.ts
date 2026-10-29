@@ -120,8 +120,18 @@ export async function fetchLiveSupplierAvailability(
           const json = JSON.parse(text);
 
           const title = json.title || "";
-          const price = typeof json.price === "number" ? json.price / 100 : null;
           const variants = Array.isArray(json.variants) ? json.variants : [];
+          let price: number | null = null;
+          if (typeof json.price === "number" && json.price > 0) {
+            price = Number((json.price / 100).toFixed(2));
+          } else if (variants.length > 0) {
+            const vPrice = variants[0]?.price;
+            if (typeof vPrice === "number" && vPrice > 0) {
+              price = Number((vPrice / 100).toFixed(2));
+            } else if (typeof vPrice === "string" && parseFloat(vPrice) > 0) {
+              price = Number(parseFloat(vPrice).toFixed(2));
+            }
+          }
           const anyAvailable = variants.some((v: any) => v.available === true) || json.available === true;
 
           // Detect Pre-Order tags or inventory policies
@@ -239,11 +249,39 @@ export async function fetchLiveSupplierAvailability(
           if (offers) {
             const avail = typeof offers.availability === "string" ? offers.availability : offers?.[0]?.availability;
             if (avail) schemaAvailability = avail;
-            const price = offers.price || offers?.[0]?.price;
-            if (price) schemaPrice = Number(price);
-            break;
+            const rawOfferPrice =
+              offers.price ??
+              offers.lowPrice ??
+              offers?.[0]?.price ??
+              offers?.[0]?.lowPrice ??
+              offers?.priceSpecification?.price;
+            if (rawOfferPrice !== undefined && rawOfferPrice !== null) {
+              const numP = Number(String(rawOfferPrice).replace(/[^0-9.]/g, ""));
+              if (!isNaN(numP) && numP > 0) schemaPrice = Number(numP.toFixed(2));
+            }
+            if (schemaPrice) break;
           }
         } catch {}
+      }
+    }
+
+    // Fallback meta tag / microdata price extraction for generic e-commerce sites
+    if (!schemaPrice) {
+      const metaPatterns = [
+        /<meta[^>]+property=["'](?:product|og):price:amount["'][^>]+content=["']([^"']+)["']/i,
+        /<meta[^>]+content=["']([^"']+)["'][^>]+property=["'](?:product|og):price:amount["']/i,
+        /<[^>]+itemprop=["']price["'][^>]+content=["']([^"']+)["']/i,
+        /"price"\s*:\s*"?(\d{1,5}(?:\.\d{1,2})?)"?/i,
+      ];
+      for (const regex of metaPatterns) {
+        const match = html.match(regex);
+        if (match && match[1]) {
+          const parsed = Number(String(match[1]).replace(/[^0-9.]/g, ""));
+          if (!isNaN(parsed) && parsed > 0 && parsed < 50000) {
+            schemaPrice = Number(parsed.toFixed(2));
+            break;
+          }
+        }
       }
     }
 
@@ -379,6 +417,9 @@ export async function syncProductAvailability(
           supplierLeadDaysMin: live.leadDaysMin,
           supplierLeadDaysMax: live.leadDaysMax,
           supplierLastPriceUSD: live.supplierPriceUSD || product.supplierLastPriceUSD,
+          ...(live.supplierPriceUSD && live.supplierPriceUSD > 0
+            ? { processingPriceD: live.supplierPriceUSD }
+            : {}),
           updatedAt: new Date(),
         },
       });
@@ -470,6 +511,9 @@ export async function syncAllCatalogAvailability(forceAll = false): Promise<{
               supplierLeadDaysMin: live.leadDaysMin,
               supplierLeadDaysMax: live.leadDaysMax,
               supplierLastPriceUSD: live.supplierPriceUSD || prod.supplierLastPriceUSD,
+              ...(live.supplierPriceUSD && live.supplierPriceUSD > 0
+                ? { processingPriceD: live.supplierPriceUSD }
+                : {}),
             },
           });
           results.push({ slug: prod.slug, status: live.status, updated: true });

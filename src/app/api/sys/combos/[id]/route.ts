@@ -3,6 +3,41 @@ import { requireStealthSession, verifyMasterElevationPassword } from "@/lib/stea
 import { prisma } from "@/lib/prisma";
 import { recordAuditLog } from "@/lib/audit";
 import { cleanDescriptionText } from "@/lib/products";
+import { cleanupRemovedMediaUrls } from "@/lib/storage";
+
+function collectComboMediaUrls(c: any): string[] {
+  if (!c) return [];
+  const urls: string[] = [];
+  const pushUrl = (u: any) => {
+    if (typeof u === "string" && u.trim()) urls.push(u.trim());
+  };
+  pushUrl(c.imageUrl);
+  if (typeof c.imagesJson === "string" && c.imagesJson.trim()) {
+    try {
+      const parsed = JSON.parse(c.imagesJson);
+      if (Array.isArray(parsed)) parsed.forEach(pushUrl);
+    } catch {}
+  }
+  if (typeof c.parametersJson === "string" && c.parametersJson.trim()) {
+    try {
+      const params = JSON.parse(c.parametersJson);
+      if (Array.isArray(params)) {
+        params.forEach((param: any) => {
+          if (Array.isArray(param?.options)) {
+            param.options.forEach((opt: any) => pushUrl(opt?.imageUrl));
+          }
+        });
+      }
+    } catch {}
+  }
+  if (typeof c.uniqueProductJson === "string" && c.uniqueProductJson.trim()) {
+    try {
+      const up = JSON.parse(c.uniqueProductJson);
+      pushUrl(up?.imageUrl);
+    } catch {}
+  }
+  return urls;
+}
 
 export async function PATCH(
   request: Request,
@@ -51,12 +86,22 @@ export async function PATCH(
     if (body.originalPriceCRC !== undefined) updateData.originalPriceCRC = Math.round(Number(body.originalPriceCRC));
     if (body.discountPercent !== undefined) updateData.discountPercent = Math.round(Number(body.discountPercent));
     if (body.imageUrl !== undefined) updateData.imageUrl = body.imageUrl;
-    if (body.imagesJson !== undefined) {
-      updateData.imagesJson = typeof body.imagesJson === "string" ? body.imagesJson : JSON.stringify(body.imagesJson);
-    } else if (body.imgs !== undefined) {
-      updateData.imagesJson = JSON.stringify(Array.isArray(body.imgs) ? body.imgs : [body.imgs]);
-    } else if (body.images !== undefined) {
-      updateData.imagesJson = JSON.stringify(Array.isArray(body.images) ? body.images : [body.images]);
+    if (body.imagesJson !== undefined || body.imgs !== undefined || body.images !== undefined) {
+      let imgsArray: string[] = [];
+      const rawImgs = body.imgs ?? body.images ?? body.imagesJson;
+      if (typeof rawImgs === "string") {
+        try {
+          const parsed = JSON.parse(rawImgs);
+          if (Array.isArray(parsed)) imgsArray = parsed;
+        } catch {
+          imgsArray = [rawImgs];
+        }
+      } else if (Array.isArray(rawImgs)) {
+        imgsArray = rawImgs;
+      }
+      imgsArray = imgsArray.map((s: any) => (typeof s === "string" ? s.trim() : "")).filter(Boolean);
+      updateData.imagesJson = JSON.stringify(imgsArray);
+      updateData.imageUrl = imgsArray[0] || (typeof body.imageUrl === "string" && body.imageUrl.trim() ? body.imageUrl.trim() : "/images/logo.png");
     }
     if (body.itemsJson !== undefined) {
       updateData.itemsJson = typeof body.itemsJson === "string" ? body.itemsJson : JSON.stringify(body.itemsJson);
@@ -145,10 +190,20 @@ export async function PATCH(
       });
     }
 
+    const previousMediaUrls = collectComboMediaUrls(existingCombo);
+
     const updatedCombo = await prisma.combo.update({
       where: { id: comboId },
       data: updateData,
     });
+
+    // Eliminate any replaced or removed media files from cloud/local storage
+    try {
+      const nextMediaUrls = collectComboMediaUrls(updatedCombo);
+      await cleanupRemovedMediaUrls(previousMediaUrls, nextMediaUrls);
+    } catch (cleanErr) {
+      console.warn("[COMBO_MEDIA_CLEANUP_WARN]:", cleanErr);
+    }
 
     await recordAuditLog({
       actorId: auth.session.userId,
@@ -262,8 +317,17 @@ export async function DELETE(
         );
       }
 
+      const mediaToEliminate = collectComboMediaUrls(existing);
+
       // Hard delete combo from database
       await prisma.combo.delete({ where: { id: comboId } });
+
+      // Hard delete associated media from storage
+      try {
+        await cleanupRemovedMediaUrls(mediaToEliminate, []);
+      } catch (cleanErr) {
+        console.warn("[COMBO_DELETE_MEDIA_CLEANUP_WARN]:", cleanErr);
+      }
 
       await recordAuditLog({
         actorId: auth.session.userId,

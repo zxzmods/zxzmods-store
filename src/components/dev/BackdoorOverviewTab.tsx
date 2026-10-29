@@ -121,7 +121,7 @@ export function BackdoorOverviewTab({
   const [activitySearch, setActivitySearch] = useState("");
   const [activityStatusFilter, setActivityStatusFilter] = useState<string>("ALL");
 
-  const rate = analytics?.exchangeRate || 515;
+  const rate = analytics?.exchangeRate || 455.21;
   const isUSD = currency === "USD";
   const currencyPrefix = isUSD ? "$" : "₡";
   const decimals = isUSD ? 2 : 0;

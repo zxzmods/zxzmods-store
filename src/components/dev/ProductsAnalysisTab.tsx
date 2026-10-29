@@ -194,8 +194,23 @@ export function ProductsAnalysisTab({
   const [timeframe, setTimeframe] = useState<TimeframeOption>("all");
   const [activeRankingTab, setActiveRankingTab] = useState<RankingTabOption>("categories");
 
-  const exchangeRate = 515; // default fallback sell rate
+  const [exchangeRate, setExchangeRate] = useState<number>(455.21);
   const currencyPrefix = currency === "USD" ? "$" : "₡";
+
+  useEffect(() => {
+    let mounted = true;
+    fetch("/api/exchange-rate", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((res) => {
+        if (mounted && res?.data?.rate && res.data.rate > 300) {
+          setExchangeRate(Number(res.data.rate));
+        }
+      })
+      .catch(() => {});
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const getI18n = useCallback(
     (esText?: string | null, enText?: string | null, fallback = "N/A") => {
@@ -213,7 +228,7 @@ export function ProductsAnalysisTab({
       }
       return num;
     },
-    [currency]
+    [currency, exchangeRate]
   );
 
   const fetchData = useCallback(

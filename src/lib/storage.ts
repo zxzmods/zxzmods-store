@@ -485,3 +485,102 @@ export async function processAndStoreImage(
     };
   }
 }
+
+/**
+ * Deletes a stored media file (image, video, audio) from Supabase Storage, Google Cloud Storage,
+ * or local /public/uploads when it is replaced or eliminated from the database.
+ */
+export async function deleteStoredMediaUrl(mediaUrl: string): Promise<boolean> {
+  if (!mediaUrl || typeof mediaUrl !== "string") return false;
+  const trimmed = mediaUrl.trim();
+  if (!trimmed) return false;
+
+  // 1. Supabase Storage URL: https://<ref>.supabase.co/storage/v1/object/public/<bucket>/<folder>/<file>
+  const sbMatch = trimmed.match(/\/storage\/v1\/object\/(?:public|sign)\/([^/]+)\/(.+)$/);
+  if (sbMatch) {
+    const bucketName = sbMatch[1];
+    const objectPath = sbMatch[2].split("?")[0];
+    const supabaseUrl =
+      process.env.NEXT_PUBLIC_SUPABASE_URL ||
+      process.env.SUPABASE_URL ||
+      `https://${process.env.SUPABASE_PROJECT_REF || "uwfhsolkumynqivaqftz"}.supabase.co`;
+    const supabaseServiceKey =
+      process.env.SUPABASE_SERVICE_ROLE_KEY ||
+      process.env.SUPABASE_ANON_KEY ||
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+    if (supabaseUrl && supabaseServiceKey && bucketName && objectPath) {
+      try {
+        const cleanBaseUrl = supabaseUrl.replace(/\/+$/, "");
+        const deleteEndpoint = `${cleanBaseUrl}/storage/v1/object/${bucketName}/${objectPath}`;
+        const res = await fetch(deleteEndpoint, {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${supabaseServiceKey}`,
+            apikey: supabaseServiceKey,
+          },
+        });
+        if (res.ok) return true;
+      } catch (err) {
+        console.warn("[STORAGE_SUPABASE_DELETE_WARN]:", err);
+      }
+    }
+  }
+
+  // 2. Google Cloud Storage URL: https://storage.googleapis.com/<bucket>/<folder>/<file>
+  const gcsMatch = trimmed.match(/^https?:\/\/storage\.googleapis\.com\/([^/]+)\/(.+)$/);
+  if (gcsMatch) {
+    const bucketName = gcsMatch[1];
+    const objectPath = gcsMatch[2].split("?")[0];
+    const gcs = getGCSClient();
+    if (gcs && bucketName && objectPath) {
+      try {
+        await gcs.bucket(bucketName).file(objectPath).delete({ ignoreNotFound: true });
+        return true;
+      } catch (err) {
+        console.warn("[STORAGE_GCS_DELETE_WARN]:", err);
+      }
+    }
+  }
+
+  // 3. Local /uploads/<folder>/<file>
+  if (trimmed.startsWith("/uploads/")) {
+    try {
+      const cleanRel = trimmed.replace(/^\/+/, "").split("?")[0];
+      const fullLocalPath = path.join(process.cwd(), "public", cleanRel);
+      const publicUploadsRoot = path.join(process.cwd(), "public", "uploads");
+      if (fullLocalPath.startsWith(publicUploadsRoot)) {
+        await fs.unlink(fullLocalPath).catch(() => {});
+        return true;
+      }
+    } catch (err) {
+      console.warn("[STORAGE_LOCAL_DELETE_WARN]:", err);
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Compares previous media URLs with updated media URLs and deletes any removed/replaced files
+ * from cloud/local storage.
+ */
+export async function cleanupRemovedMediaUrls(
+  previousUrls: (string | null | undefined)[],
+  nextUrls: (string | null | undefined)[]
+): Promise<void> {
+  const nextSet = new Set(
+    nextUrls
+      .map((u) => (typeof u === "string" ? u.trim() : ""))
+      .filter(Boolean)
+  );
+  const toDelete = Array.from(
+    new Set(
+      previousUrls
+        .map((u) => (typeof u === "string" ? u.trim() : ""))
+        .filter((u) => Boolean(u) && !nextSet.has(u))
+    )
+  );
+  if (toDelete.length === 0) return;
+  await Promise.allSettled(toDelete.map((url) => deleteStoredMediaUrl(url)));
+}

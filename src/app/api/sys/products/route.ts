@@ -106,6 +106,13 @@ export async function POST(request: Request) {
       }
     }
 
+    const effectivePD =
+      Number(pD) > 0
+        ? Number(pD)
+        : supplierLastPriceUSD && supplierLastPriceUSD > 0
+        ? supplierLastPriceUSD
+        : 0;
+
     // Calculate installation breakdown & costs
     const installLabour = body.installLabourCostCRC !== undefined
       ? Math.round(Number(body.installLabourCostCRC) || 0)
@@ -167,7 +174,7 @@ export async function POST(request: Request) {
           profitCRC: installProfit,
           totalCostCRC: finalInstallPrice,
         }),
-        processingPriceD: Number(pD) || 0,
+        processingPriceD: effectivePD,
         processingPriceCRC: pCost,
         shippingPriceCRC: sCost,
         profitCRC: profCost,

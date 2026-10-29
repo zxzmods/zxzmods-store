@@ -68,7 +68,7 @@ export function BackdoorAnalyticsTab({
   const [selectedStat, setSelectedStat] = useState<StatMetricKey>("total_profit");
   const [animReplayKey, setAnimReplayKey] = useState(0);
 
-  const exchangeRate = analytics?.exchangeRate || 515;
+  const exchangeRate = analytics?.exchangeRate || 455.21;
 
   const convertVal = (crc: number) => {
     if (currency === "USD") {

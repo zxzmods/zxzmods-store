@@ -8,15 +8,20 @@ export const dynamic = "force-dynamic";
 
 function getExchangeRate(): number {
   try {
-    const cachePath = path.join(process.cwd(), "src", "data", "live_exchange_rate.json");
-    if (fs.existsSync(cachePath)) {
-      const parsed = JSON.parse(fs.readFileSync(cachePath, "utf-8"));
-      if (typeof parsed?.rate === "number" && parsed.rate > 300) {
-        return parsed.rate;
+    const cachePaths = [
+      path.join(process.cwd(), ".cache", "live_exchange_rate.json"),
+      path.join(process.cwd(), "src", "data", "live_exchange_rate.json"),
+    ];
+    for (const cachePath of cachePaths) {
+      if (fs.existsSync(cachePath)) {
+        const parsed = JSON.parse(fs.readFileSync(cachePath, "utf-8"));
+        if (typeof parsed?.rate === "number" && parsed.rate > 300 && parsed.rate < 1500) {
+          return parsed.rate;
+        }
       }
     }
   } catch {}
-  return 515;
+  return 455.21;
 }
 
 export interface TimeBucketStat {

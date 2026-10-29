@@ -65,22 +65,28 @@ export async function GET() {
       if (comp.length === 0) comp = ["zforce-z10"];
 
       let category: string[] = ["performance"];
-      if (jsonP?.category && Array.isArray(jsonP.category)) category = jsonP.category;
-      else if (p.categoryJson) {
-        try { category = JSON.parse(p.categoryJson); } catch {}
+      if (p.categoryJson) {
+        try {
+          const parsed = JSON.parse(p.categoryJson);
+          if (Array.isArray(parsed) && parsed.length > 0) category = parsed;
+        } catch {}
       } else if (p.category?.slug) {
         category = [p.category.slug];
+      } else if (jsonP?.category && Array.isArray(jsonP.category)) {
+        category = jsonP.category;
       }
 
       let brand: string[] = [p.brandName || "Bikeman Performance"];
-      if (jsonP?.brand && Array.isArray(jsonP.brand)) brand = jsonP.brand;
-      else if (p.brandJson) {
-        try { brand = JSON.parse(p.brandJson); } catch {}
+      if (p.brandJson) {
+        try {
+          const parsed = JSON.parse(p.brandJson);
+          if (Array.isArray(parsed) && parsed.length > 0) brand = parsed;
+        } catch {}
+      } else if (jsonP?.brand && Array.isArray(jsonP.brand)) {
+        brand = jsonP.brand;
       }
 
       let imgs: string[] = [];
-      const primaryImg = typeof p.imageUrl === "string" && p.imageUrl.trim() ? p.imageUrl.trim() : "";
-      if (primaryImg) imgs.push(primaryImg);
       if (p.imagesJson) {
         try {
           const parsed = JSON.parse(p.imagesJson);
@@ -92,6 +98,8 @@ export async function GET() {
           }
         } catch {}
       }
+      const primaryImg = typeof p.imageUrl === "string" && p.imageUrl.trim() ? p.imageUrl.trim() : "";
+      if (imgs.length === 0 && primaryImg) imgs.push(primaryImg);
       if (imgs.length === 0 && jsonP?.imgs && Array.isArray(jsonP.imgs)) {
         jsonP.imgs.forEach((img: string) => {
           const s = typeof img === "string" ? img.trim() : "";
@@ -101,22 +109,38 @@ export async function GET() {
       if (imgs.length === 0) imgs = ["/images/logo.png"];
 
       let vids: string[] = [];
+      let hasDbVids = false;
       if (p.videosJson) {
-        try { vids = JSON.parse(p.videosJson); } catch {}
-      } else if (jsonP?.vids && Array.isArray(jsonP.vids)) {
-        vids = jsonP.vids;
-      } else if (p.videoUrl) {
+        try {
+          const parsed = JSON.parse(p.videosJson);
+          if (Array.isArray(parsed)) {
+            vids = parsed;
+            hasDbVids = true;
+          }
+        } catch {}
+      }
+      if (!hasDbVids && p.videoUrl) {
         vids = [p.videoUrl];
+      } else if (!hasDbVids && jsonP?.vids && Array.isArray(jsonP.vids)) {
+        vids = jsonP.vids;
       }
       vids = (Array.isArray(vids) ? vids : []).map((v) => normalizeVideoUrl(v)).filter((s): s is string => Boolean(s));
 
       let audios: string[] = [];
+      let hasDbAudios = false;
       if (p.audiosJson) {
-        try { audios = JSON.parse(p.audiosJson); } catch {}
-      } else if (jsonP?.audios && Array.isArray(jsonP.audios)) {
-        audios = jsonP.audios;
-      } else if (p.audioUrl) {
+        try {
+          const parsed = JSON.parse(p.audiosJson);
+          if (Array.isArray(parsed)) {
+            audios = parsed;
+            hasDbAudios = true;
+          }
+        } catch {}
+      }
+      if (!hasDbAudios && p.audioUrl) {
         audios = [p.audioUrl];
+      } else if (!hasDbAudios && jsonP?.audios && Array.isArray(jsonP.audios)) {
+        audios = jsonP.audios;
       }
       audios = (Array.isArray(audios) ? audios : []).map((a) => normalizeAudioUrl(a)).filter((s): s is string => Boolean(s));
 
@@ -135,12 +159,12 @@ export async function GET() {
         comp,
         category,
         brand,
-        p_title: jsonP?.p_title || p.nameEs,
+        p_title: p.nameEs || jsonP?.p_title,
         descriptionEs: cleanDescriptionText(p.descriptionEs || (jsonP?.description ? extractAndCleanDescription(jsonP.description, "es") : "")),
         descriptionEn: cleanDescriptionText(p.descriptionEn || (jsonP?.description ? extractAndCleanDescription(jsonP.description, "en") : "")),
-        description: jsonP?.description || {
-          es: [{ title: "Descripción", content: p.descriptionEs }],
-          en: [{ title: "Description", content: p.descriptionEn }],
+        description: {
+          es: [{ title: "Descripción", content: cleanDescriptionText(p.descriptionEs || (jsonP?.description ? extractAndCleanDescription(jsonP.description, "es") : "")) }],
+          en: [{ title: "Description", content: cleanDescriptionText(p.descriptionEn || (jsonP?.description ? extractAndCleanDescription(jsonP.description, "en") : "")) }],
         },
         requirements: p.requirements || jsonP?.requirements || "",
         reviews: p.reviews || (typeof jsonP?.reviews === "string" ? jsonP.reviews : "") || "",
