@@ -1,5 +1,6 @@
 import rawProductsData from "@/data/products.json";
 import { SXS_BRANDS, SXS_BRAND_PLATFORMS, getBrandLogo } from "@/lib/sxsBrands";
+import { evaluateProductSearch } from "@/lib/search";
 
 export interface ProductPrice {
   P_price_D: number; // processing-price in dollars
@@ -1507,35 +1508,10 @@ export async function searchAndFilterProducts(options: FilterOptions = {}): Prom
   // Filter products by search query, category, comp, and vehicleModel FIRST
   // to dynamically compute matching brands for the current search
   const queryMatchedProducts = allProducts.filter((product) => {
-    // 1. Text Search (q)
+    // 1. Text Search (q) with brand disambiguation, unit exclusion, and relevance scoring
     if (options.q && options.q.trim()) {
-      const searchTerms = options.q
-        .toLowerCase()
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .split(/\s+/)
-        .filter(Boolean);
-
-      const descText = extractDescriptionText(product.description);
-      const searchableText = [
-        product.id,
-        product.p_title,
-        descText,
-        product.requirements || "",
-        ...product.category,
-        ...product.brand,
-        ...product.comp,
-      ]
-        .join(" ")
-        .toLowerCase()
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "");
-
-      const matchesAllTerms = searchTerms.every((term) =>
-        searchableText.includes(term)
-      );
-
-      if (!matchesAllTerms) return false;
+      const searchRes = evaluateProductSearch(product, options.q);
+      if (!searchRes.matches) return false;
     }
 
     // 2. Category filter

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { calculateComboAvailability } from "@/lib/comboAvailability";
 import { detectProductVehicleBrands, normalizeBrandName, detectVehiclePlatform, is4SeaterToken, is2SeaterToken } from "@/lib/products";
 import { SXS_BRAND_PLATFORMS, SXS_BRANDS, getBrandLogo } from "@/lib/sxsBrands";
+import { evaluateComboSearch, buildDealerBrandSearchRefs } from "@/lib/search";
 
 export const dynamic = "force-dynamic";
 
@@ -402,7 +403,7 @@ export async function GET(request: NextRequest) {
 
     const includeArchived = searchParams.get("includeArchived") === "true";
 
-    const [allCombos, dbBrands] = await Promise.all([
+    const [allCombos, dbBrands, dbDealerBrands] = await Promise.all([
       prisma.combo.findMany({
         where: includeArchived ? {} : { isArchived: false },
         orderBy: { createdAt: "desc" },
@@ -414,7 +415,12 @@ export async function GET(request: NextRequest) {
           },
         },
       }),
+      prisma.dealerBrand.findMany({
+        where: { isActive: true },
+      }),
     ]);
+
+    const dealerBrandSearchRefs = buildDealerBrandSearchRefs(dbDealerBrands);
 
     const sxsBrandModels: Record<
       string,
@@ -576,6 +582,8 @@ export async function GET(request: NextRequest) {
       .map(([name, count]) => ({ name, count }))
       .sort((a, b) => a.name.localeCompare(b.name));
 
+    const comboSearchScoreMap = new Map<string, number>();
+
     // Filter combos by active separated parameters
     const filteredCombos = formattedAllCombos.filter((c) => {
       // 1. Category
@@ -585,9 +593,11 @@ export async function GET(request: NextRequest) {
 
       // 2. Search
       if (search && search.trim() !== "") {
-        const q = search.toLowerCase().trim();
-        const searchable = `${c.titleEs || ""} ${c.titleEn || ""} ${c.descriptionEs || ""} ${c.descriptionEn || ""} ${c.badgeEs || ""} ${c.badgeEn || ""}`.toLowerCase();
-        if (!searchable.includes(q)) return false;
+        const searchRes = evaluateComboSearch(c, search, {
+          dealerBrands: dealerBrandSearchRefs,
+        });
+        if (!searchRes.matches) return false;
+        comboSearchScoreMap.set(c.id, searchRes.score);
       }
 
       // 3. Vehicle Brand
@@ -693,6 +703,12 @@ export async function GET(request: NextRequest) {
     const uniqueCategories = Array.from(
       new Set(allCombos.map((c) => c.category).filter(Boolean))
     );
+
+    if (search && search.trim()) {
+      filteredCombos.sort(
+        (a, b) => (comboSearchScoreMap.get(b.id) || 0) - (comboSearchScoreMap.get(a.id) || 0)
+      );
+    }
 
     const response = NextResponse.json({
       success: true,

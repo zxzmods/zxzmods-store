@@ -14,6 +14,7 @@ import { prisma } from "@/lib/prisma";
 import { SXS_BRAND_PLATFORMS, SXS_BRANDS, getBrandLogo } from "@/lib/sxsBrands";
 import { getStealthSession } from "@/lib/stealthAuth";
 import { sanitizeSearchQuery } from "@/lib/security/inputSanitizer";
+import { evaluateProductSearch, buildDealerBrandSearchRefs } from "@/lib/search";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -632,7 +633,7 @@ export async function GET(request: Request) {
     }
 
     // Load active DB products and brands (Zero Mock Data: strictly live database)
-    const [activeDbProducts, dbBrands] = await Promise.all([
+    const [activeDbProducts, dbBrands, dbDealerBrands] = await Promise.all([
       prisma.product.findMany({
         where: { isArchived: false },
         include: {
@@ -647,7 +648,12 @@ export async function GET(request: Request) {
           },
         },
       }),
+      prisma.dealerBrand.findMany({
+        where: { isActive: true },
+      }),
     ]);
+
+    const dealerBrandSearchRefs = buildDealerBrandSearchRefs(dbDealerBrands);
 
     const sxsBrandModels: Record<
       string,
@@ -765,59 +771,17 @@ export async function GET(request: Request) {
       .map(([name, count]) => ({ name, count }))
       .sort((a, b) => a.name.localeCompare(b.name));
 
+    const productSearchScoreMap = new Map<string, number>();
+
     // Filter by text search (q), comp, vehicleModel, vehicle brand, distributor brand, inStock, discounted, and category
     const filteredProducts = unifiedProducts.filter((product) => {
-      // 1. Text Search (q)
+      // 1. Text Search (q) with brand disambiguation, unit exclusion, and relevance scoring
       if (q && q.trim()) {
-        const qClean = q.trim();
-        const searchPlat = detectVehiclePlatform(qClean);
-
-        // If the search query explicitly targets a specific vehicle platform (e.g. Z1000 vs Z10):
-        if (searchPlat) {
-          const isUniversal = isUniversalFit(product.comp);
-          if (!isUniversal) {
-            // Check if this product has defined compatibility
-            if (product.comp && product.comp.length > 0) {
-              const matchesPlat = product.comp.some((c) => isPlatformOrVehicleMatch(c, qClean));
-              if (!matchesPlat) return false;
-            }
-          }
-        }
-
-        const searchTerms = qClean
-          .toLowerCase()
-          .normalize("NFD")
-          .replace(/[\u0300-\u036f]/g, "")
-          .split(/\s+/)
-          .filter(Boolean);
-
-        const descText = extractDescriptionText(product.description);
-        const searchableText = [
-          product.id,
-          product.p_title,
-          descText,
-          product.requirements || "",
-          ...product.category,
-          ...product.brand,
-          ...product.comp,
-        ]
-          .join(" ")
-          .toLowerCase()
-          .normalize("NFD")
-          .replace(/[\u0300-\u036f]/g, "");
-
-        const escapeRegex = (s: string) => s.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
-
-        const matchesAllTerms = searchTerms.every((term) => {
-          if (term.length === 1) {
-            return new RegExp(`(^|[\\s\\-_/])${escapeRegex(term)}($|[\\s\\-_/])`, "i").test(searchableText);
-          }
-          return (
-            searchableText.includes(term) ||
-            product.comp.some((c) => isPlatformOrVehicleMatch(c, term))
-          );
+        const searchRes = evaluateProductSearch(product, q, {
+          dealerBrands: dealerBrandSearchRefs,
         });
-        if (!matchesAllTerms) return false;
+        if (!searchRes.matches) return false;
+        productSearchScoreMap.set(product.id, searchRes.score);
       }
 
       // 2. Compatibility filter (SXS)
@@ -999,6 +963,10 @@ export async function GET(request: Request) {
     } else if (sort === "stars") {
       filtered.sort(
         (a, b) => ((b.reviews as any)?.stars || 0) - ((a.reviews as any)?.stars || 0)
+      );
+    } else if (q && q.trim()) {
+      filtered.sort(
+        (a, b) => (productSearchScoreMap.get(b.id) || 0) - (productSearchScoreMap.get(a.id) || 0)
       );
     }
 
