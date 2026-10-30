@@ -16,7 +16,7 @@ import { useLanguage } from "@/context/LanguageContext";
 import { useCart } from "@/context/CartContext";
 import { useGarage } from "@/context/GarageContext";
 import { formatCRC, formatUSD, convertCRCToUSD } from "@/lib/i18n";
-import { detectVehiclePlatform, isPlatformOrVehicleMatch } from "@/lib/products";
+import { detectVehiclePlatform, isPlatformOrVehicleMatch, is4SeaterToken, is2SeaterToken } from "@/lib/products";
 import {
   Search,
   X,
@@ -161,17 +161,33 @@ export default function CombosPage() {
         if (!hasBrand) return false;
       }
 
-      // 2. Check platform matching
-      const vPlatform = detectVehiclePlatform(vehicle.modelSlug || vehicle.modelName);
       const comboText = `${combo.titleEs || ""} ${combo.titleEn || ""} ${combo.badgeEs || ""} ${combo.badgeEn || ""} ${combo.descriptionEs || ""} ${(combo.items || []).join(" ")}`.toLowerCase();
+      const vehicleModelToken = vehicle.modelSlug || vehicle.modelName || "";
+
+      // 2. Strict seating capacity separation: 2-seater vs 4-seater (MAX / Crew / -4)
+      if (
+        (is4SeaterToken(vehicleModelToken) && is2SeaterToken(comboText)) ||
+        (is2SeaterToken(vehicleModelToken) && is4SeaterToken(comboText))
+      ) {
+        return false;
+      }
+
+      // 3. Check platform matching
+      const vPlatform = detectVehiclePlatform(vehicleModelToken);
       const comboPlatform = detectVehiclePlatform(comboText);
 
       if (vPlatform && comboPlatform) {
         return vPlatform === comboPlatform;
       }
 
-      // 3. Platform separation negative check
+      // 4. Platform separation negative check
       if (vPlatform) {
+        if (vPlatform.startsWith("maverick-r") && (comboText.includes("x3") || comboText.includes("maverick-x3") || comboText.includes("maverick x3"))) {
+          return false;
+        }
+        if (vPlatform.startsWith("x3") && (comboText.includes("maverick-r") || comboText.includes("maverick r"))) {
+          return false;
+        }
         if (vPlatform === "z10" && (comboText.includes("1000") || comboText.includes("z1000") || comboText.includes("950") || comboText.includes("z10-4") || comboText.includes("z10 4"))) {
           return false;
         }

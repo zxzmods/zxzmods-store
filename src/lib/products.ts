@@ -364,8 +364,150 @@ export function isUniversalFit(comp?: string[] | null): boolean {
 }
 
 /**
+ * Evaluates whether a vehicle or compatibility token denotes a 4-seater / MAX / multi-passenger chassis.
+ * Covers Can-Am MAX, Polaris 4/Crew, CFMOTO -4, Kawasaki KRX4/Teryx4, Honda Talon-4, etc.
+ */
+export function is4SeaterToken(token: string): boolean {
+  if (!token) return false;
+  const t = token.toLowerCase().trim();
+  if (t === "all" || t.includes("universal") || t === "todas" || t === "todos") return false;
+
+  // 1. Explicit MAX (Can-Am)
+  if (/\bmax\b/i.test(t) || t.includes("-max-") || t.endsWith("-max") || t.startsWith("max-") || t.includes(" max ")) {
+    return true;
+  }
+
+  // 2. Explicit 4-seater / 4-passenger tokens
+  if (
+    /\b(4[-_\s]?seater|4[-_\s]?plazas|4[-_\s]?pasajeros|4p)\b/i.test(t) ||
+    /\b(crew|xl)\b/i.test(t)
+  ) {
+    return true;
+  }
+
+  // 3. CFMOTO 4-seater models (Z10-4, 950-4, etc.)
+  if (
+    /\bz10[-_\s]?4\b/i.test(t) ||
+    t.includes("z10-4") ||
+    t.includes("zforce-z10-4") ||
+    /\b950[-_\s]?(sport[-_\s]?)?4\b/i.test(t) ||
+    t.includes("sport-4") ||
+    t.includes("sport 4")
+  ) {
+    return true;
+  }
+
+  // 4. Polaris 4-seater models (Pro R 4, Pro XP 4, Turbo R 4, RZR 4, XP 4)
+  if (
+    /\b(pro[-_\s]?r|pro[-_\s]?xp|turbo[-_\s]?r|rzr|xp)[-_\s]?4\b/i.test(t) ||
+    t.includes("pro-r-4") ||
+    t.includes("pro-xp-4") ||
+    t.includes("turbo-r-4")
+  ) {
+    return true;
+  }
+
+  // 5. Kawasaki / Honda 4-seaters (KRX4, Teryx4, Talon-4)
+  if (
+    /\bkrx[-_\s]?4\b/i.test(t) ||
+    /\bteryx[-_\s]?4\b/i.test(t) ||
+    /\btalon[-_\s]?(1000[a-z0-9]*)?[-_\s]?4\b/i.test(t)
+  ) {
+    return true;
+  }
+
+  // 6. Generic trailing -4 or " 4" when preceded by model name
+  if (/[-_\s]4($|[-_\s])/i.test(t) && !t.includes("4x4") && !t.includes("4wd") && !t.includes("stage-4") && !t.includes("stage 4")) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Evaluates whether a vehicle or compatibility token denotes a 2-seater chassis.
+ * Covers 2-seater models belonging to platforms that also have 4-seater variants.
+ */
+export function is2SeaterToken(token: string): boolean {
+  if (!token) return false;
+  const t = token.toLowerCase().trim();
+  if (t === "all" || t.includes("universal") || t === "todas" || t === "todos") return false;
+
+  // If it's a 4-seater token, it cannot be a 2-seater token
+  if (is4SeaterToken(t)) return false;
+
+  // Explicit 2-seater / 2-passenger tokens
+  if (/\b(2[-_\s]?seater|2[-_\s]?plazas|2[-_\s]?pasajeros|2p)\b/i.test(t)) {
+    return true;
+  }
+
+  // Models that belong to platforms that have both 2-seater and 4-seater variants:
+  // Can-Am Maverick R (non-MAX): maverick-r, maverick-r-x, maverick-r-x-rs, etc.
+  if (/\bmaverick[-_\s]?r\b/i.test(t) || t.includes("maverick-r") || t.includes("maverick r")) {
+    return true;
+  }
+
+  // Can-Am Maverick X3 (non-MAX): maverick-x3, x3, etc.
+  if (
+    t === "x3" ||
+    t === "can-amx3" ||
+    t === "maverick-x3" ||
+    t === "maverick x3" ||
+    t.startsWith("maverick-x3-") ||
+    t.startsWith("x3-") ||
+    /\b(can-am\s+)?(maverick[-_\s]?)?x3\b/i.test(t)
+  ) {
+    return true;
+  }
+
+  // CFMOTO Z10 (non-4): zforce-z10, z10, cfmoto z10
+  if (
+    t === "z10" ||
+    t === "zforce-z10" ||
+    t === "zforce z10" ||
+    t === "cfmoto z10" ||
+    /\b(zforce\s+)?z10\b/i.test(t)
+  ) {
+    return true;
+  }
+
+  // CFMOTO Z950 (non-4): zforce-950-sport, z950
+  if (
+    t === "z950" ||
+    t === "zforce-950-sport" ||
+    t === "zforce 950" ||
+    t === "zforce 950 sport" ||
+    /\bz950\b/i.test(t)
+  ) {
+    return true;
+  }
+
+  // Polaris Pro R, Pro XP, Turbo R (non-4):
+  if (
+    t === "pro-r" || t === "rzr-pro-r" || /\bpro\s*r\b/i.test(t) ||
+    t === "pro-xp" || t === "rzr-pro-xp" || /\bpro\s*xp\b/i.test(t) ||
+    t === "turbo-r" || t === "rzr-turbo-r" || /\bturbo\s*r\b/i.test(t)
+  ) {
+    return true;
+  }
+
+  // Kawasaki KRX 1000 (non-4):
+  if (t === "krx" || t === "krx-1000" || t === "krx 1000" || /\bkrx(\s*1000)?\b/i.test(t)) {
+    return true;
+  }
+
+  // Honda Talon (non-4):
+  if (t === "talon" || t === "talon-1000" || t === "talon 1000" || /\btalon(\s*1000)?\b/i.test(t)) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * Detects the canonical vehicle platform family from a vehicle name, code, or compatibility token.
  * Strictly separates CFMOTO Z10 (2026+ Turbo) from ZForce 1000 Sport R (z1000), ZForce 950 (z950), and Can-Am X3.
+ * Strictly separates 2-seater and 4-seater (MAX) platforms.
  */
 export function detectVehiclePlatform(token: string): string | null {
   const t = token.toLowerCase().trim();
@@ -384,13 +526,24 @@ export function detectVehiclePlatform(token: string): string | null {
     return "z1000";
   }
 
-  // 2. Z950 / ZForce 950 Sport
+  // 2a. Z950-4 / ZForce 950 Sport-4 (4-seater)
+  if (
+    t === "zforce-950-sport-4" ||
+    t === "z950-4" ||
+    t === "zforce 950 4" ||
+    t.includes("950-4") ||
+    t.includes("950 sport-4") ||
+    t.includes("950 sport 4")
+  ) {
+    return "z950-4";
+  }
+
+  // 2b. Z950 / ZForce 950 Sport (2-seater)
   if (
     t === "z950" ||
     t === "zforce-950-sport" ||
     t === "zforce 950" ||
     t === "zforce 950 sport" ||
-    t === "zforce 950 sport-4" ||
     t.includes("zforce 950") ||
     /\bz950\b/i.test(t)
   ) {
@@ -434,7 +587,16 @@ export function detectVehiclePlatform(token: string): string | null {
     return "z10";
   }
 
-  // 4a. Can-Am Maverick R (New 2024+ 240HP DCT platform)
+  // 4a. Can-Am Maverick R MAX (4-seater 2024+)
+  // Must check MAX before 2-seater Maverick R!
+  if (
+    (t.includes("maverick-r") || t.includes("maverick r") || /\bmaverick[-_\s]?r\b/i.test(t)) &&
+    (/\bmax\b/i.test(t) || t.includes("-max-") || t.endsWith("-max") || t.startsWith("max-") || t.includes(" max ") || t.includes("max"))
+  ) {
+    return "maverick-r-max";
+  }
+
+  // 4b. Can-Am Maverick R (2-seater 2024+)
   if (
     t === "maverick-r" ||
     t === "maverick r" ||
@@ -450,7 +612,24 @@ export function detectVehiclePlatform(token: string): string | null {
     return "maverick-r";
   }
 
-  // 4b. Can-Am Maverick X3 (CVT platform)
+  // 4c. Can-Am Maverick X3 MAX (4-seater)
+  // Must check MAX before 2-seater X3!
+  if (
+    !t.includes("maverick-r") &&
+    !t.includes("maverick r") &&
+    !/\bmaverick[-_\s]?r\b/i.test(t) &&
+    (/\bmax\b/i.test(t) || t.includes("-max-") || t.endsWith("-max") || t.includes("max")) &&
+    (
+      t.includes("x3") ||
+      t.includes("maverick-x3") ||
+      t.includes("maverick x3") ||
+      /\b(can-am\s+)?(maverick[-_\s]?)?x3\b/i.test(t)
+    )
+  ) {
+    return "x3-max";
+  }
+
+  // 4d. Can-Am Maverick X3 (2-seater)
   if (
     !t.includes("maverick-r") &&
     !t.includes("maverick r") &&
@@ -473,7 +652,7 @@ export function detectVehiclePlatform(token: string): string | null {
     return "x3";
   }
 
-  // 4c. Can-Am Defender / Traxter
+  // 4e. Can-Am Defender / Traxter
   if (
     t === "defender" ||
     t === "can-am defender" ||
@@ -485,7 +664,7 @@ export function detectVehiclePlatform(token: string): string | null {
     return "defender";
   }
 
-  // 4d. Can-Am Commander
+  // 4f. Can-Am Commander
   if (
     (t === "commander" || t === "can-am commander" || t.includes("can-am commander") || t.startsWith("commander-")) &&
     !t.includes("power commander")
@@ -504,7 +683,23 @@ export function detectVehiclePlatform(token: string): string | null {
     return "villain";
   }
 
-  // 6. Polaris RZR Pro R
+  // 6a. Polaris RZR Pro R 4 (4-seater)
+  if (
+    !t.includes("maverick") &&
+    !t.includes("can-am") &&
+    (
+      t === "rzr-pro-r-4" ||
+      t === "pro-r-4" ||
+      t === "pro r 4" ||
+      t.includes("pro-r-4") ||
+      t.includes("pro r 4") ||
+      /\bpro\s*r\s*4\b/i.test(t)
+    )
+  ) {
+    return "pror-4";
+  }
+
+  // 6b. Polaris RZR Pro R (2-seater)
   if (
     !t.includes("maverick") &&
     !t.includes("can-am") &&
@@ -519,7 +714,23 @@ export function detectVehiclePlatform(token: string): string | null {
     return "pror";
   }
 
-  // 7. Polaris RZR Pro XP
+  // 7a. Polaris RZR Pro XP 4 (4-seater)
+  if (
+    !t.includes("maverick") &&
+    !t.includes("can-am") &&
+    (
+      t === "rzr-pro-xp-4" ||
+      t === "pro-xp-4" ||
+      t === "pro xp 4" ||
+      t.includes("pro-xp-4") ||
+      t.includes("pro xp 4") ||
+      /\bpro\s*xp\s*4\b/i.test(t)
+    )
+  ) {
+    return "proxp-4";
+  }
+
+  // 7b. Polaris RZR Pro XP (2-seater)
   if (
     !t.includes("maverick") &&
     !t.includes("can-am") &&
@@ -534,7 +745,25 @@ export function detectVehiclePlatform(token: string): string | null {
     return "proxp";
   }
 
-  // 8. Polaris Turbo R
+  // 8a. Polaris Turbo R 4 (4-seater)
+  if (
+    !t.includes("maverick") &&
+    !t.includes("can-am") &&
+    !t.includes("canam") &&
+    (
+      t === "rzr-turbo-r-4" ||
+      t === "polaris-turbo-r-4" ||
+      t === "turbo-r-4" ||
+      t === "turbo r 4" ||
+      t.includes("turbo r 4") ||
+      t.includes("turbo-r-4") ||
+      /\brzr(\s*turbo\s*r\s*4)\b/i.test(t)
+    )
+  ) {
+    return "turbor-4";
+  }
+
+  // 8b. Polaris Turbo R (2-seater)
   if (
     !t.includes("maverick") &&
     !t.includes("can-am") &&
@@ -552,12 +781,22 @@ export function detectVehiclePlatform(token: string): string | null {
     return "turbor";
   }
 
-  // 9. Kawasaki KRX 1000
+  // 9a. Kawasaki KRX4 1000 (4-seater)
+  if (
+    t === "krx4" ||
+    t === "krx-4" ||
+    t === "krx 4" ||
+    t.includes("krx4") ||
+    /\bkrx[-_\s]?4\b/i.test(t)
+  ) {
+    return "krx4";
+  }
+
+  // 9b. Kawasaki KRX 1000 (2-seater)
   if (
     t === "krx" ||
     t === "krx-1000" ||
     t === "krx 1000" ||
-    t === "krx4" ||
     t.includes("krx 1000") ||
     /\bkrx(\s*1000)?\b/i.test(t)
   ) {
@@ -581,7 +820,7 @@ export function detectVehiclePlatform(token: string): string | null {
 /**
  * Standardized vehicle and platform compatibility matcher.
  * Uses canonical platform aliases and whole-token matching to strictly prevent false
- * cross-brand or cross-model collisions (e.g. CFMOTO Z10 must NEVER match CFMOTO ZForce 1000 Sport R).
+ * cross-brand, cross-platform, or 2-seater vs 4-seater collisions.
  */
 export function isPlatformOrVehicleMatch(compItem: string, targetToken: string): boolean {
   const c = compItem.toLowerCase().trim();
@@ -590,6 +829,15 @@ export function isPlatformOrVehicleMatch(compItem: string, targetToken: string):
   if (c === "all" || target === "all") return true;
   if (c.includes("universal") || target.includes("universal")) return true;
   if (c === target) return true;
+
+  // STRICT SEPARATION: 2-Seater vs 4-Seater (MAX / Crew / -4)
+  // A product built specifically for a 2-seater must NEVER match a 4-seater target vehicle, and vice versa.
+  if (
+    (is4SeaterToken(c) && is2SeaterToken(target)) ||
+    (is2SeaterToken(c) && is4SeaterToken(target))
+  ) {
+    return false;
+  }
 
   // STRICT SEPARATION: Can-Am Maverick R vs Can-Am Maverick X3
   // Products designed for Maverick X3 do NOT fit Maverick R, and vice-versa.
@@ -651,10 +899,10 @@ export function isPlatformOrVehicleMatch(compItem: string, targetToken: string):
 
   // Cross-platform negative check: if one is explicitly one platform and other explicitly mentions an incompatible one
   if (platC && !platTarget) {
-    if (platC === "maverick-r" && (target.includes("x3") || isMaverickX3(target))) {
+    if (platC.startsWith("maverick-r") && (target.includes("x3") || isMaverickX3(target))) {
       return false;
     }
-    if (platC === "x3" && (target.includes("maverick-r") || isMaverickR(target))) {
+    if (platC.startsWith("x3") && (target.includes("maverick-r") || isMaverickR(target))) {
       return false;
     }
     if (platC === "z10" && (target.includes("1000") || target.includes("z1000") || target.includes("950") || target.includes("x3") || isZ10_4(target))) {
@@ -672,10 +920,10 @@ export function isPlatformOrVehicleMatch(compItem: string, targetToken: string):
   }
 
   if (platTarget && !platC) {
-    if (platTarget === "maverick-r" && (c.includes("x3") || isMaverickX3(c))) {
+    if (platTarget.startsWith("maverick-r") && (c.includes("x3") || isMaverickX3(c))) {
       return false;
     }
-    if (platTarget === "x3" && (c.includes("maverick-r") || isMaverickR(c))) {
+    if (platTarget.startsWith("x3") && (c.includes("maverick-r") || isMaverickR(c))) {
       return false;
     }
     if (platTarget === "z10" && (c.includes("1000") || c.includes("z1000") || c.includes("950") || c.includes("x3") || isZ10_4(c))) {
@@ -729,11 +977,31 @@ export function formatModelWithYear(compToken: string): string {
   if (token === "zforce-z10" || token === "z10" || token === "cfmoto z10") {
     return "CFMOTO ZForce Z10 (2026+)";
   }
+  if (
+    token === "maverick-r-max" ||
+    token.includes("maverick-r-max") ||
+    token.includes("maverick r max") ||
+    /\bmaverick[-_\s]?r[-_\s]?max\b/i.test(token)
+  ) {
+    return "Can-Am Maverick R MAX (2024+)";
+  }
   if (token === "maverick-r" || token.includes("maverick-r") || token.includes("maverick r") || /\bmaverick[-_\s]?r\b/i.test(token)) {
     return "Can-Am Maverick R (2024+)";
   }
+  if (
+    token === "x3-max" ||
+    token.includes("x3-max") ||
+    token.includes("x3 max") ||
+    token.includes("maverick x3 max") ||
+    token.includes("maverick-x3-max")
+  ) {
+    return "Can-Am Maverick X3 MAX (2017-2027)";
+  }
   if (token === "can-amx3" || token === "x3" || token.includes("maverick x3") || token === "maverick-x3") {
     return "Can-Am Maverick X3 (2017-2027)";
+  }
+  if (token === "zforce-950-sport-4" || token === "z950-4") {
+    return "CFMOTO ZForce 950 Sport-4 (2023-2027)";
   }
   if (token === "zforce-950-sport" || token === "z950") {
     return "CFMOTO ZForce 950 Sport (2023-2027)";
@@ -767,12 +1035,31 @@ export function formatCompListWithYears(compList?: string[]): string {
   if (hasZ10_4) {
     return "CFMOTO ZForce Z10-4 (2026+)";
   }
-  if (list.some((c) => c === "maverick-r" || c.includes("maverick-r") || c.includes("maverick r") || /\bmaverick[-_\s]?r\b/i.test(c))) {
+
+  const hasMavR = list.some((c) => is2SeaterToken(c) && (c.includes("maverick-r") || c.includes("maverick r") || /\bmaverick[-_\s]?r\b/i.test(c)));
+  const hasMavRMax = list.some((c) => is4SeaterToken(c) && (c.includes("maverick-r") || c.includes("maverick r") || /\bmaverick[-_\s]?r\b/i.test(c)));
+  if (hasMavR && hasMavRMax) {
+    return "Can-Am Maverick R & Maverick R MAX (2024+)";
+  }
+  if (hasMavRMax) {
+    return "Can-Am Maverick R MAX (2024+)";
+  }
+  if (hasMavR) {
     return "Can-Am Maverick R (2024+)";
   }
-  if (list.some((c) => c === "can-amx3" || c === "x3" || c.includes("maverick-x3") || c.includes("maverick x3") || c.startsWith("x3") || /\bx3\b/i.test(c))) {
+
+  const hasX3 = list.some((c) => is2SeaterToken(c) && (c === "can-amx3" || c === "x3" || c.includes("maverick-x3") || c.includes("maverick x3") || c.startsWith("x3") || /\bx3\b/i.test(c)));
+  const hasX3Max = list.some((c) => is4SeaterToken(c) && (c.includes("x3") || c.includes("maverick-x3") || c.includes("maverick x3")));
+  if (hasX3 && hasX3Max) {
+    return "Can-Am Maverick X3 & Maverick X3 MAX (2017-2027)";
+  }
+  if (hasX3Max) {
+    return "Can-Am Maverick X3 MAX (2017-2027)";
+  }
+  if (hasX3) {
     return "Can-Am Maverick X3 (2017-2027)";
   }
+
   return compList.map(formatModelWithYear).join(", ");
 }
 

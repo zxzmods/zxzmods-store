@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { calculateComboAvailability } from "@/lib/comboAvailability";
-import { detectProductVehicleBrands, normalizeBrandName, detectVehiclePlatform } from "@/lib/products";
+import { detectProductVehicleBrands, normalizeBrandName, detectVehiclePlatform, is4SeaterToken, is2SeaterToken } from "@/lib/products";
 import { SXS_BRAND_PLATFORMS, SXS_BRANDS } from "@/lib/sxsBrands";
 
 export const dynamic = "force-dynamic";
@@ -531,14 +531,20 @@ export async function GET(request: NextRequest) {
       if (vehicleModel) {
         const vPlatform = detectVehiclePlatform(vehicleModel);
         const comboText = `${c.titleEs || ""} ${c.titleEn || ""} ${c.badgeEs || ""} ${c.badgeEn || ""} ${c.descriptionEs || ""} ${(c.items || []).join(" ")}`.toLowerCase();
+
+        // Strict seating capacity separation: 2-seater vs 4-seater (MAX / Crew / -4)
+        if ((is4SeaterToken(vehicleModel) && is2SeaterToken(comboText)) || (is2SeaterToken(vehicleModel) && is4SeaterToken(comboText))) {
+          return false;
+        }
+
         const comboPlatform = detectVehiclePlatform(comboText);
         if (vPlatform && comboPlatform) {
           if (vPlatform !== comboPlatform) return false;
         } else if (vPlatform) {
-          if (vPlatform === "maverick-r" && (comboText.includes("x3") || comboText.includes("maverick-x3") || comboText.includes("maverick x3"))) {
+          if (vPlatform.startsWith("maverick-r") && (comboText.includes("x3") || comboText.includes("maverick-x3") || comboText.includes("maverick x3"))) {
             return false;
           }
-          if (vPlatform === "x3" && (comboText.includes("maverick-r") || comboText.includes("maverick r"))) {
+          if (vPlatform.startsWith("x3") && (comboText.includes("maverick-r") || comboText.includes("maverick r"))) {
             return false;
           }
           if (vPlatform === "z10" && (comboText.includes("1000") || comboText.includes("z1000") || comboText.includes("950") || comboText.includes("z10-4") || comboText.includes("z10 4"))) {
