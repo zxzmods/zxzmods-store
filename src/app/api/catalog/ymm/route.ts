@@ -29,6 +29,7 @@ export async function GET() {
       slug: b.slug,
       name: b.name,
       logoUrl: b.logoUrl,
+      defaultVehicleImageUrl: b.defaultVehicleImageUrl,
       models: b.models.map((m) => {
         const years = JSON.parse(m.yearsJson || "[]") as number[];
         years.forEach((y) => allYearsSet.add(y));

@@ -8,15 +8,16 @@ generator client {
 }
 
 model Brand {
-  id            String         @id @default(cuid())
-  slug          String         @unique
-  name          String
-  logoUrl       String?
-  descriptionEs String
-  descriptionEn String
-  featured      Boolean        @default(false)
-  models        VehicleModel[]
-  createdAt     DateTime       @default(now())
+  id                     String         @id @default(cuid())
+  slug                   String         @unique
+  name                   String
+  logoUrl                String?
+  defaultVehicleImageUrl String?
+  descriptionEs          String
+  descriptionEn          String
+  featured               Boolean        @default(false)
+  models                 VehicleModel[]
+  createdAt              DateTime       @default(now())
 }
 
 model VehicleModel {

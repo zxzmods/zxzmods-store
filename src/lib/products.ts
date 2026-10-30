@@ -1,4 +1,5 @@
 import rawProductsData from "@/data/products.json";
+import { SXS_BRANDS, SXS_BRAND_PLATFORMS } from "@/lib/sxsBrands";
 
 export interface ProductPrice {
   P_price_D: number; // processing-price in dollars
@@ -1101,6 +1102,7 @@ export function resolveVehicleImage(v?: {
   modelName?: string | null;
   brandSlug?: string | null;
   brandName?: string | null;
+  brandDefaultVehicleImageUrl?: string | null;
 } | null): string {
   if (!v) return "/images/logo.png";
 
@@ -1115,10 +1117,23 @@ export function resolveVehicleImage(v?: {
     return v.imageUrl.trim();
   }
 
+  // 2. Explicit brand default vehicle image
+  if (
+    v.brandDefaultVehicleImageUrl &&
+    typeof v.brandDefaultVehicleImageUrl === "string" &&
+    v.brandDefaultVehicleImageUrl.trim() &&
+    v.brandDefaultVehicleImageUrl !== "null" &&
+    v.brandDefaultVehicleImageUrl !== "undefined"
+  ) {
+    return v.brandDefaultVehicleImageUrl.trim();
+  }
+
   const slug = (v.modelSlug || "").toLowerCase().trim();
   const name = (v.modelName || "").toLowerCase().trim();
+  const bSlug = (v.brandSlug || "").toLowerCase().trim();
+  const bName = (v.brandName || "").toLowerCase().trim();
 
-  // 2. Known SXS Model Front / Action Images
+  // 3. Known SXS Model Front / Action Images
   // CFMOTO Z10 (2-seater and 4-seater)
   if (slug === "zforce-z10" || slug === "zforce-z10-4" || slug === "z10" || slug === "z10-4" || name.includes("z10")) {
     return "/images/sxs/z10_front.png";
@@ -1149,7 +1164,15 @@ export function resolveVehicleImage(v?: {
     return "https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&w=800&q=80";
   }
 
-  // 3. Fallback to company logo
+  // 4. Fallback to Brand default image in SXS_BRANDS
+  const sxsBrand = SXS_BRANDS.find(
+    (b) => b.slug === bSlug || b.id === bSlug || b.title.toLowerCase() === bName
+  );
+  if (sxsBrand?.sxsImageUrl) {
+    return sxsBrand.sxsImageUrl;
+  }
+
+  // 5. Fallback to company logo
   return "/images/logo.png";
 }
 
@@ -1451,7 +1474,6 @@ export async function getProductBySlug(slugOrId: string): Promise<ProductItem | 
   );
 }
 
-import { SXS_BRAND_PLATFORMS } from "@/lib/sxsBrands";
 
 export interface FilterOptions {
   q?: string;

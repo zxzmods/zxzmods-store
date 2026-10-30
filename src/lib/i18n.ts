@@ -1281,6 +1281,39 @@ export interface Translations {
   backdoorVehiclesPickupEligibleLabel: string;
   backdoorVehiclesPickupEligibleHelp: string;
 
+  // Garage Brands Management Keys
+  backdoorVehiclesSubtabModels: string;
+  backdoorVehiclesSubtabBrands: string;
+  backdoorVehiclesBrandsTitle: string;
+  backdoorVehiclesBrandsSubtitle: string;
+  backdoorVehiclesAddBrandBtn: string;
+  backdoorVehiclesEditBrandBtn: string;
+  backdoorVehiclesBrandModalCreateTitle: string;
+  backdoorVehiclesBrandModalEditTitle: string;
+  backdoorVehiclesBrandNameLabel: string;
+  backdoorVehiclesBrandSlugLabel: string;
+  backdoorVehiclesBrandLogoLabel: string;
+  backdoorVehiclesBrandUploadLogoBtn: string;
+  backdoorVehiclesBrandUploadingLogo: string;
+  backdoorVehiclesBrandDefaultVehicleImgLabel: string;
+  backdoorVehiclesBrandDefaultVehicleImgHelp: string;
+  backdoorVehiclesBrandUploadVehicleImgBtn: string;
+  backdoorVehiclesBrandUploadingVehicleImg: string;
+  backdoorVehiclesBrandDescEsLabel: string;
+  backdoorVehiclesBrandDescEnLabel: string;
+  backdoorVehiclesBrandFeaturedLabel: string;
+  backdoorVehiclesBrandFeaturedHelp: string;
+  backdoorVehiclesBrandSaveSuccess: string;
+  backdoorVehiclesBrandUpdateSuccess: string;
+  backdoorVehiclesBrandDeleteConfirm: string;
+  backdoorVehiclesBrandDeleteSuccess: string;
+  backdoorVehiclesBrandEmptyState: string;
+  backdoorVehiclesBrandSearchPlaceholder: string;
+  backdoorVehiclesBrandFilterAll: string;
+  backdoorVehiclesBrandFilterFeatured: string;
+  backdoorVehiclesBrandFilterStandard: string;
+  backdoorVehiclesBrandModelsCount: string;
+
   // Pick-Up Service Garage Vehicle Compatibility Keys
   servicePickupVehicleIncompatibleBadge: string;
   servicePickupVehicleIncompatibleAlert: string;
@@ -3211,6 +3244,39 @@ export const translations: Record<Language, Translations> = {
     backdoorVehiclesPickupEligibleLabel: "Compatible con Pick-up (Remolque)",
     backdoorVehiclesPickupEligibleHelp: "Indica si este modelo de vehículo califica para ser transportado en plataforma o remolque.",
 
+    // Garage Brands Management Keys
+    backdoorVehiclesSubtabModels: "Modelos de Vehículo",
+    backdoorVehiclesSubtabBrands: "Marcas de Vehículos",
+    backdoorVehiclesBrandsTitle: "Gestor de Marcas de Vehículos para Garaje",
+    backdoorVehiclesBrandsSubtitle: "Agrega, edita y organiza las marcas de vehículos, sus logos oficiales e imágenes de vehículo por defecto que se muestran en el Garaje.",
+    backdoorVehiclesAddBrandBtn: "+ Agregar Marca",
+    backdoorVehiclesEditBrandBtn: "Editar Marca",
+    backdoorVehiclesBrandModalCreateTitle: "Agregar Nueva Marca de Vehículo",
+    backdoorVehiclesBrandModalEditTitle: "Editar Marca de Vehículo",
+    backdoorVehiclesBrandNameLabel: "Nombre de la Marca (ej: CAN-AM, CFMOTO)",
+    backdoorVehiclesBrandSlugLabel: "Slug / Identificador (ej: can-am, cfmoto)",
+    backdoorVehiclesBrandLogoLabel: "Logo Oficial de la Marca",
+    backdoorVehiclesBrandUploadLogoBtn: "Subir Logo",
+    backdoorVehiclesBrandUploadingLogo: "Subiendo logo...",
+    backdoorVehiclesBrandDefaultVehicleImgLabel: "Imagen de Vehículo por Defecto",
+    backdoorVehiclesBrandDefaultVehicleImgHelp: "Esta imagen se mostrará automáticamente en el garaje para cualquier vehículo registrado de esta marca que no tenga una imagen específica configurada.",
+    backdoorVehiclesBrandUploadVehicleImgBtn: "Subir Imagen de Vehículo",
+    backdoorVehiclesBrandUploadingVehicleImg: "Subiendo imagen...",
+    backdoorVehiclesBrandDescEsLabel: "Descripción en Español",
+    backdoorVehiclesBrandDescEnLabel: "Descripción en Inglés",
+    backdoorVehiclesBrandFeaturedLabel: "Marca Destacada",
+    backdoorVehiclesBrandFeaturedHelp: "Muestra esta marca con prioridad visual en los filtros y catálogos.",
+    backdoorVehiclesBrandSaveSuccess: "¡Marca creada exitosamente!",
+    backdoorVehiclesBrandUpdateSuccess: "¡Marca actualizada exitosamente!",
+    backdoorVehiclesBrandDeleteConfirm: "¿Estás seguro de eliminar esta marca de vehículo? Los modelos asociados a esta marca también serán eliminados.",
+    backdoorVehiclesBrandDeleteSuccess: "Marca de vehículo eliminada exitosamente.",
+    backdoorVehiclesBrandEmptyState: "No se encontraron marcas de vehículos con este filtro.",
+    backdoorVehiclesBrandSearchPlaceholder: "Buscar por nombre, slug o descripción de marca...",
+    backdoorVehiclesBrandFilterAll: "Todas las Marcas",
+    backdoorVehiclesBrandFilterFeatured: "Solo Destacadas",
+    backdoorVehiclesBrandFilterStandard: "Estándar",
+    backdoorVehiclesBrandModelsCount: "modelos registrados",
+
     // Pick-Up Service Garage Vehicle Compatibility Keys
     servicePickupVehicleIncompatibleBadge: "Vehículo Incompatible con Pick-up",
     servicePickupVehicleIncompatibleAlert: "El vehículo en tu garaje no es compatible con el servicio de traslado en remolque.",
@@ -5136,6 +5202,39 @@ export const translations: Record<Language, Translations> = {
     backdoorVehiclesEmptyState: "No vehicle models found matching this filter.",
     backdoorVehiclesPickupEligibleLabel: "Compatible with Pick-up (Trailer)",
     backdoorVehiclesPickupEligibleHelp: "Indicates whether this vehicle model qualifies for transport on a trailer or platform.",
+
+    // Garage Brands Management Keys
+    backdoorVehiclesSubtabModels: "Vehicle Models",
+    backdoorVehiclesSubtabBrands: "Vehicle Brands",
+    backdoorVehiclesBrandsTitle: "Garage Vehicle Brands Manager",
+    backdoorVehiclesBrandsSubtitle: "Add, edit, and organize vehicle brands, their official logos, and default vehicle images displayed in the Garage.",
+    backdoorVehiclesAddBrandBtn: "+ Add Brand",
+    backdoorVehiclesEditBrandBtn: "Edit Brand",
+    backdoorVehiclesBrandModalCreateTitle: "Add New Vehicle Brand",
+    backdoorVehiclesBrandModalEditTitle: "Edit Vehicle Brand",
+    backdoorVehiclesBrandNameLabel: "Brand Name (e.g. CAN-AM, CFMOTO)",
+    backdoorVehiclesBrandSlugLabel: "Slug / Identifier (e.g. can-am, cfmoto)",
+    backdoorVehiclesBrandLogoLabel: "Official Brand Logo",
+    backdoorVehiclesBrandUploadLogoBtn: "Upload Logo",
+    backdoorVehiclesBrandUploadingLogo: "Uploading logo...",
+    backdoorVehiclesBrandDefaultVehicleImgLabel: "Default Vehicle Image",
+    backdoorVehiclesBrandDefaultVehicleImgHelp: "This image will be automatically shown in the garage for any registered vehicle of this brand that does not have a specific image configured.",
+    backdoorVehiclesBrandUploadVehicleImgBtn: "Upload Vehicle Image",
+    backdoorVehiclesBrandUploadingVehicleImg: "Uploading image...",
+    backdoorVehiclesBrandDescEsLabel: "Spanish Description",
+    backdoorVehiclesBrandDescEnLabel: "English Description",
+    backdoorVehiclesBrandFeaturedLabel: "Featured Brand",
+    backdoorVehiclesBrandFeaturedHelp: "Show this brand with visual priority in filters and catalogs.",
+    backdoorVehiclesBrandSaveSuccess: "Brand created successfully!",
+    backdoorVehiclesBrandUpdateSuccess: "Brand updated successfully!",
+    backdoorVehiclesBrandDeleteConfirm: "Are you sure you want to delete this vehicle brand? Models associated with this brand will also be removed.",
+    backdoorVehiclesBrandDeleteSuccess: "Vehicle brand deleted successfully.",
+    backdoorVehiclesBrandEmptyState: "No vehicle brands found matching this filter.",
+    backdoorVehiclesBrandSearchPlaceholder: "Search by brand name, slug, or description...",
+    backdoorVehiclesBrandFilterAll: "All Brands",
+    backdoorVehiclesBrandFilterFeatured: "Featured Only",
+    backdoorVehiclesBrandFilterStandard: "Standard",
+    backdoorVehiclesBrandModelsCount: "registered models",
 
     // Pick-Up Service Garage Vehicle Compatibility Keys
     servicePickupVehicleIncompatibleBadge: "Vehicle Incompatible with Pick-up",

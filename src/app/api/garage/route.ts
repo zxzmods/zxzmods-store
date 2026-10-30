@@ -28,15 +28,30 @@ export async function GET(request: Request) {
     const modelSlugs = Array.from(new Set(vehicles.map((v) => v.modelSlug)));
     const vehicleModels = await prisma.vehicleModel.findMany({
       where: { slug: { in: modelSlugs } },
-      select: { slug: true, pickupServiceAvailable: true, imageUrl: true },
+      select: {
+        slug: true,
+        pickupServiceAvailable: true,
+        imageUrl: true,
+        brand: { select: { defaultVehicleImageUrl: true, logoUrl: true } },
+      },
     });
     const modelMap = new Map(vehicleModels.map((m) => [m.slug, m]));
 
+    const brandSlugs = Array.from(new Set(vehicles.map((v) => v.brandSlug)));
+    const dbBrands = await prisma.brand.findMany({
+      where: { slug: { in: brandSlugs } },
+      select: { slug: true, defaultVehicleImageUrl: true, logoUrl: true },
+    });
+    const brandMap = new Map(dbBrands.map((b) => [b.slug.toLowerCase(), b]));
+
     const enrichedVehicles = vehicles.map((v) => {
       const vm = modelMap.get(v.modelSlug);
+      const b = brandMap.get(v.brandSlug.toLowerCase());
+      const brandDefaultImg = vm?.brand?.defaultVehicleImageUrl || b?.defaultVehicleImageUrl || null;
       return {
         ...v,
-        imageUrl: v.imageUrl || vm?.imageUrl || null,
+        imageUrl: v.imageUrl || vm?.imageUrl || brandDefaultImg || null,
+        brandDefaultVehicleImageUrl: brandDefaultImg,
         pickupServiceAvailable: vm?.pickupServiceAvailable ?? true,
       };
     });
@@ -132,10 +147,19 @@ export async function POST(request: Request) {
 
     const model = await prisma.vehicleModel.findUnique({
       where: { slug: String(modelSlug) },
-      select: { pickupServiceAvailable: true, imageUrl: true },
+      select: {
+        pickupServiceAvailable: true,
+        imageUrl: true,
+        brand: { select: { defaultVehicleImageUrl: true } },
+      },
     });
 
-    const finalImageUrl = imageUrl ? String(imageUrl) : (model?.imageUrl || null);
+    const targetBrand = !model?.brand?.defaultVehicleImageUrl
+      ? await prisma.brand.findUnique({ where: { slug: String(brandSlug) }, select: { defaultVehicleImageUrl: true } })
+      : null;
+
+    const brandDefaultImg = model?.brand?.defaultVehicleImageUrl || targetBrand?.defaultVehicleImageUrl || null;
+    const finalImageUrl = imageUrl ? String(imageUrl) : (model?.imageUrl || brandDefaultImg || null);
 
     const created = await prisma.garageVehicle.create({
       data: {
