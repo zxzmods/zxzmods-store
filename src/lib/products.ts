@@ -441,6 +441,7 @@ export function detectVehiclePlatform(token: string): string | null {
     t === "maverick x3" ||
     t === "maverick-x3" ||
     t.includes("maverick x3") ||
+    t.includes("maverick") ||
     /\b(can-am\s+)?(maverick\s+)?x3\b/i.test(t)
   ) {
     return "x3";
@@ -459,33 +460,48 @@ export function detectVehiclePlatform(token: string): string | null {
 
   // 6. Polaris RZR Pro R
   if (
-    t === "rzr-pro-r" ||
-    t === "pro-r" ||
-    t === "pro r" ||
-    t.includes("pro r") ||
-    /\bpro\s*r\b/i.test(t)
+    !t.includes("maverick") &&
+    !t.includes("can-am") &&
+    (
+      t === "rzr-pro-r" ||
+      t === "pro-r" ||
+      t === "pro r" ||
+      t.includes("pro r") ||
+      /\bpro\s*r\b/i.test(t)
+    )
   ) {
     return "pror";
   }
 
   // 7. Polaris RZR Pro XP
   if (
-    t === "rzr-pro-xp" ||
-    t === "pro-xp" ||
-    t === "pro xp" ||
-    t.includes("pro xp") ||
-    /\bpro\s*xp\b/i.test(t)
+    !t.includes("maverick") &&
+    !t.includes("can-am") &&
+    (
+      t === "rzr-pro-xp" ||
+      t === "pro-xp" ||
+      t === "pro xp" ||
+      t.includes("pro xp") ||
+      /\bpro\s*xp\b/i.test(t)
+    )
   ) {
     return "proxp";
   }
 
   // 8. Polaris Turbo R
   if (
-    t === "rzr-turbo-r" ||
-    t === "turbo-r" ||
-    t === "turbo r" ||
-    t.includes("turbo r") ||
-    /\bturbo\s*r\b/i.test(t)
+    !t.includes("maverick") &&
+    !t.includes("can-am") &&
+    !t.includes("canam") &&
+    (
+      t === "rzr-turbo-r" ||
+      t === "polaris-turbo-r" ||
+      t === "turbo-r" ||
+      t === "turbo r" ||
+      t.includes("rzr turbo r") ||
+      t.includes("polaris turbo r") ||
+      /\brzr(\s*turbo\s*r)?\b/i.test(t)
+    )
   ) {
     return "turbor";
   }
@@ -1237,66 +1253,157 @@ export async function searchAndFilterProducts(options: FilterOptions = {}): Prom
   };
 }
 
+export function normalizeMakeToBrandSlug(make?: string | null): string | null {
+  if (!make) return null;
+  const m = make.toLowerCase().trim();
+  if (m === "can-am" || m === "canam" || m === "can am" || m === "brp") return "can-am";
+  if (m === "polaris") return "polaris";
+  if (m === "cfmoto" || m === "cf moto" || m === "cf-moto") return "cfmoto";
+  if (m === "honda") return "honda";
+  if (m === "yamaha") return "yamaha";
+  if (m === "segway") return "segway";
+  if (m === "kawasaki") return "kawasaki";
+  return null;
+}
+
+export function normalizeModelSlugToBrandSlug(slug?: string | null): string | null {
+  if (!slug) return null;
+  const s = slug.toLowerCase().trim();
+  if (
+    s.startsWith("maverick") ||
+    s.startsWith("can-am") ||
+    s.startsWith("canam") ||
+    s.startsWith("x3") ||
+    s.includes("x3") ||
+    s.includes("defender") ||
+    s.includes("commander")
+  ) {
+    return "can-am";
+  }
+  if (
+    s.startsWith("rzr") ||
+    s.startsWith("polaris") ||
+    s.startsWith("pro-r") ||
+    s.startsWith("pro-xp") ||
+    s.startsWith("turbo-r") ||
+    s.includes("ranger") ||
+    s.includes("general")
+  ) {
+    return "polaris";
+  }
+  if (
+    s.startsWith("zforce") ||
+    s.startsWith("cforce") ||
+    s.startsWith("uforce") ||
+    s.startsWith("z10") ||
+    s.startsWith("z950") ||
+    s.startsWith("z1000") ||
+    s.includes("cfmoto")
+  ) {
+    return "cfmoto";
+  }
+  if (s.startsWith("talon") || s.startsWith("pioneer") || s.includes("honda")) {
+    return "honda";
+  }
+  if (s.startsWith("yxz") || s.startsWith("wolverine") || s.startsWith("rmax") || s.includes("yamaha")) {
+    return "yamaha";
+  }
+  if (s.startsWith("villain") || s.startsWith("fugleman") || s.includes("segway")) {
+    return "segway";
+  }
+  if (s.startsWith("krx") || s.startsWith("teryx") || s.startsWith("mule") || s.includes("kawasaki")) {
+    return "kawasaki";
+  }
+  return null;
+}
+
 /**
  * Dynamically detects matching vehicle brand slugs (e.g. "cfmoto", "can-am", "polaris")
  * for any product based on compatibility list, model-year matrix, and platform keywords.
+ * Prioritizes explicit structured data (ground truth) over text searches to prevent cross-brand bleed.
  */
 export function detectProductVehicleBrands(product: any): string[] {
   const matchedSlugs = new Set<string>();
 
-  for (const [brandSlug, platforms] of Object.entries(SXS_BRAND_PLATFORMS)) {
-    // 1. Check comp array
-    if (product.comp && Array.isArray(product.comp)) {
-      const matchComp = product.comp.some((c: string) => {
+  // 1. Structured modelYearCompatibility (HIGHEST PRIORITY / GROUND TRUTH)
+  if (
+    product.modelYearCompatibility &&
+    Array.isArray(product.modelYearCompatibility) &&
+    product.modelYearCompatibility.length > 0
+  ) {
+    for (const m of product.modelYearCompatibility) {
+      const fromMake = normalizeMakeToBrandSlug(m.make);
+      if (fromMake) matchedSlugs.add(fromMake);
+      const fromModel = normalizeModelSlugToBrandSlug(m.model);
+      if (fromModel) matchedSlugs.add(fromModel);
+    }
+    // If structured modelYearCompatibility gave verified brand(s), return immediately without text searching!
+    if (matchedSlugs.size > 0) {
+      return Array.from(matchedSlugs);
+    }
+  }
+
+  // 2. Structured comp array (model slugs)
+  if (product.comp && Array.isArray(product.comp) && product.comp.length > 0) {
+    for (const c of product.comp) {
+      const fromComp = normalizeModelSlugToBrandSlug(c);
+      if (fromComp) {
+        matchedSlugs.add(fromComp);
+      } else {
         const cLower = typeof c === "string" ? c.toLowerCase().trim() : "";
-        return platforms.some((plat) => isPlatformOrVehicleMatch(cLower, plat.toLowerCase()));
-      });
-      if (matchComp) {
-        matchedSlugs.add(brandSlug);
-        continue;
+        for (const [brandSlug, platforms] of Object.entries(SXS_BRAND_PLATFORMS)) {
+          if (platforms.some((plat) => isPlatformOrVehicleMatch(cLower, plat.toLowerCase()))) {
+            matchedSlugs.add(brandSlug);
+          }
+        }
       }
     }
-
-    // 2. Check modelYearCompatibility
-    if (product.modelYearCompatibility && Array.isArray(product.modelYearCompatibility)) {
-      const matchMY = product.modelYearCompatibility.some((m: any) => {
-        const make = (m.make || "").toLowerCase().trim();
-        const model = (m.model || "").toLowerCase().trim();
-        return platforms.some(
-          (plat) =>
-            isPlatformOrVehicleMatch(make, plat.toLowerCase()) ||
-            isPlatformOrVehicleMatch(model, plat.toLowerCase())
-        );
-      });
-      if (matchMY) {
-        matchedSlugs.add(brandSlug);
-        continue;
-      }
+    if (matchedSlugs.size > 0) {
+      return Array.from(matchedSlugs);
     }
+  }
 
-    // 3. Check compatibilities array
-    if (product.compatibilities && Array.isArray(product.compatibilities)) {
-      const matchRel = product.compatibilities.some((rel: any) => {
+  // 3. Structured compatibilities relation
+  if (
+    product.compatibilities &&
+    Array.isArray(product.compatibilities) &&
+    product.compatibilities.length > 0
+  ) {
+    for (const rel of product.compatibilities) {
+      const fromRel = normalizeModelSlugToBrandSlug(rel.vehicleModel || rel.modelSlug);
+      if (fromRel) {
+        matchedSlugs.add(fromRel);
+      } else {
         const vm = (rel.vehicleModel || "").toLowerCase().trim();
-        return platforms.some((plat) => isPlatformOrVehicleMatch(vm, plat.toLowerCase()));
-      });
-      if (matchRel) {
-        matchedSlugs.add(brandSlug);
-        continue;
+        for (const [brandSlug, platforms] of Object.entries(SXS_BRAND_PLATFORMS)) {
+          if (platforms.some((plat) => isPlatformOrVehicleMatch(vm, plat.toLowerCase()))) {
+            matchedSlugs.add(brandSlug);
+          }
+        }
       }
     }
+    if (matchedSlugs.size > 0) {
+      return Array.from(matchedSlugs);
+    }
+  }
 
-    // 4. Fallback to title / description
-    const title = (product.p_title || product.nameEs || product.nameEn || "").toLowerCase();
-    const desc = (
-      typeof product.description === "string"
-        ? product.description
-        : (product.descriptionEs || product.descriptionEn || "")
-    ).toLowerCase();
+  // 4. True Fallback: ONLY when NO structured fitments exist at all
+  const title = (product.p_title || product.nameEs || product.nameEn || "").toLowerCase();
+  const desc = (
+    typeof product.description === "string"
+      ? product.description
+      : (product.descriptionEs || product.descriptionEn || "")
+  ).toLowerCase();
+  const fullText = `${title} ${desc}`;
+
+  for (const [brandSlug, platforms] of Object.entries(SXS_BRAND_PLATFORMS)) {
     const matchesText = platforms.some((plat) => {
       const platLower = plat.toLowerCase();
-      const regex = new RegExp(`(^|[\\s\\-_/])${platLower.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&")}($|[\\s\\-_/])`, "i");
-      return regex.test(title) || regex.test(desc);
+      const regex = new RegExp(
+        `(^|[\\s\\-_/])${platLower.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&")}($|[\\s\\-_/])`,
+        "i"
+      );
+      return regex.test(fullText);
     });
     if (matchesText) {
       matchedSlugs.add(brandSlug);

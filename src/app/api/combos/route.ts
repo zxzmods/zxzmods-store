@@ -117,8 +117,16 @@ function detectComboVehicleBrands(combo: any, catalogProducts: any[]): string[] 
             if (matchedProd.compJson) {
               try { comp = JSON.parse(matchedProd.compJson); } catch {}
             }
+            let modelYearCompatibility: any[] = [];
+            if (matchedProd.modelYearCompatibilityJson) {
+              try {
+                const parsed = JSON.parse(matchedProd.modelYearCompatibilityJson);
+                if (Array.isArray(parsed)) modelYearCompatibility = parsed;
+              } catch {}
+            }
             const prodBrands = detectProductVehicleBrands({
               comp,
+              modelYearCompatibility,
               nameEs: matchedProd.nameEs,
               nameEn: matchedProd.nameEn,
             });
@@ -129,14 +137,16 @@ function detectComboVehicleBrands(combo: any, catalogProducts: any[]): string[] 
     } catch {}
   }
 
-  // 2. Check combo title and description
-  const text = `${combo.titleEs || ""} ${combo.titleEn || ""} ${combo.descriptionEs || ""} ${combo.descriptionEn || ""}`.toLowerCase();
-  for (const [brandSlug, platforms] of Object.entries(SXS_BRAND_PLATFORMS)) {
-    const match = platforms.some((plat) => {
-      const regex = new RegExp(`(^|[\\s\\-_/])${plat.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&")}($|[\\s\\-_/])`, "i");
-      return regex.test(text);
-    });
-    if (match) matchedSlugs.add(brandSlug);
+  // 2. Check combo title and description ONLY IF no products provided authoritative brand fitment
+  if (matchedSlugs.size === 0) {
+    const text = `${combo.titleEs || ""} ${combo.titleEn || ""} ${combo.descriptionEs || ""} ${combo.descriptionEn || ""}`.toLowerCase();
+    for (const [brandSlug, platforms] of Object.entries(SXS_BRAND_PLATFORMS)) {
+      const match = platforms.some((plat) => {
+        const regex = new RegExp(`(^|[\\s\\-_/])${plat.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&")}($|[\\s\\-_/])`, "i");
+        return regex.test(text);
+      });
+      if (match) matchedSlugs.add(brandSlug);
+    }
   }
 
   return Array.from(matchedSlugs);
@@ -202,6 +212,7 @@ export async function GET(request: NextRequest) {
         brandJson: true,
         categoryJson: true,
         compJson: true,
+        modelYearCompatibilityJson: true,
         priceCRC: true,
         originalPriceCRC: true,
         discountPercent: true,

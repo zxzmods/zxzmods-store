@@ -88,13 +88,13 @@ export const SXS_BRANDS: SxsBrand[] = [
 ];
 
 export const SXS_BRAND_PLATFORMS: Record<string, string[]> = {
-  cfmoto: ["cfmoto", "z10", "z10-4", "zforce", "cforce", "uforce"],
-  "can-am": ["can-am", "canam", "maverick", "x3", "defender", "commander"],
-  polaris: ["polaris", "rzr", "pro r", "turbo r", "pro xp", "ranger", "general"],
-  honda: ["honda", "talon", "pioneer"],
+  cfmoto: ["cfmoto", "cf moto", "z10", "z10-4", "zforce", "cforce", "uforce"],
+  "can-am": ["can-am", "canam", "can am", "maverick", "x3", "defender", "can-am commander", "maverick r"],
+  polaris: ["polaris", "rzr", "pro r", "rzr turbo r", "pro xp", "ranger", "polaris general", "rzr pro", "general xp"],
+  honda: ["honda", "talon", "honda pioneer", "pioneer 1000", "pioneer 700", "pioneer 500"],
   yamaha: ["yamaha", "yxz", "yxz1000r", "wolverine", "rmax"],
   segway: ["segway", "villain", "fugleman"],
-  kawasaki: ["kawasaki", "krx", "krx 1000", "krx4", "teryx", "mule", "brute force"],
+  kawasaki: ["kawasaki", "krx", "krx 1000", "krx4", "teryx", "mule", "brute force 750", "kawasaki brute force"],
 };
 
 export const BRAND_LOGOS: Record<string, string> = {
