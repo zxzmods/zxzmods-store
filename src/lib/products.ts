@@ -434,17 +434,63 @@ export function detectVehiclePlatform(token: string): string | null {
     return "z10";
   }
 
-  // 4. Can-Am Maverick X3
+  // 4a. Can-Am Maverick R (New 2024+ 240HP DCT platform)
   if (
-    t === "can-amx3" ||
-    t === "x3" ||
-    t === "maverick x3" ||
-    t === "maverick-x3" ||
-    t.includes("maverick x3") ||
-    t.includes("maverick") ||
-    /\b(can-am\s+)?(maverick\s+)?x3\b/i.test(t)
+    t === "maverick-r" ||
+    t === "maverick r" ||
+    t === "maverickr" ||
+    t === "can-am-maverick-r" ||
+    t === "canam-maverick-r" ||
+    t.startsWith("maverick-r-") ||
+    t.startsWith("maverick r ") ||
+    t.includes("maverick-r") ||
+    t.includes("maverick r") ||
+    /\bmaverick[-_\s]?r\b/i.test(t)
+  ) {
+    return "maverick-r";
+  }
+
+  // 4b. Can-Am Maverick X3 (CVT platform)
+  if (
+    !t.includes("maverick-r") &&
+    !t.includes("maverick r") &&
+    !/\bmaverick[-_\s]?r\b/i.test(t) &&
+    (
+      t === "can-amx3" ||
+      t === "x3" ||
+      t === "maverick x3" ||
+      t === "maverick-x3" ||
+      t.includes("maverick x3") ||
+      t.includes("maverick-x3") ||
+      t.startsWith("maverick-x3") ||
+      t.startsWith("x3-") ||
+      t.includes("x3ds") ||
+      t.includes("x3rs") ||
+      t.includes("x3m") ||
+      /\b(can-am\s+)?(maverick[-_\s]?)?x3\b/i.test(t)
+    )
   ) {
     return "x3";
+  }
+
+  // 4c. Can-Am Defender / Traxter
+  if (
+    t === "defender" ||
+    t === "can-am defender" ||
+    t === "traxter" ||
+    t.includes("defender") ||
+    t.includes("traxter") ||
+    /\bdefender\b/i.test(t)
+  ) {
+    return "defender";
+  }
+
+  // 4d. Can-Am Commander
+  if (
+    (t === "commander" || t === "can-am commander" || t.includes("can-am commander") || t.startsWith("commander-")) &&
+    !t.includes("power commander")
+  ) {
+    return "commander";
   }
 
   // 5. Segway Villain
@@ -545,6 +591,32 @@ export function isPlatformOrVehicleMatch(compItem: string, targetToken: string):
   if (c.includes("universal") || target.includes("universal")) return true;
   if (c === target) return true;
 
+  // STRICT SEPARATION: Can-Am Maverick R vs Can-Am Maverick X3
+  // Products designed for Maverick X3 do NOT fit Maverick R, and vice-versa.
+  const isMaverickR = (s: string) =>
+    s === "maverick-r" ||
+    s === "maverick r" ||
+    s.includes("maverick-r") ||
+    s.includes("maverick r") ||
+    /\bmaverick[-_\s]?r\b/i.test(s);
+
+  const isMaverickX3 = (s: string) =>
+    !isMaverickR(s) &&
+    (
+      s === "x3" ||
+      s === "can-amx3" ||
+      s === "maverick-x3" ||
+      s === "maverick x3" ||
+      s.includes("x3") ||
+      s.includes("maverick-x3") ||
+      s.includes("maverick x3") ||
+      /\b(can-am\s+)?(maverick[-_\s]?)?x3\b/i.test(s)
+    );
+
+  if ((isMaverickR(c) && isMaverickX3(target)) || (isMaverickX3(c) && isMaverickR(target))) {
+    return false;
+  }
+
   // STRICT SEPARATION: Z10 (2-seater) vs Z10-4 (4-seater)
   // A product that fits Z10 does NOT automatically fit Z10-4, and vice-versa.
   const isZ10_4 = (s: string) =>
@@ -579,6 +651,12 @@ export function isPlatformOrVehicleMatch(compItem: string, targetToken: string):
 
   // Cross-platform negative check: if one is explicitly one platform and other explicitly mentions an incompatible one
   if (platC && !platTarget) {
+    if (platC === "maverick-r" && (target.includes("x3") || isMaverickX3(target))) {
+      return false;
+    }
+    if (platC === "x3" && (target.includes("maverick-r") || isMaverickR(target))) {
+      return false;
+    }
     if (platC === "z10" && (target.includes("1000") || target.includes("z1000") || target.includes("950") || target.includes("x3") || isZ10_4(target))) {
       return false;
     }
@@ -594,6 +672,12 @@ export function isPlatformOrVehicleMatch(compItem: string, targetToken: string):
   }
 
   if (platTarget && !platC) {
+    if (platTarget === "maverick-r" && (c.includes("x3") || isMaverickX3(c))) {
+      return false;
+    }
+    if (platTarget === "x3" && (c.includes("maverick-r") || isMaverickR(c))) {
+      return false;
+    }
     if (platTarget === "z10" && (c.includes("1000") || c.includes("z1000") || c.includes("950") || c.includes("x3") || isZ10_4(c))) {
       return false;
     }
@@ -611,6 +695,11 @@ export function isPlatformOrVehicleMatch(compItem: string, targetToken: string):
   const cNorm = c.replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim();
   const targetNorm = target.replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim();
   if (cNorm === targetNorm) return true;
+
+  // Protect against generic single-character or short substring collisions (e.g. standalone "x" or "r")
+  if (cNorm.length <= 2 || targetNorm.length <= 2) {
+    return cNorm === targetNorm;
+  }
 
   const escapeRegex = (s: string) => s.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
   const targetInComp = new RegExp(`(^|[\\s\\-_/])${escapeRegex(targetNorm)}($|[\\s\\-_/])`, "i").test(cNorm);
@@ -640,8 +729,11 @@ export function formatModelWithYear(compToken: string): string {
   if (token === "zforce-z10" || token === "z10" || token === "cfmoto z10") {
     return "CFMOTO ZForce Z10 (2026+)";
   }
+  if (token === "maverick-r" || token.includes("maverick-r") || token.includes("maverick r") || /\bmaverick[-_\s]?r\b/i.test(token)) {
+    return "Can-Am Maverick R (2024+)";
+  }
   if (token === "can-amx3" || token === "x3" || token.includes("maverick x3") || token === "maverick-x3") {
-    return "Can-Am Maverick X3 (2019-2027)";
+    return "Can-Am Maverick X3 (2017-2027)";
   }
   if (token === "zforce-950-sport" || token === "z950") {
     return "CFMOTO ZForce 950 Sport (2023-2027)";
@@ -675,8 +767,11 @@ export function formatCompListWithYears(compList?: string[]): string {
   if (hasZ10_4) {
     return "CFMOTO ZForce Z10-4 (2026+)";
   }
-  if (list.some((c) => c === "can-amx3" || c === "x3" || c.includes("maverick"))) {
-    return "Can-Am Maverick X3 (2019-2027)";
+  if (list.some((c) => c === "maverick-r" || c.includes("maverick-r") || c.includes("maverick r") || /\bmaverick[-_\s]?r\b/i.test(c))) {
+    return "Can-Am Maverick R (2024+)";
+  }
+  if (list.some((c) => c === "can-amx3" || c === "x3" || c.includes("maverick-x3") || c.includes("maverick x3") || c.startsWith("x3") || /\bx3\b/i.test(c))) {
+    return "Can-Am Maverick X3 (2017-2027)";
   }
   return compList.map(formatModelWithYear).join(", ");
 }

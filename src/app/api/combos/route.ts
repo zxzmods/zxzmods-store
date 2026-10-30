@@ -535,6 +535,12 @@ export async function GET(request: NextRequest) {
         if (vPlatform && comboPlatform) {
           if (vPlatform !== comboPlatform) return false;
         } else if (vPlatform) {
+          if (vPlatform === "maverick-r" && (comboText.includes("x3") || comboText.includes("maverick-x3") || comboText.includes("maverick x3"))) {
+            return false;
+          }
+          if (vPlatform === "x3" && (comboText.includes("maverick-r") || comboText.includes("maverick r"))) {
+            return false;
+          }
           if (vPlatform === "z10" && (comboText.includes("1000") || comboText.includes("z1000") || comboText.includes("950") || comboText.includes("z10-4") || comboText.includes("z10 4"))) {
             return false;
           }
