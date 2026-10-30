@@ -27,6 +27,7 @@ import {
 } from "@/lib/products";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useTouchSwipe } from "@/lib/useTouchSwipe";
+import { ProductThumbnailStrip } from "@/components/product/ProductThumbnailStrip";
 import {
   Wrench,
   ShoppingCart,
@@ -665,35 +666,18 @@ export default function ComboDetailPage() {
 
                 {/* Thumbnails */}
                 {allImages.length > 1 && (
-                  <div className="flex items-center gap-3 overflow-x-auto p-2 py-3 no-scrollbar -mx-2 sm:mx-0">
-                    {allImages.map((imgUrl, i) => {
-                      const isActive =
-                        (!selectedImageOverride && activeImageIndex === i) ||
-                        selectedImageOverride === imgUrl;
-                      return (
-                        <button
-                          key={i}
-                          type="button"
-                          onClick={() => {
-                            setActiveImageIndex(i);
-                            setSelectedImageOverride(null);
-                          }}
-                          className={`relative w-20 h-20 rounded-2xl border-2 overflow-hidden flex-shrink-0 transition-all cursor-pointer ${
-                            isActive
-                              ? "border-[#C02030] ring-2 ring-[#C02030]/25 shadow-md scale-105"
-                              : "border-gray-200 opacity-70 hover:opacity-100 hover:border-gray-300"
-                          }`}
-                        >
-                          <Image
-                            src={imgUrl}
-                            alt=""
-                            fill
-                            className="object-cover"
-                          />
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <ProductThumbnailStrip
+                    images={allImages}
+                    activeIndex={activeImageIndex}
+                    selectedImageUrl={selectedImageOverride}
+                    onSelectImage={(i) => {
+                      setActiveImageIndex(i);
+                      setSelectedImageOverride(null);
+                    }}
+                    lang={lang}
+                    size="md"
+                    theme="light"
+                  />
                 )}
 
                 {/* Technical Assurance / Guarantee Badges */}
@@ -1535,22 +1519,18 @@ export default function ComboDetailPage() {
           {/* Lightbox Footer Thumbnails */}
           {allImages.length > 1 && (
             <div
-              className="flex items-center justify-center gap-2 p-2 py-3 max-w-md mx-auto w-full overflow-x-auto no-scrollbar"
+              className="max-w-xl mx-auto w-full px-4"
               onClick={(e) => e.stopPropagation()}
             >
-              {allImages.map((imgUrl, i) => (
-                <button
-                  key={i}
-                  onClick={() => setLightboxImageIndex(i)}
-                  className={`relative w-14 h-14 rounded-xl border-2 overflow-hidden flex-shrink-0 transition-all cursor-pointer ${
-                    lightboxImageIndex === i
-                      ? "border-[#C02030] ring-2 ring-[#C02030]/25 scale-105"
-                      : "border-white/20 opacity-60 hover:opacity-100"
-                  }`}
-                >
-                  <Image src={imgUrl} alt="" fill className="object-cover" />
-                </button>
-              ))}
+              <ProductThumbnailStrip
+                images={allImages}
+                activeIndex={lightboxImageIndex}
+                onSelectImage={(i) => setLightboxImageIndex(i)}
+                lang={lang}
+                size="sm"
+                theme="dark"
+                showCounter={false}
+              />
             </div>
           )}
         </div>
