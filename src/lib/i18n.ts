@@ -1042,6 +1042,14 @@ export interface Translations {
   devOptionPriceDeltaHelp: string;
   devNoParametersNotice: string;
   devAddColorPresetBtn: string;
+  devAddDualParameterPresetBtn: string;
+  devOptionPriceDeltaUSD: string;
+  devOptionPriceDeltaCRC: string;
+  devOptionImagesGalleryLabel: string;
+  devOptionAddImageUrlBtn: string;
+  devOptionUploadImagesBtn: string;
+  devOptionSetPrimaryImage: string;
+  devOptionPrimaryBadge: string;
   devOptionColorLabel: string;
   devOptionImageLabel: string;
   devOptionImageUpload: string;
@@ -2884,6 +2892,14 @@ export const translations: Record<Language, Translations> = {
     devOptionPriceDeltaHelp: "Ingresa el ajuste en colones respecto al precio base (ej: 0 para mismo precio, 5000 para +₡5,000, o negativo).",
     devNoParametersNotice: "No hay parámetros configurados aún. Este ítem tendrá un precio único y sin variantes seleccionables.",
     devAddColorPresetBtn: "+ Preset Color (Naranja, Negro, Azul)",
+    devAddDualParameterPresetBtn: "+ Doble Parámetro (Tip & Cover)",
+    devOptionPriceDeltaUSD: "Dif. Precio ($ USD)",
+    devOptionPriceDeltaCRC: "Dif. Precio (₡ CRC)",
+    devOptionImagesGalleryLabel: "Fotos de la Variante (Múltiples imágenes):",
+    devOptionAddImageUrlBtn: "Agregar URL de Foto",
+    devOptionUploadImagesBtn: "Subir Foto(s)",
+    devOptionSetPrimaryImage: "Definir como foto principal",
+    devOptionPrimaryBadge: "Principal",
     devOptionColorLabel: "Color Visual",
     devOptionImageLabel: "Foto de Variante (Opcional)",
     devOptionImageUpload: "Subir Foto",
@@ -4847,6 +4863,14 @@ export const translations: Record<Language, Translations> = {
     devOptionPriceDeltaHelp: "Enter adjustment relative to base price (e.g. 0 for same price, 5000 for +₡5,000, or negative).",
     devNoParametersNotice: "No parameters configured yet. This item will have a single fixed price without selectable variations.",
     devAddColorPresetBtn: "+ Color Preset (Orange, Black, Blue)",
+    devAddDualParameterPresetBtn: "+ Dual Parameter (Tip & Cover)",
+    devOptionPriceDeltaUSD: "Price Diff ($ USD)",
+    devOptionPriceDeltaCRC: "Price Diff (₡ CRC)",
+    devOptionImagesGalleryLabel: "Variant Photos (Multiple images):",
+    devOptionAddImageUrlBtn: "Add Photo URL",
+    devOptionUploadImagesBtn: "Upload Photo(s)",
+    devOptionSetPrimaryImage: "Set as primary photo",
+    devOptionPrimaryBadge: "Primary",
     devOptionColorLabel: "Visual Color",
     devOptionImageLabel: "Variant Photo (Optional)",
     devOptionImageUpload: "Upload Photo",

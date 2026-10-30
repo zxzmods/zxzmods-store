@@ -500,12 +500,10 @@ export default function ProductDetailPage() {
       ...prev,
       [param.id]: opt.id,
     }));
-    if (opt.imageUrl) {
-      setSelectedImageOverride(opt.imageUrl);
-      const optIdx = allImages.indexOf(opt.imageUrl);
-      if (optIdx !== -1) {
-        setActiveImageIndex(optIdx);
-      }
+    const targetImg = opt.imageUrl || (Array.isArray(opt.images) && opt.images[0] ? opt.images[0] : null);
+    if (targetImg) {
+      setSelectedImageOverride(targetImg);
+      setActiveImageIndex(0);
     }
   };
 
@@ -808,8 +806,10 @@ export default function ProductDetailPage() {
           optionId: option.id,
           optionLabel: lang === "es" ? option.labelEs : (option.labelEn || option.labelEs),
           priceDeltaCRC: isLinkedParam ? 0 : (option.priceDeltaCRC || 0),
+          priceDeltaUSD: isLinkedParam ? 0 : (option.priceDeltaUSD || 0),
           colorHex: option.colorHex,
           imageUrl: option.imageUrl,
+          images: option.images || (option.imageUrl ? [option.imageUrl] : []),
           supplierUrl: option.supplierUrl,
           linkedProductId: option.linkedProductId,
         });
@@ -818,9 +818,23 @@ export default function ProductDetailPage() {
     return list;
   }, [product, selectedOptions, lang]);
 
-  // Complete image gallery (primary image first, followed by deduplicated gallery images)
+  // Complete image gallery (selected parameter variant images first, then base product images)
   const allImages = useMemo(() => {
     const list: string[] = [];
+
+    // Prioritize photos belonging to currently selected parameter options
+    for (const item of selectedParametersList) {
+      if (Array.isArray(item.images)) {
+        item.images.forEach((img) => {
+          const s = typeof img === "string" ? img.trim() : "";
+          if (s && !list.includes(s)) list.push(s);
+        });
+      }
+      if (item.imageUrl && typeof item.imageUrl === "string") {
+        const s = item.imageUrl.trim();
+        if (s && !list.includes(s)) list.push(s);
+      }
+    }
     if (product?.imageUrl && typeof product.imageUrl === "string") {
       const s = product.imageUrl.trim();
       if (s) list.push(s);
@@ -832,7 +846,7 @@ export default function ProductDetailPage() {
       });
     }
     return list.length > 0 ? list : ["/images/logo.png"];
-  }, [product]);
+  }, [product, selectedParametersList]);
 
   // Option-specific image for visualization (e.g. orange, black, blue charge tube)
   const activeOptionImage = useMemo(() => {
@@ -1514,6 +1528,7 @@ export default function ProductDetailPage() {
                                 const optLabel = lang === "es" ? opt.labelEs : (opt.labelEn || opt.labelEs);
                                 const resolvedColor = resolveOptionColorHex(optLabel, opt.colorHex);
                                 const isTargetSwitching = switchingLinkedProduct && switchingTargetId === opt.id;
+                                const optThumb = opt.imageUrl || (Array.isArray(opt.images) && opt.images[0] ? opt.images[0] : null);
 
                                 return (
                                   <button
@@ -1524,16 +1539,16 @@ export default function ProductDetailPage() {
                                     className={`px-3.5 py-2.5 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer border shadow-2xs ${
                                       isSelected
                                         ? "bg-[#C02030] border-[#C02030] text-white shadow-md scale-[1.02] ring-2 ring-[#C02030]/25"
-                                        : "bg-white/80 backdrop-blur-md border border-gray-200/90 text-gray-800 hover:border-gray-400 hover:bg-white/95"
+                                        : "bg-white/90 backdrop-blur-md border border-gray-300 text-gray-900 hover:border-gray-500 hover:bg-white"
                                     } ${switchingLinkedProduct ? "opacity-85 cursor-wait" : ""}`}
                                   >
                                     {isTargetSwitching ? (
                                       <Loader2 className="w-3.5 h-3.5 animate-spin text-[#C02030] shrink-0" />
                                     ) : (
                                       <>
-                                        {opt.imageUrl && (
+                                        {optThumb && (
                                           <img
-                                            src={opt.imageUrl}
+                                            src={optThumb}
                                             alt={optLabel}
                                             className="w-5 h-5 rounded-md object-cover border border-gray-200/50 shrink-0"
                                           />
@@ -1546,7 +1561,7 @@ export default function ProductDetailPage() {
                                             style={{ backgroundColor: resolvedColor }}
                                           />
                                         )}
-                                        {isLinkedParam && !opt.imageUrl && (
+                                        {isLinkedParam && !optThumb && (
                                           <Link2
                                             className={`w-3.5 h-3.5 shrink-0 ${
                                               isSelected ? "text-white" : "text-gray-500"
@@ -1556,11 +1571,15 @@ export default function ProductDetailPage() {
                                       </>
                                     )}
                                     <span>{optLabel}</span>
-                                    {!isSelected && opt.priceDeltaCRC !== 0 && (
+                                    {!isSelected && (opt.priceDeltaCRC !== 0 || (opt.priceDeltaUSD !== undefined && opt.priceDeltaUSD !== 0)) && (
                                       <span className="text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded-md bg-gray-100 text-[#C02030]">
-                                        {opt.priceDeltaCRC > 0
-                                          ? `+${formatCRC(opt.priceDeltaCRC)}`
-                                          : `-${formatCRC(Math.abs(opt.priceDeltaCRC))}`}
+                                        {opt.priceDeltaCRC !== 0
+                                          ? (opt.priceDeltaCRC > 0
+                                              ? `+${formatCRC(opt.priceDeltaCRC)}`
+                                              : `-${formatCRC(Math.abs(opt.priceDeltaCRC))}`)
+                                          : (opt.priceDeltaUSD && opt.priceDeltaUSD > 0
+                                              ? `+$${opt.priceDeltaUSD}`
+                                              : `-$${Math.abs(opt.priceDeltaUSD || 0)}`)}
                                       </span>
                                     )}
                                   </button>

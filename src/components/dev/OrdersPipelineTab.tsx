@@ -3371,6 +3371,7 @@ export function OrdersPipelineTab({ onOrderDeleted, onOrderUpdated }: OrdersPipe
         effectiveSupplierUrl,
         mainSupplierUrl,
         isVariantUrl: Boolean(variantSupplierUrl && mainSupplierUrl && variantSupplierUrl !== mainSupplierUrl),
+        allVariantSupplierUrls: resolvedParameters.filter((p) => Boolean(p.supplierUrl)),
         supplierHostname,
         supplierPlatform: matchedProduct?.supplierPlatform || null,
         supplierStockStatus: item.supplierStockStatus || matchedProduct?.supplierStockStatus || null,
@@ -3954,6 +3955,30 @@ export function OrdersPipelineTab({ onOrderDeleted, onOrderUpdated }: OrdersPipe
                           >
                             {d.effectiveSupplierUrl}
                           </a>
+
+                          {d.allVariantSupplierUrls && d.allVariantSupplierUrls.length > 1 && (
+                            <div className="pt-2 border-t border-slate-800 space-y-1.5">
+                              <span className="text-[10px] font-bold text-slate-400 block uppercase tracking-wider">
+                                {lang === "es" ? "Enlaces Específicos por Parámetro / Opción:" : "Specific Links by Parameter / Option:"}
+                              </span>
+                              {d.allVariantSupplierUrls.map((vp: any, vpIdx: number) => (
+                                <div key={vpIdx} className="flex items-center justify-between gap-2 bg-slate-950/50 p-2 rounded-lg border border-slate-800">
+                                  <span className="text-xs text-slate-300 font-semibold truncate">
+                                    <b className="text-white">{vp.parameterName}:</b> {vp.optionLabel}
+                                  </span>
+                                  <a
+                                    href={vp.supplierUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="px-2.5 py-1 rounded-md bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-[10px] flex items-center gap-1 shrink-0"
+                                  >
+                                    <ExternalLink className="w-3 h-3" />
+                                    <span>{lang === "es" ? "Abrir Opción" : "Open Option"}</span>
+                                  </a>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       ) : (
                         <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-900 flex items-center justify-between gap-2">

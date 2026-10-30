@@ -215,6 +215,7 @@ function ParametersEditorSection({
   currentProductSku = "",
   currentProductImage = "",
   currentProductSupplierUrl = "",
+  liveExchangeRate = 515,
 }: {
   parameters: ConfigurableParameter[];
   onChange: (newParams: ConfigurableParameter[]) => void;
@@ -225,9 +226,11 @@ function ParametersEditorSection({
   currentProductSku?: string;
   currentProductImage?: string;
   currentProductSupplierUrl?: string;
+  liveExchangeRate?: number;
 }) {
   const [activeColorPaletteOpt, setActiveColorPaletteOpt] = useState<string | null>(null);
   const [uploadingOptId, setUploadingOptId] = useState<string | null>(null);
+  const [urlInputByOpt, setUrlInputByOpt] = useState<Record<string, string>>({});
 
   const POPULAR_COLORS = [
     { label: "Naranja", hex: "#EA580C" },
@@ -252,10 +255,168 @@ function ParametersEditorSection({
           labelEs: "",
           labelEn: "",
           priceDeltaCRC: 0,
+          priceDeltaUSD: 0,
+          imageUrl: "",
+          images: [],
+          supplierUrl: "",
         },
       ],
     };
     onChange([...(parameters || []), newParam]);
+  };
+
+  const handleAddDualParameterPreset = () => {
+    const tipParam: ConfigurableParameter = {
+      id: `param-${Date.now()}-tip`,
+      nameEs: "Color de Punta (Tip Color)",
+      nameEn: "Tip Color",
+      type: "button",
+      options: [
+        {
+          id: `opt-tip-${Date.now()}-1`,
+          labelEs: "Stainless",
+          labelEn: "Stainless",
+          colorHex: "#CBD5E1",
+          priceDeltaCRC: 0,
+          priceDeltaUSD: 0,
+          imageUrl: "",
+          images: [],
+          supplierUrl: currentProductSupplierUrl || "",
+        },
+        {
+          id: `opt-tip-${Date.now()}-2`,
+          labelEs: "Black",
+          labelEn: "Black",
+          colorHex: "#18181B",
+          priceDeltaCRC: 0,
+          priceDeltaUSD: 0,
+          imageUrl: "",
+          images: [],
+          supplierUrl: currentProductSupplierUrl || "",
+        },
+        {
+          id: `opt-tip-${Date.now()}-3`,
+          labelEs: "Blue/Gold",
+          labelEn: "Blue/Gold",
+          colorHex: "#2563EB",
+          priceDeltaCRC: 0,
+          priceDeltaUSD: 0,
+          imageUrl: "",
+          images: [],
+          supplierUrl: currentProductSupplierUrl || "",
+        },
+        {
+          id: `opt-tip-${Date.now()}-4`,
+          labelEs: "Gold",
+          labelEn: "Gold",
+          colorHex: "#EAB308",
+          priceDeltaCRC: 0,
+          priceDeltaUSD: 0,
+          imageUrl: "",
+          images: [],
+          supplierUrl: currentProductSupplierUrl || "",
+        },
+      ],
+    };
+
+    const coverParam: ConfigurableParameter = {
+      id: `param-${Date.now() + 1}-cover`,
+      nameEs: "Color de Cubierta (Cover Color)",
+      nameEn: "Cover Color",
+      type: "button",
+      options: [
+        {
+          id: `opt-cov-${Date.now()}-1`,
+          labelEs: "Gloss Carbon",
+          labelEn: "Gloss Carbon",
+          colorHex: "#0F172A",
+          priceDeltaCRC: 0,
+          priceDeltaUSD: 0,
+          imageUrl: "",
+          images: [],
+          supplierUrl: currentProductSupplierUrl || "",
+        },
+        {
+          id: `opt-cov-${Date.now()}-2`,
+          labelEs: "Matte Carbon",
+          labelEn: "Matte Carbon",
+          colorHex: "#334155",
+          priceDeltaCRC: 0,
+          priceDeltaUSD: 0,
+          imageUrl: "",
+          images: [],
+          supplierUrl: currentProductSupplierUrl || "",
+        },
+        {
+          id: `opt-cov-${Date.now()}-3`,
+          labelEs: "Red Carbon",
+          labelEn: "Red Carbon",
+          colorHex: "#DC2626",
+          priceDeltaCRC: 0,
+          priceDeltaUSD: 0,
+          imageUrl: "",
+          images: [],
+          supplierUrl: currentProductSupplierUrl || "",
+        },
+        {
+          id: `opt-cov-${Date.now()}-4`,
+          labelEs: "Gloss Forged Carbon",
+          labelEn: "Gloss Forged Carbon",
+          colorHex: "#0F172A",
+          priceDeltaCRC: 0,
+          priceDeltaUSD: 0,
+          imageUrl: "",
+          images: [],
+          supplierUrl: currentProductSupplierUrl || "",
+        },
+        {
+          id: `opt-cov-${Date.now()}-5`,
+          labelEs: "Matte Forged Carbon",
+          labelEn: "Matte Forged Carbon",
+          colorHex: "#334155",
+          priceDeltaCRC: 0,
+          priceDeltaUSD: 0,
+          imageUrl: "",
+          images: [],
+          supplierUrl: currentProductSupplierUrl || "",
+        },
+        {
+          id: `opt-cov-${Date.now()}-6`,
+          labelEs: "Gold Forged Carbon",
+          labelEn: "Gold Forged Carbon",
+          colorHex: "#CA8A04",
+          priceDeltaCRC: 0,
+          priceDeltaUSD: 0,
+          imageUrl: "",
+          images: [],
+          supplierUrl: currentProductSupplierUrl || "",
+        },
+        {
+          id: `opt-cov-${Date.now()}-7`,
+          labelEs: "Red Forged Carbon",
+          labelEn: "Red Forged Carbon",
+          colorHex: "#B91C1C",
+          priceDeltaCRC: 0,
+          priceDeltaUSD: 0,
+          imageUrl: "",
+          images: [],
+          supplierUrl: currentProductSupplierUrl || "",
+        },
+        {
+          id: `opt-cov-${Date.now()}-8`,
+          labelEs: "Blue Forged Carbon",
+          labelEn: "Blue Forged Carbon",
+          colorHex: "#1D4ED8",
+          priceDeltaCRC: 0,
+          priceDeltaUSD: 0,
+          imageUrl: "",
+          images: [],
+          supplierUrl: currentProductSupplierUrl || "",
+        },
+      ],
+    };
+
+    onChange([...(parameters || []), tipParam, coverParam]);
   };
 
   const handleAddColorPreset = () => {
@@ -271,6 +432,10 @@ function ParametersEditorSection({
           labelEn: "Orange",
           colorHex: "#EA580C",
           priceDeltaCRC: 0,
+          priceDeltaUSD: 0,
+          imageUrl: "",
+          images: [],
+          supplierUrl: currentProductSupplierUrl || "",
         },
         {
           id: `opt-${Date.now()}-2`,
@@ -278,6 +443,10 @@ function ParametersEditorSection({
           labelEn: "Black",
           colorHex: "#18181B",
           priceDeltaCRC: 0,
+          priceDeltaUSD: 0,
+          imageUrl: "",
+          images: [],
+          supplierUrl: currentProductSupplierUrl || "",
         },
         {
           id: `opt-${Date.now()}-3`,
@@ -285,6 +454,10 @@ function ParametersEditorSection({
           labelEn: "Blue",
           colorHex: "#2563EB",
           priceDeltaCRC: 0,
+          priceDeltaUSD: 0,
+          imageUrl: "",
+          images: [],
+          supplierUrl: currentProductSupplierUrl || "",
         },
       ],
     };
@@ -303,7 +476,9 @@ function ParametersEditorSection({
           labelEs: "Estándar / Base",
           labelEn: "Standard / Base",
           priceDeltaCRC: 0,
+          priceDeltaUSD: 0,
           imageUrl: currentProductImage || "",
+          images: currentProductImage ? [currentProductImage] : [],
           supplierUrl: currentProductSupplierUrl || "",
         },
         {
@@ -311,7 +486,11 @@ function ParametersEditorSection({
           labelEs: "Kit Completo / Avanzado",
           labelEn: "Complete Kit / Advanced",
           priceDeltaCRC: 0,
+          priceDeltaUSD: 0,
+          imageUrl: "",
+          images: [],
           linkedProductId: "",
+          supplierUrl: "",
         },
       ],
     };
@@ -382,36 +561,95 @@ function ParametersEditorSection({
     onChange(updated);
   };
 
-  const handleUploadOptionImage = async (
+  const handleUploadOptionImages = async (
     pIndex: number,
     oIndex: number,
-    file: File
+    files: FileList | File[]
   ) => {
     const optId = parameters[pIndex]?.options[oIndex]?.id || `${pIndex}-${oIndex}`;
     setUploadingOptId(optId);
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("folder", "products");
-      const res = await fetch("/api/sys/upload", {
-        method: "POST",
-        body: formData,
-      });
-      let data: any = null;
-      try {
-        const rawText = await res.text();
-        data = JSON.parse(rawText);
-      } catch {
-        data = null;
+      const uploadedUrls: string[] = [];
+      for (const file of Array.from(files)) {
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("folder", "products");
+        const res = await fetch("/api/sys/upload", {
+          method: "POST",
+          body: formData,
+        });
+        const data = await res.json();
+        if (res.ok && data?.success && data?.url) {
+          uploadedUrls.push(data.url);
+        }
       }
-      if (res.ok && data?.success && data?.url) {
-        handleUpdateOption(pIndex, oIndex, "imageUrl", data.url);
+      if (uploadedUrls.length > 0) {
+        const updated = [...(parameters || [])];
+        const opts = [...(updated[pIndex].options || [])];
+        const currentOpt = opts[oIndex];
+        const existingImages = Array.isArray(currentOpt.images)
+          ? currentOpt.images
+          : currentOpt.imageUrl
+          ? [currentOpt.imageUrl]
+          : [];
+        const nextImages = Array.from(new Set([...existingImages, ...uploadedUrls]));
+        opts[oIndex] = {
+          ...currentOpt,
+          imageUrl: currentOpt.imageUrl || uploadedUrls[0],
+          images: nextImages,
+        };
+        updated[pIndex] = { ...updated[pIndex], options: opts };
+        onChange(updated);
       }
     } catch (e) {
-      console.error("Error uploading option image", e);
+      console.error("Error uploading option images", e);
     } finally {
       setUploadingOptId(null);
     }
+  };
+
+  const handleAddOptionImageUrl = (pIndex: number, oIndex: number, url: string) => {
+    if (!url || !url.trim()) return;
+    const cleanUrl = url.trim();
+    const updated = [...(parameters || [])];
+    const opts = [...(updated[pIndex].options || [])];
+    const currentOpt = opts[oIndex];
+    const existingImages = Array.isArray(currentOpt.images)
+      ? currentOpt.images
+      : currentOpt.imageUrl
+      ? [currentOpt.imageUrl]
+      : [];
+    const nextImages = Array.from(new Set([...existingImages, cleanUrl]));
+    opts[oIndex] = {
+      ...currentOpt,
+      imageUrl: currentOpt.imageUrl || cleanUrl,
+      images: nextImages,
+    };
+    updated[pIndex] = { ...updated[pIndex], options: opts };
+    onChange(updated);
+  };
+
+  const handleRemoveOptionImage = (pIndex: number, oIndex: number, imgUrl: string) => {
+    const updated = [...(parameters || [])];
+    const opts = [...(updated[pIndex].options || [])];
+    const currentOpt = opts[oIndex];
+    const currentImages = Array.isArray(currentOpt.images)
+      ? currentOpt.images
+      : currentOpt.imageUrl
+      ? [currentOpt.imageUrl]
+      : [];
+    const nextImages = currentImages.filter((img) => img !== imgUrl);
+    opts[oIndex] = {
+      ...currentOpt,
+      imageUrl: currentOpt.imageUrl === imgUrl ? (nextImages[0] || "") : currentOpt.imageUrl,
+      images: nextImages,
+    };
+    updated[pIndex] = { ...updated[pIndex], options: opts };
+    onChange(updated);
+  };
+
+  const handleSetOptionPrimaryImage = (pIndex: number, oIndex: number, imgUrl: string) => {
+    handleUpdateOption(pIndex, oIndex, "imageUrl", imgUrl);
   };
 
   const safeParams = parameters || [];
@@ -429,6 +667,15 @@ function ParametersEditorSection({
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={handleAddDualParameterPreset}
+            className="px-3 py-1.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 text-xs font-bold transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
+            title="Agrega rápidamente 2 tipos de parámetros configurables: Tip Color y Cover Color"
+          >
+            <Layers className="w-3.5 h-3.5 text-purple-600" />
+            <span>{t.devAddDualParameterPresetBtn || "+ Doble Parámetro (Tip & Cover)"}</span>
+          </button>
           <button
             type="button"
             onClick={handleAddProductLinkingPreset}
@@ -462,6 +709,14 @@ function ParametersEditorSection({
         <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200 text-center space-y-2">
           <p className="text-xs text-slate-500">{t.devNoParametersNotice}</p>
           <div className="flex justify-center gap-2 pt-1 flex-wrap">
+            <button
+              type="button"
+              onClick={handleAddDualParameterPreset}
+              className="px-3 py-1.5 rounded-xl bg-white border border-purple-300 text-purple-700 text-xs font-bold hover:bg-purple-50 flex items-center gap-1.5 shadow-2xs cursor-pointer"
+            >
+              <Layers className="w-3.5 h-3.5 text-purple-600" />
+              <span>{t.devAddDualParameterPresetBtn || "+ Doble Parámetro (Tip & Cover)"}</span>
+            </button>
             <button
               type="button"
               onClick={handleAddProductLinkingPreset}
@@ -868,29 +1123,62 @@ function ParametersEditorSection({
                             />
                           </div>
 
-                          {/* Price Delta */}
-                          <div className="w-32 shrink-0">
-                            <label className="text-[9px] font-bold text-slate-500 block mb-0.5">
-                              {t.devOptionPriceDelta}
-                            </label>
-                            <div className="relative">
-                              <span className="absolute left-2 top-1.5 text-[10px] font-mono text-slate-400">
-                                ₡
-                              </span>
-                              <input
-                                type="number"
-                                step="100"
-                                value={opt.priceDeltaCRC}
-                                onChange={(e) =>
-                                  handleUpdateOption(
-                                    pIdx,
-                                    oIdx,
-                                    "priceDeltaCRC",
-                                    Math.round(Number(e.target.value) || 0)
-                                  )
-                                }
-                                className="w-full pl-5 pr-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono font-bold text-[#C02030] focus:outline-none focus:border-red-500"
-                              />
+                          {/* Dual Price Delta (USD & CRC with live exchange rate conversion) */}
+                          <div className="flex items-center gap-2 shrink-0 flex-wrap sm:flex-nowrap">
+                            <div className="w-28">
+                              <label className="text-[9px] font-bold text-slate-500 block mb-0.5">
+                                {t.devOptionPriceDeltaUSD || "Dif. Precio ($ USD)"}
+                              </label>
+                              <div className="relative">
+                                <span className="absolute left-2 top-1.5 text-[10px] font-mono text-slate-400">
+                                  $
+                                </span>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={
+                                    opt.priceDeltaUSD !== undefined
+                                      ? opt.priceDeltaUSD
+                                      : opt.priceDeltaCRC
+                                      ? Number((opt.priceDeltaCRC / (liveExchangeRate || 515)).toFixed(2))
+                                      : 0
+                                  }
+                                  onChange={(e) => {
+                                    const usd = parseFloat(e.target.value) || 0;
+                                    const crc = Math.round(usd * (liveExchangeRate || 515));
+                                    handleUpdateOptionMulti(pIdx, oIdx, {
+                                      priceDeltaUSD: usd,
+                                      priceDeltaCRC: crc,
+                                    });
+                                  }}
+                                  className="w-full pl-5 pr-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono font-bold text-emerald-700 focus:outline-none focus:border-red-500"
+                                />
+                              </div>
+                            </div>
+
+                            <div className="w-28">
+                              <label className="text-[9px] font-bold text-slate-500 block mb-0.5">
+                                {t.devOptionPriceDeltaCRC || "Dif. Precio (₡ CRC)"}
+                              </label>
+                              <div className="relative">
+                                <span className="absolute left-2 top-1.5 text-[10px] font-mono text-slate-400">
+                                  ₡
+                                </span>
+                                <input
+                                  type="number"
+                                  step="100"
+                                  value={opt.priceDeltaCRC || 0}
+                                  onChange={(e) => {
+                                    const crc = Math.round(Number(e.target.value) || 0);
+                                    const usd = Number((crc / (liveExchangeRate || 515)).toFixed(2));
+                                    handleUpdateOptionMulti(pIdx, oIdx, {
+                                      priceDeltaCRC: crc,
+                                      priceDeltaUSD: usd,
+                                    });
+                                  }}
+                                  className="w-full pl-5 pr-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono font-bold text-[#C02030] focus:outline-none focus:border-red-500"
+                                />
+                              </div>
                             </div>
                           </div>
 
@@ -905,49 +1193,131 @@ function ParametersEditorSection({
                           </button>
                         </div>
 
-                        {/* Option Image (for client to visualize the variant) */}
-                        <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-3 text-xs">
-                          <div className="flex items-center gap-2 flex-1">
-                            {opt.imageUrl ? (
-                              <div className="relative w-8 h-8 rounded-lg overflow-hidden border border-slate-200 shrink-0 bg-slate-100">
-                                <img
-                                  src={opt.imageUrl}
-                                  alt={opt.labelEs}
-                                  className="w-full h-full object-cover"
-                                />
-                              </div>
-                            ) : (
-                              <div className="w-8 h-8 rounded-lg border border-dashed border-slate-300 flex items-center justify-center shrink-0 bg-slate-50">
-                                <ImageIcon className="w-3.5 h-3.5 text-slate-400" />
-                              </div>
-                            )}
-                            <div className="flex-1">
+                        {/* Option Images Gallery (for client to visualize the variant & scroll through photos) */}
+                        <div className="pt-2.5 border-t border-slate-100 space-y-2">
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <label className="text-[10px] font-bold text-slate-600 flex items-center gap-1.5">
+                              <ImageIcon className="w-3.5 h-3.5 text-[#C02030]" />
+                              <span>{t.devOptionImagesGalleryLabel || "Imágenes de la Variante (Galería de Fotos):"}</span>
+                              <span className="text-[9px] font-normal text-slate-400">
+                                ({Array.isArray(opt.images) && opt.images.length > 0 ? opt.images.length : (opt.imageUrl ? 1 : 0)} fotos)
+                              </span>
+                            </label>
+
+                            <label className="cursor-pointer px-2.5 py-1 rounded-lg bg-red-50 hover:bg-red-100 text-[#C02030] border border-red-200 text-[11px] font-bold flex items-center gap-1 transition shrink-0 shadow-2xs">
+                              <Upload className="w-3 h-3" />
+                              <span>{isUploadingThis ? "Subiendo..." : (t.devOptionUploadImagesBtn || "+ Subir Fotos")}</span>
                               <input
-                                type="text"
-                                value={opt.imageUrl || ""}
-                                onChange={(e) =>
-                                  handleUpdateOption(pIdx, oIdx, "imageUrl", e.target.value)
-                                }
-                                placeholder="URL de foto para esta variante (ej: /products/tubo_naranja.webp)"
-                                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-[11px] text-slate-700 focus:outline-none focus:border-red-500"
+                                type="file"
+                                accept="image/*"
+                                multiple
+                                disabled={isUploadingThis}
+                                onChange={(e) => {
+                                  if (e.target.files && e.target.files.length > 0) {
+                                    handleUploadOptionImages(pIdx, oIdx, e.target.files);
+                                  }
+                                }}
+                                className="hidden"
                               />
-                            </div>
+                            </label>
                           </div>
 
-                          <label className="cursor-pointer px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-red-50 text-slate-700 hover:text-[#C02030] border border-slate-200 text-[11px] font-bold flex items-center gap-1 transition shrink-0">
-                            <Upload className="w-3 h-3" />
-                            <span>{isUploadingThis ? "Subiendo..." : t.devOptionImageUpload}</span>
-                            <input
-                              type="file"
-                              accept="image/*"
-                              disabled={isUploadingThis}
-                              onChange={(e) => {
-                                const f = e.target.files?.[0];
-                                if (f) handleUploadOptionImage(pIdx, oIdx, f);
-                              }}
-                              className="hidden"
-                            />
-                          </label>
+                          {/* Thumbnails row */}
+                          {(() => {
+                            const rawList = Array.isArray(opt.images) && opt.images.length > 0
+                              ? opt.images
+                              : opt.imageUrl
+                              ? [opt.imageUrl]
+                              : [];
+                            const imagesList = Array.from(new Set(rawList.filter(Boolean)));
+
+                            return (
+                              <div className="space-y-2">
+                                {imagesList.length > 0 ? (
+                                  <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                                    {imagesList.map((imgUrl, iIdx) => {
+                                      const isPrimary = (opt.imageUrl && opt.imageUrl === imgUrl) || (!opt.imageUrl && iIdx === 0);
+                                      return (
+                                        <div
+                                          key={`${imgUrl}-${iIdx}`}
+                                          className={`group relative w-14 h-14 rounded-xl border-2 overflow-hidden shrink-0 bg-slate-100 transition shadow-2xs ${
+                                            isPrimary ? "border-amber-500 ring-2 ring-amber-300/60" : "border-slate-200 hover:border-slate-400"
+                                          }`}
+                                        >
+                                          <img
+                                            src={imgUrl}
+                                            alt={`Variante ${opt.labelEs || ""} foto ${iIdx + 1}`}
+                                            className="w-full h-full object-cover"
+                                          />
+                                          {isPrimary && (
+                                            <div className="absolute top-0.5 left-0.5 px-1 py-0.5 rounded bg-amber-500 text-white text-[8px] font-extrabold flex items-center gap-0.5 shadow-xs">
+                                              <Star className="w-2 h-2 fill-white text-white" />
+                                              <span>{t.devOptionPrimaryBadge || "Principal"}</span>
+                                            </div>
+                                          )}
+                                          {/* Action overlays on hover */}
+                                          <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-1.5 transition-opacity">
+                                            {!isPrimary && (
+                                              <button
+                                                type="button"
+                                                onClick={() => handleSetOptionPrimaryImage(pIdx, oIdx, imgUrl)}
+                                                className="p-1 rounded-md bg-amber-500 hover:bg-amber-600 text-white cursor-pointer shadow-xs"
+                                                title={t.devOptionSetPrimaryImage || "Definir como foto principal"}
+                                              >
+                                                <Star className="w-3 h-3 fill-white" />
+                                              </button>
+                                            )}
+                                            <button
+                                              type="button"
+                                              onClick={() => handleRemoveOptionImage(pIdx, oIdx, imgUrl)}
+                                              className="p-1 rounded-md bg-red-600 hover:bg-red-700 text-white cursor-pointer shadow-xs"
+                                              title="Eliminar imagen"
+                                            >
+                                              <Trash2 className="w-3 h-3" />
+                                            </button>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                ) : (
+                                  <div className="p-2.5 rounded-xl border border-dashed border-slate-200 bg-slate-50/70 text-center text-[10px] text-slate-400">
+                                    Sin imágenes para esta opción. Puedes pegar una URL abajo o subir varias fotos.
+                                  </div>
+                                )}
+
+                                {/* Add URL input for images */}
+                                <div className="flex items-center gap-1.5">
+                                  <input
+                                    type="text"
+                                    value={urlInputByOpt[opt.id] || ""}
+                                    onChange={(e) =>
+                                      setUrlInputByOpt((prev) => ({ ...prev, [opt.id]: e.target.value }))
+                                    }
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") {
+                                        e.preventDefault();
+                                        handleAddOptionImageUrl(pIdx, oIdx, urlInputByOpt[opt.id] || "");
+                                        setUrlInputByOpt((prev) => ({ ...prev, [opt.id]: "" }));
+                                      }
+                                    }}
+                                    placeholder="Pegar URL de imagen externa o enlace CDN..."
+                                    className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-[11px] text-slate-700 focus:outline-none focus:border-red-500"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      handleAddOptionImageUrl(pIdx, oIdx, urlInputByOpt[opt.id] || "");
+                                      setUrlInputByOpt((prev) => ({ ...prev, [opt.id]: "" }));
+                                    }}
+                                    className="px-2.5 py-1 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 text-[11px] font-bold transition cursor-pointer"
+                                  >
+                                    {t.devOptionAddImageUrlBtn || "+ Agregar URL"}
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })()}
                         </div>
 
                         {/* Space for Parameter Option to have different supplierUrl */}
@@ -959,15 +1329,29 @@ function ParametersEditorSection({
                             <label className="text-[9px] font-bold text-slate-500 block mb-0.5">
                               {t.devOptionSupplierUrlLabel || "URL del Proveedor para esta opción (supplierUrl):"}
                             </label>
-                            <input
-                              type="url"
-                              value={opt.supplierUrl || ""}
-                              onChange={(e) =>
-                                handleUpdateOption(pIdx, oIdx, "supplierUrl", e.target.value)
-                              }
-                              placeholder="https://... (enlace específico del proveedor para esta variante o edición)"
-                              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-[11px] text-slate-700 font-mono focus:outline-none focus:border-red-500"
-                            />
+                            <div className="flex items-center gap-1.5">
+                              <input
+                                type="url"
+                                value={opt.supplierUrl || ""}
+                                onChange={(e) =>
+                                  handleUpdateOption(pIdx, oIdx, "supplierUrl", e.target.value)
+                                }
+                                placeholder="https://... (enlace específico del proveedor para esta variante o edición)"
+                                className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-[11px] text-slate-700 font-mono focus:outline-none focus:border-red-500"
+                              />
+                              {opt.supplierUrl && (
+                                <a
+                                  href={opt.supplierUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="p-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 transition shrink-0 cursor-pointer flex items-center gap-1 text-[10px] font-bold"
+                                  title="Abrir enlace del proveedor en nueva pestaña"
+                                >
+                                  <ExternalLink className="w-3 h-3" />
+                                  <span>Abrir</span>
+                                </a>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -6818,6 +7202,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                 currentProductSku={productForm.sku}
                 currentProductImage={productForm.imageUrl || parsedImgsList[0] || ""}
                 currentProductSupplierUrl={productForm.supplierUrl || ""}
+                liveExchangeRate={liveExchangeRate || 515}
               />
 
               {/* Services & Toggles (inHome_install & featured) */}
@@ -8486,6 +8871,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
               currentProductName={comboForm.titleEs || comboForm.titleEn}
               currentProductImage={comboForm.imageUrl || ""}
               currentProductSupplierUrl=""
+              liveExchangeRate={liveExchangeRate || 515}
             />
 
             {/* Minimalistic Suggestions Tagger for Prevention & Performance */}

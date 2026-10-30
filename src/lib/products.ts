@@ -95,8 +95,10 @@ export interface ParameterOption {
   labelEs: string;
   labelEn?: string;
   priceDeltaCRC: number; // Price difference in CRC (e.g. 0, 5000, -2000)
+  priceDeltaUSD?: number; // Price difference in USD (e.g. 0, 10, 20)
   colorHex?: string;     // Color hex code (e.g. "#EA580C" for orange, "#18181B" for black, "#2563EB" for blue)
   imageUrl?: string;     // Dedicated image URL for this specific option/variant to visualize
+  images?: string[];     // Multiple dedicated image URLs for this specific option/variant
   supplierUrl?: string;  // Dedicated supplier URL for this specific variant option (User Requirement 1)
   linkedProductId?: string; // ID, SKU or slug of the linked product for product linking (User Requirement 3)
   isDefault?: boolean;
@@ -191,8 +193,10 @@ export interface SelectedParameterItem {
   optionId: string;
   optionLabel: string;
   priceDeltaCRC: number;
+  priceDeltaUSD?: number;
   colorHex?: string;
   imageUrl?: string;
+  images?: string[];
   supplierUrl?: string;
   linkedProductId?: string;
 }

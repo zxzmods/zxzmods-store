@@ -823,6 +823,25 @@ export default function CheckoutPage() {
                             <h3 className="text-xs sm:text-sm font-bold text-slate-900 leading-snug line-clamp-2">
                               {item.title}
                             </h3>
+                            {item.selectedParameters && item.selectedParameters.length > 0 && (
+                              <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                                {item.selectedParameters.map((p, pIdx) => (
+                                  <span
+                                    key={p.parameterId || pIdx}
+                                    className="inline-flex items-center gap-1 text-[10px] font-semibold bg-slate-100 text-slate-800 border border-slate-200/80 px-2 py-0.5 rounded-lg"
+                                  >
+                                    {p.colorHex && (
+                                      <span
+                                        className="w-2.5 h-2.5 rounded-full border border-slate-300 shrink-0"
+                                        style={{ backgroundColor: p.colorHex }}
+                                      />
+                                    )}
+                                    <span className="text-slate-500 font-bold">{p.parameterName}:</span>
+                                    <span className="font-extrabold">{p.optionLabel}</span>
+                                  </span>
+                                ))}
+                              </div>
+                            )}
                             <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                               {item.brand && (
                                 <span className="text-[10px] uppercase font-mono font-bold tracking-wider text-[#0052CC] bg-[#EBF3FC] px-1.5 py-0.5 rounded">

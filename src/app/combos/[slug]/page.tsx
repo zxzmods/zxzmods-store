@@ -312,20 +312,38 @@ export default function ComboDetailPage() {
           optionId: option.id,
           optionLabel: lang === "es" ? option.labelEs : (option.labelEn || option.labelEs),
           priceDeltaCRC: option.priceDeltaCRC || 0,
+          priceDeltaUSD: option.priceDeltaUSD || 0,
           colorHex: option.colorHex,
           imageUrl: option.imageUrl,
+          images: option.images || (option.imageUrl ? [option.imageUrl] : []),
+          supplierUrl: option.supplierUrl,
         });
       }
     });
     return list;
   }, [combo, selectedOptions, lang]);
 
-  // Complete combo image gallery (primary image first, followed by deduplicated gallery images)
+  // Complete combo image gallery (selected parameter variant images first, followed by deduplicated gallery images)
   const allImages = useMemo(() => {
     const list: string[] = [];
+
+    // Prioritize photos belonging to currently selected parameter options
+    for (const item of selectedParametersList) {
+      if (Array.isArray(item.images)) {
+        item.images.forEach((img) => {
+          const s = typeof img === "string" ? img.trim() : "";
+          if (s && !list.includes(s)) list.push(s);
+        });
+      }
+      if (item.imageUrl && typeof item.imageUrl === "string") {
+        const s = item.imageUrl.trim();
+        if (s && !list.includes(s)) list.push(s);
+      }
+    }
+
     if (combo?.imageUrl && typeof combo.imageUrl === "string") {
       const s = combo.imageUrl.trim();
-      if (s) list.push(s);
+      if (s && !list.includes(s)) list.push(s);
     }
     if (combo?.imgs && Array.isArray(combo.imgs)) {
       combo.imgs.forEach((img) => {
@@ -340,7 +358,7 @@ export default function ComboDetailPage() {
       });
     }
     return list.length > 0 ? list : ["/images/sxs/z10_front.png"];
-  }, [combo]);
+  }, [combo, selectedParametersList]);
 
   const activeOptionImage = useMemo(() => {
     for (const item of selectedParametersList) {
@@ -958,6 +976,7 @@ export default function ComboDetailPage() {
                                 const isSelected = opt.id === activeOptionId;
                                 const optLabel = lang === "es" ? opt.labelEs : (opt.labelEn || opt.labelEs);
                                 const resolvedColor = resolveOptionColorHex(optLabel, opt.colorHex);
+                                const optThumb = opt.imageUrl || (Array.isArray(opt.images) && opt.images[0] ? opt.images[0] : null);
 
                                 return (
                                   <button
@@ -968,10 +987,9 @@ export default function ComboDetailPage() {
                                         ...prev,
                                         [param.id]: opt.id,
                                       }));
-                                      if (opt.imageUrl) {
-                                        setSelectedImageOverride(opt.imageUrl);
-                                        const optIdx = allImages.indexOf(opt.imageUrl);
-                                        if (optIdx !== -1) setActiveImageIndex(optIdx);
+                                      if (optThumb) {
+                                        setSelectedImageOverride(optThumb);
+                                        setActiveImageIndex(0);
                                       }
                                     }}
                                     className={`px-3.5 py-2.5 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer border shadow-2xs ${
@@ -980,6 +998,13 @@ export default function ComboDetailPage() {
                                         : "bg-white border-gray-200 text-gray-800 hover:border-gray-400 hover:bg-gray-50"
                                     }`}
                                   >
+                                    {optThumb && (
+                                      <img
+                                        src={optThumb}
+                                        alt={optLabel}
+                                        className="w-5 h-5 rounded-md object-cover border border-gray-200/50 shrink-0"
+                                      />
+                                    )}
                                     {resolvedColor && (
                                       <span
                                         className={`w-3.5 h-3.5 rounded-full border shadow-2xs shrink-0 ${
@@ -989,7 +1014,7 @@ export default function ComboDetailPage() {
                                       />
                                     )}
                                     <span>{optLabel}</span>
-                                    {opt.priceDeltaCRC !== 0 && (
+                                    {(opt.priceDeltaCRC !== 0 || (opt.priceDeltaUSD !== undefined && opt.priceDeltaUSD !== 0)) && (
                                       <span
                                         className={`text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded-md ${
                                           isSelected
@@ -997,9 +1022,13 @@ export default function ComboDetailPage() {
                                             : "bg-gray-100 text-[#C02030]"
                                         }`}
                                       >
-                                        {opt.priceDeltaCRC > 0
-                                          ? `+${formatCRC(opt.priceDeltaCRC)}`
-                                          : `-${formatCRC(Math.abs(opt.priceDeltaCRC))}`}
+                                        {opt.priceDeltaCRC !== 0
+                                          ? (opt.priceDeltaCRC > 0
+                                              ? `+${formatCRC(opt.priceDeltaCRC)}`
+                                              : `-${formatCRC(Math.abs(opt.priceDeltaCRC))}`)
+                                          : (opt.priceDeltaUSD && opt.priceDeltaUSD > 0
+                                              ? `+$${opt.priceDeltaUSD}`
+                                              : `-$${Math.abs(opt.priceDeltaUSD || 0)}`)}
                                       </span>
                                     )}
                                   </button>
