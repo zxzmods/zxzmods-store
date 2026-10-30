@@ -103,16 +103,23 @@ export function ProductThumbnailStrip({
     };
   }, [updateScrollState, images.length]);
 
-  // Horizontal mouse wheel scrolling (converts deltaY to horizontal scroll)
+  // Horizontal mouse wheel scrolling (supports native horizontal wheel and Shift + Wheel, NEVER blocks vertical page scrolling)
   useEffect(() => {
     const el = scrollContainerRef.current;
     if (!el) return;
 
     const handleWheel = (e: WheelEvent) => {
-      if (el.scrollWidth > el.clientWidth && e.deltaY !== 0) {
-        e.preventDefault();
-        el.scrollLeft += e.deltaY * 1.1;
-        updateScrollState();
+      if (el.scrollWidth > el.clientWidth) {
+        if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+          // Native horizontal wheel or horizontal gesture
+          el.scrollLeft += e.deltaX;
+          updateScrollState();
+        } else if (e.shiftKey && e.deltaY !== 0) {
+          // Explicit Shift + Wheel horizontal navigation
+          e.preventDefault();
+          el.scrollLeft += e.deltaY;
+          updateScrollState();
+        }
       }
     };
 

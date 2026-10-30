@@ -818,7 +818,7 @@ export default function ComboDetailPage() {
               </div>
 
               {/* Right Column: Details, Components, Pricing & CTA (Stays fixed while scrolling left column until reaching recommended products) */}
-              <div className="space-y-6 lg:sticky lg:top-24 lg:self-start lg:max-h-[calc(100vh-6.5rem)] lg:overflow-y-auto no-scrollbar">
+              <div className="space-y-6 lg:sticky lg:top-24 lg:self-start">
                 {/* Badges Bar */}
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="bg-black text-white text-[10px] font-bold tracking-wider uppercase px-3 py-1 rounded-full">
