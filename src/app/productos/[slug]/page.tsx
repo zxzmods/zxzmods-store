@@ -29,6 +29,7 @@ import {
   formatCompListWithYears,
   SelectedParameterItem,
   resolveOptionColorHex,
+  resolveDualParameterConnection,
   normalizeAudioUrl,
   normalizeVideoUrl,
 } from "@/lib/products";
@@ -818,9 +819,22 @@ export default function ProductDetailPage() {
     return list;
   }, [product, selectedOptions, lang]);
 
+  // Dual parameter matrix resolution (Param 1 x Param 2 expansion)
+  const dualResolution = useMemo(() => {
+    return resolveDualParameterConnection(product?.parameters, selectedOptions);
+  }, [product?.parameters, selectedOptions]);
+
   // Complete image gallery (selected parameter variant images first, then base product images)
   const allImages = useMemo(() => {
     const list: string[] = [];
+
+    // Prioritize photos from dual parameter connection if resolved
+    if (Array.isArray(dualResolution.effectiveImages) && dualResolution.effectiveImages.length > 0) {
+      dualResolution.effectiveImages.forEach((img) => {
+        const s = typeof img === "string" ? img.trim() : "";
+        if (s && !list.includes(s)) list.push(s);
+      });
+    }
 
     // Prioritize photos belonging to currently selected parameter options
     for (const item of selectedParametersList) {
@@ -846,15 +860,18 @@ export default function ProductDetailPage() {
       });
     }
     return list.length > 0 ? list : ["/images/logo.png"];
-  }, [product, selectedParametersList]);
+  }, [product, selectedParametersList, dualResolution.effectiveImages]);
 
   // Option-specific image for visualization (e.g. orange, black, blue charge tube)
   const activeOptionImage = useMemo(() => {
+    if (dualResolution.effectiveImages && dualResolution.effectiveImages[0]) {
+      return dualResolution.effectiveImages[0];
+    }
     for (const item of selectedParametersList) {
       if (item.imageUrl) return item.imageUrl;
     }
     return null;
-  }, [selectedParametersList]);
+  }, [selectedParametersList, dualResolution.effectiveImages]);
 
   const displayImageUrl = useMemo(() => {
     if (selectedImageOverride) return selectedImageOverride;
@@ -862,8 +879,11 @@ export default function ProductDetailPage() {
   }, [selectedImageOverride, allImages, activeImageIndex]);
 
   const totalDeltaCRC = useMemo(() => {
+    if (product?.parameters && product.parameters.length >= 2 && dualResolution.connection) {
+      return dualResolution.effectivePriceDeltaCRC;
+    }
     return selectedParametersList.reduce((acc, p) => acc + (p.priceDeltaCRC || 0), 0);
-  }, [selectedParametersList]);
+  }, [selectedParametersList, product?.parameters, dualResolution]);
 
   const effectivePriceCRC = (product?.price?.T_price || 0) + totalDeltaCRC;
 
@@ -928,7 +948,9 @@ export default function ProductDetailPage() {
       product.price?.I_price?.includes ||
       (product as any).isInstallationIncluded
     );
-    const variantSupplierUrl = selectedParametersList.find((p) => p.supplierUrl)?.supplierUrl;
+    const variantSupplierUrl =
+      dualResolution.effectiveSupplierUrl ||
+      selectedParametersList.find((p) => p.supplierUrl)?.supplierUrl;
 
     addItem({
       type: "PRODUCT",
@@ -963,7 +985,9 @@ export default function ProductDetailPage() {
         product.price?.I_price?.includes ||
         (product as any).isInstallationIncluded
       );
-      const variantSupplierUrl = selectedParametersList.find((p) => p.supplierUrl)?.supplierUrl;
+      const variantSupplierUrl =
+      dualResolution.effectiveSupplierUrl ||
+      selectedParametersList.find((p) => p.supplierUrl)?.supplierUrl;
 
       // 1. Ensure item is in cart with OUT_OF_STOCK tag
       if (quantityInCart === 0) {

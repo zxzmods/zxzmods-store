@@ -90,6 +90,18 @@ export interface ProductItem {
   suggestedCombos?: any[];
 }
 
+export interface ParameterOptionConnection {
+  secondOptionId: string;       // ID of 2nd parameter option (e.g. opt-cover-red)
+  secondOptionLabelEs?: string; // Automatically replicated from 2nd parameter
+  secondOptionLabelEn?: string;
+  secondOptionColorHex?: string;
+  supplierUrl?: string;         // Unique supplierUrl for this (Param1 x Param2) combo
+  images?: string[];            // Unique images gallery for this combo
+  imageUrl?: string;            // Primary image for this combo
+  priceDeltaUSD?: number;       // Specific price override for this combo (if differs from sum)
+  priceDeltaCRC?: number;
+}
+
 export interface ParameterOption {
   id: string;
   labelEs: string;
@@ -103,6 +115,7 @@ export interface ParameterOption {
   linkedProductId?: string; // ID, SKU or slug of the linked product for product linking (User Requirement 3)
   isDefault?: boolean;
   isCurrentProduct?: boolean;
+  connections?: ParameterOptionConnection[]; // Matrix connections to 2nd parameter options (expansion)
 }
 
 export interface ComboUniqueProductField {
@@ -223,6 +236,122 @@ export function resolveOptionColorHex(label: string, explicitColorHex?: string):
   if (l.includes("rosad") || l.includes("pink")) return "#EC4899"; // Pink
   if (l.includes("bronce") || l.includes("bronze") || l.includes("café") || l.includes("brown")) return "#78350F"; // Bronze
   return null;
+}
+
+/**
+ * Automatically replicates 2nd parameter options into all 1st parameter options' connections.
+ * Preserves any already-configured supplierUrls, images, and price deltas.
+ */
+export function synchronizeDualParameterConnections(
+  param1Options: ParameterOption[],
+  param2Options: ParameterOption[]
+): ParameterOption[] {
+  if (!Array.isArray(param1Options)) return [];
+  if (!Array.isArray(param2Options) || param2Options.length === 0) {
+    return param1Options.map((opt1) => ({ ...opt1, connections: [] }));
+  }
+
+  return param1Options.map((opt1) => {
+    const existingConnections = Array.isArray(opt1.connections) ? opt1.connections : [];
+    const connectionMap = new Map(existingConnections.map((c) => [c.secondOptionId, c]));
+
+    const nextConnections: ParameterOptionConnection[] = param2Options.map((opt2) => {
+      const existing = connectionMap.get(opt2.id);
+      return {
+        secondOptionId: opt2.id,
+        secondOptionLabelEs: opt2.labelEs,
+        secondOptionLabelEn: opt2.labelEn || opt2.labelEs,
+        secondOptionColorHex: opt2.colorHex,
+        supplierUrl: existing?.supplierUrl || "",
+        images: existing?.images || (existing?.imageUrl ? [existing.imageUrl] : []),
+        imageUrl: existing?.imageUrl || existing?.images?.[0] || "",
+        priceDeltaCRC: existing?.priceDeltaCRC,
+        priceDeltaUSD: existing?.priceDeltaUSD,
+      };
+    });
+
+    return {
+      ...opt1,
+      connections: nextConnections,
+    };
+  });
+}
+
+/**
+ * Resolves the active connection/matrix data for a dual-parameter selection
+ */
+export function resolveDualParameterConnection(
+  parameters: ConfigurableParameter[] | undefined,
+  selectedOptions: Record<string, string>
+): {
+  connection: ParameterOptionConnection | null;
+  opt1: ParameterOption | null;
+  opt2: ParameterOption | null;
+  effectiveSupplierUrl?: string;
+  effectiveImages?: string[];
+  effectivePriceDeltaCRC: number;
+  effectivePriceDeltaUSD: number;
+} {
+  if (!parameters || parameters.length < 2) {
+    return {
+      connection: null,
+      opt1: null,
+      opt2: null,
+      effectivePriceDeltaCRC: 0,
+      effectivePriceDeltaUSD: 0,
+    };
+  }
+
+  const param1 = parameters[0];
+  const param2 = parameters[1];
+  const opt1Id = selectedOptions[param1.id] || param1.options?.[0]?.id;
+  const opt2Id = selectedOptions[param2.id] || param2.options?.[0]?.id;
+
+  const opt1 = param1.options?.find((o) => o.id === opt1Id) || null;
+  const opt2 = param2.options?.find((o) => o.id === opt2Id) || null;
+
+  const connection =
+    opt1?.connections?.find((c) => c.secondOptionId === opt2Id) || null;
+
+  // Supplier URL resolution: connection URL > opt2 URL > opt1 URL
+  const effectiveSupplierUrl =
+    connection?.supplierUrl?.trim() ||
+    opt2?.supplierUrl?.trim() ||
+    opt1?.supplierUrl?.trim() ||
+    undefined;
+
+  // Images resolution: connection images > opt2 images > opt1 images
+  const connImgs = Array.isArray(connection?.images) && connection.images.length > 0
+    ? connection.images
+    : connection?.imageUrl ? [connection.imageUrl] : [];
+  const opt2Imgs = Array.isArray(opt2?.images) && opt2.images.length > 0
+    ? opt2.images
+    : opt2?.imageUrl ? [opt2.imageUrl] : [];
+  const opt1Imgs = Array.isArray(opt1?.images) && opt1.images.length > 0
+    ? opt1.images
+    : opt1?.imageUrl ? [opt1.imageUrl] : [];
+
+  const effectiveImages = connImgs.length > 0 ? connImgs : (opt2Imgs.length > 0 ? opt2Imgs : opt1Imgs);
+
+  // Price Delta: connection override if specified, otherwise sum of opt1 + opt2
+  const hasConnCrc = connection?.priceDeltaCRC !== undefined && connection.priceDeltaCRC !== null;
+  const hasConnUsd = connection?.priceDeltaUSD !== undefined && connection.priceDeltaUSD !== null;
+
+  const sumCrc = (opt1?.priceDeltaCRC || 0) + (opt2?.priceDeltaCRC || 0);
+  const sumUsd = (opt1?.priceDeltaUSD || 0) + (opt2?.priceDeltaUSD || 0);
+
+  const effectivePriceDeltaCRC = hasConnCrc ? connection!.priceDeltaCRC! : sumCrc;
+  const effectivePriceDeltaUSD = hasConnUsd ? connection!.priceDeltaUSD! : sumUsd;
+
+  return {
+    connection,
+    opt1,
+    opt2,
+    effectiveSupplierUrl,
+    effectiveImages,
+    effectivePriceDeltaCRC,
+    effectivePriceDeltaUSD,
+  };
 }
 
 

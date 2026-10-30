@@ -1043,6 +1043,17 @@ export interface Translations {
   devNoParametersNotice: string;
   devAddColorPresetBtn: string;
   devAddDualParameterPresetBtn: string;
+  devDualMatrixBtn: string;
+  devDualMatrixModalTitle: string;
+  devDualMatrixModalSubtitle: string;
+  devDualMatrixParam1Title: string;
+  devDualMatrixParam2Title: string;
+  devDualMatrixSelectFirstPrompt: string;
+  devDualMatrixConnectionsFor: string;
+  devDualMatrixReplicatedBadge: string;
+  devDualMatrixSaveBtn: string;
+  devDualMatrixReplicateUrlsBtn: string;
+  devDualMatrixOverridePrice: string;
   devOptionPriceDeltaUSD: string;
   devOptionPriceDeltaCRC: string;
   devOptionImagesGalleryLabel: string;
@@ -2893,6 +2904,17 @@ export const translations: Record<Language, Translations> = {
     devNoParametersNotice: "No hay parámetros configurados aún. Este ítem tendrá un precio único y sin variantes seleccionables.",
     devAddColorPresetBtn: "+ Preset Color (Naranja, Negro, Azul)",
     devAddDualParameterPresetBtn: "+ Doble Parámetro (Tip & Cover)",
+    devDualMatrixBtn: "Matriz de Doble Parámetro (Conexiones)",
+    devDualMatrixModalTitle: "Matriz de Doble Parámetro & Conexiones de Proveedor",
+    devDualMatrixModalSubtitle: "Configura cada combinación (Parámetro 1 × Parámetro 2). El Parámetro 2 se replica automáticamente a todas las opciones.",
+    devDualMatrixParam1Title: "Primer Parámetro (ej. Color de Punta / Tip Color)",
+    devDualMatrixParam2Title: "Segundo Parámetro Maestro (ej. Color de Cubierta / Cover Color)",
+    devDualMatrixSelectFirstPrompt: "Selecciona una opción del 1er parámetro para abrir sus conexiones:",
+    devDualMatrixConnectionsFor: "Conexiones para:",
+    devDualMatrixReplicatedBadge: "Replicado Automático",
+    devDualMatrixSaveBtn: "Guardar y Aplicar Matriz",
+    devDualMatrixReplicateUrlsBtn: "Replicar supplierURL a todos",
+    devDualMatrixOverridePrice: "Sobrescribir Precio Combinación (Opcional)",
     devOptionPriceDeltaUSD: "Dif. Precio ($ USD)",
     devOptionPriceDeltaCRC: "Dif. Precio (₡ CRC)",
     devOptionImagesGalleryLabel: "Fotos de la Variante (Múltiples imágenes):",
@@ -4864,6 +4886,17 @@ export const translations: Record<Language, Translations> = {
     devNoParametersNotice: "No parameters configured yet. This item will have a single fixed price without selectable variations.",
     devAddColorPresetBtn: "+ Color Preset (Orange, Black, Blue)",
     devAddDualParameterPresetBtn: "+ Dual Parameter (Tip & Cover)",
+    devDualMatrixBtn: "Dual Parameter Matrix (Connections)",
+    devDualMatrixModalTitle: "Dual Parameter Matrix & Supplier Connections",
+    devDualMatrixModalSubtitle: "Configure each combination (Param 1 × Param 2). Param 2 replicates automatically across all options.",
+    devDualMatrixParam1Title: "First Parameter (e.g. Tip Color)",
+    devDualMatrixParam2Title: "Second Master Parameter (e.g. Cover Color)",
+    devDualMatrixSelectFirstPrompt: "Select a 1st parameter option to open its connections:",
+    devDualMatrixConnectionsFor: "Connections for:",
+    devDualMatrixReplicatedBadge: "Auto Replicated",
+    devDualMatrixSaveBtn: "Save & Apply Matrix",
+    devDualMatrixReplicateUrlsBtn: "Replicate supplierURL to All",
+    devDualMatrixOverridePrice: "Override Combination Price (Optional)",
     devOptionPriceDeltaUSD: "Price Diff ($ USD)",
     devOptionPriceDeltaCRC: "Price Diff (₡ CRC)",
     devOptionImagesGalleryLabel: "Variant Photos (Multiple images):",

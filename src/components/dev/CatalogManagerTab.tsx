@@ -47,7 +47,23 @@ import {
   Receipt,
   Loader2,
 } from "lucide-react";
-import { ConfigurableParameter, ParameterOption, resolveOptionColorHex, normalizeAudioUrl, normalizeVideoUrl, cleanDescriptionText, extractAndCleanDescription, detectProductVehicleBrands, normalizeBrandName, ComboUniqueProduct, ComboUniqueProductField, SUSPENSION_ADJUST_UNIQUE_PRODUCT_TEMPLATE } from "@/lib/products";
+import {
+  ConfigurableParameter,
+  ParameterOption,
+  ParameterOptionConnection,
+  synchronizeDualParameterConnections,
+  resolveDualParameterConnection,
+  resolveOptionColorHex,
+  normalizeAudioUrl,
+  normalizeVideoUrl,
+  cleanDescriptionText,
+  extractAndCleanDescription,
+  detectProductVehicleBrands,
+  normalizeBrandName,
+  ComboUniqueProduct,
+  ComboUniqueProductField,
+  SUSPENSION_ADJUST_UNIQUE_PRODUCT_TEMPLATE
+} from "@/lib/products";
 import { uploadMediaDirect } from "@/lib/clientDirectUpload";
 import { isVehicleBrand, computeAutoProductSku } from "@/lib/dealerBrands";
 import { SXS_BRANDS } from "@/lib/sxsBrands";
@@ -205,6 +221,1067 @@ interface Combo {
   leadDaysMax?: number;
 }
 
+function DualParameterMatrixModal({
+  isOpen,
+  onClose,
+  parameters,
+  onSave,
+  t,
+  liveExchangeRate = 515,
+  currentProductSupplierUrl = "",
+  currentProductImage = "",
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  parameters: ConfigurableParameter[];
+  onSave: (newParams: ConfigurableParameter[]) => void;
+  t: any;
+  liveExchangeRate?: number;
+  currentProductSupplierUrl?: string;
+  currentProductImage?: string;
+}) {
+  const [param1, setParam1] = useState<ConfigurableParameter | null>(null);
+  const [param2, setParam2] = useState<ConfigurableParameter | null>(null);
+  const [selectedParam1OptId, setSelectedParam1OptId] = useState<string>("");
+  const [activeColorPaletteKey, setActiveColorPaletteKey] = useState<string | null>(null);
+  const [uploadingKey, setUploadingKey] = useState<string | null>(null);
+  const [urlInputMap, setUrlInputMap] = useState<Record<string, string>>({});
+
+  const POPULAR_COLORS = [
+    { label: "Naranja", hex: "#EA580C" },
+    { label: "Negro", hex: "#18181B" },
+    { label: "Azul", hex: "#2563EB" },
+    { label: "Rojo", hex: "#DC2626" },
+    { label: "Titanio", hex: "#94A3B8" },
+    { label: "Blanco", hex: "#FFFFFF" },
+    { label: "Oro / Amarillo", hex: "#EAB308" },
+    { label: "Verde", hex: "#16A34A" },
+    { label: "Carbon Forged", hex: "#1E293B" },
+  ];
+
+  // Initialize or re-sync when modal opens
+  useEffect(() => {
+    if (!isOpen) return;
+
+    let p1: ConfigurableParameter;
+    let p2: ConfigurableParameter;
+
+    if (Array.isArray(parameters) && parameters.length >= 2) {
+      p1 = JSON.parse(JSON.stringify(parameters[0]));
+      p2 = JSON.parse(JSON.stringify(parameters[1]));
+    } else {
+      // Default Preset from user screenshot
+      p1 = {
+        id: `param-${Date.now()}-tip`,
+        nameEs: "Color de Punta (Tip Color)",
+        nameEn: "Tip Color",
+        type: "button",
+        options: [
+          {
+            id: `opt-tip-1`,
+            labelEs: "Stainless",
+            labelEn: "Stainless",
+            colorHex: "#CBD5E1",
+            priceDeltaCRC: 0,
+            priceDeltaUSD: 0,
+            imageUrl: "",
+            images: [],
+            supplierUrl: currentProductSupplierUrl || "",
+          },
+          {
+            id: `opt-tip-2`,
+            labelEs: "Black",
+            labelEn: "Black",
+            colorHex: "#18181B",
+            priceDeltaCRC: 0,
+            priceDeltaUSD: 0,
+            imageUrl: "",
+            images: [],
+            supplierUrl: currentProductSupplierUrl || "",
+          },
+          {
+            id: `opt-tip-3`,
+            labelEs: "Blue/Gold",
+            labelEn: "Blue/Gold",
+            colorHex: "#2563EB",
+            priceDeltaCRC: 0,
+            priceDeltaUSD: 0,
+            imageUrl: "",
+            images: [],
+            supplierUrl: currentProductSupplierUrl || "",
+          },
+          {
+            id: `opt-tip-4`,
+            labelEs: "Gold",
+            labelEn: "Gold",
+            colorHex: "#EAB308",
+            priceDeltaCRC: 0,
+            priceDeltaUSD: 0,
+            imageUrl: "",
+            images: [],
+            supplierUrl: currentProductSupplierUrl || "",
+          },
+        ],
+      };
+
+      p2 = {
+        id: `param-${Date.now() + 1}-cover`,
+        nameEs: "Color de Cubierta (Cover Color)",
+        nameEn: "Cover Color",
+        type: "button",
+        options: [
+          {
+            id: `opt-cov-1`,
+            labelEs: "Gloss Carbon",
+            labelEn: "Gloss Carbon",
+            colorHex: "#0F172A",
+            priceDeltaCRC: 0,
+            priceDeltaUSD: 0,
+            imageUrl: "",
+            images: [],
+            supplierUrl: currentProductSupplierUrl || "",
+          },
+          {
+            id: `opt-cov-2`,
+            labelEs: "Matte Carbon",
+            labelEn: "Matte Carbon",
+            colorHex: "#334155",
+            priceDeltaCRC: 0,
+            priceDeltaUSD: 0,
+            imageUrl: "",
+            images: [],
+            supplierUrl: currentProductSupplierUrl || "",
+          },
+          {
+            id: `opt-cov-3`,
+            labelEs: "Red Carbon",
+            labelEn: "Red Carbon",
+            colorHex: "#DC2626",
+            priceDeltaCRC: 0,
+            priceDeltaUSD: 0,
+            imageUrl: "",
+            images: [],
+            supplierUrl: currentProductSupplierUrl || "",
+          },
+          {
+            id: `opt-cov-4`,
+            labelEs: "Gloss Forged Carbon",
+            labelEn: "Gloss Forged Carbon",
+            colorHex: "#0F172A",
+            priceDeltaCRC: 0,
+            priceDeltaUSD: 0,
+            imageUrl: "",
+            images: [],
+            supplierUrl: currentProductSupplierUrl || "",
+          },
+          {
+            id: `opt-cov-5`,
+            labelEs: "Matte Forged Carbon",
+            labelEn: "Matte Forged Carbon",
+            colorHex: "#334155",
+            priceDeltaCRC: 0,
+            priceDeltaUSD: 0,
+            imageUrl: "",
+            images: [],
+            supplierUrl: currentProductSupplierUrl || "",
+          },
+          {
+            id: `opt-cov-6`,
+            labelEs: "Gold Forged Carbon",
+            labelEn: "Gold Forged Carbon",
+            colorHex: "#EAB308",
+            priceDeltaCRC: 0,
+            priceDeltaUSD: 0,
+            imageUrl: "",
+            images: [],
+            supplierUrl: currentProductSupplierUrl || "",
+          },
+          {
+            id: `opt-cov-7`,
+            labelEs: "Red Forged Carbon",
+            labelEn: "Red Forged Carbon",
+            colorHex: "#EF4444",
+            priceDeltaCRC: 0,
+            priceDeltaUSD: 0,
+            imageUrl: "",
+            images: [],
+            supplierUrl: currentProductSupplierUrl || "",
+          },
+          {
+            id: `opt-cov-8`,
+            labelEs: "Blue Forged Carbon",
+            labelEn: "Blue Forged Carbon",
+            colorHex: "#3B82F6",
+            priceDeltaCRC: 0,
+            priceDeltaUSD: 0,
+            imageUrl: "",
+            images: [],
+            supplierUrl: currentProductSupplierUrl || "",
+          },
+        ],
+      };
+    }
+
+    // Guarantee connections synchronization
+    p1.options = synchronizeDualParameterConnections(p1.options || [], p2.options || []);
+
+    setParam1(p1);
+    setParam2(p2);
+    setSelectedParam1OptId(p1.options[0]?.id || "");
+  }, [isOpen]);
+
+  if (!isOpen || !param1 || !param2) return null;
+
+  // Active Option 1 whose connections we are currently editing
+  const activeOpt1Index = (param1.options || []).findIndex((o) => o.id === selectedParam1OptId);
+  const activeOpt1 = activeOpt1Index !== -1 ? param1.options[activeOpt1Index] : param1.options[0];
+
+  // Handlers for Parameter 1 options
+  const handleAddParam1Option = () => {
+    const newOpt: ParameterOption = {
+      id: `opt-p1-${Date.now()}`,
+      labelEs: "Nueva Opción",
+      labelEn: "New Option",
+      priceDeltaCRC: 0,
+      priceDeltaUSD: 0,
+      imageUrl: "",
+      images: [],
+      supplierUrl: currentProductSupplierUrl || "",
+    };
+    const updatedP1Opts = synchronizeDualParameterConnections(
+      [...(param1.options || []), newOpt],
+      param2.options || []
+    );
+    setParam1({ ...param1, options: updatedP1Opts });
+    setSelectedParam1OptId(newOpt.id);
+  };
+
+  const handleUpdateParam1Option = (idx: number, fields: Partial<ParameterOption>) => {
+    const updatedOpts = [...param1.options];
+    updatedOpts[idx] = { ...updatedOpts[idx], ...fields };
+    setParam1({ ...param1, options: updatedOpts });
+  };
+
+  const handleRemoveParam1Option = (idx: number) => {
+    const updatedOpts = param1.options.filter((_, i) => i !== idx);
+    setParam1({ ...param1, options: updatedOpts });
+    if (updatedOpts.length > 0) {
+      setSelectedParam1OptId(updatedOpts[0].id);
+    }
+  };
+
+  // Handlers for Parameter 2 options (Master Template - Replicates automatically to all Param 1 connections!)
+  const handleAddParam2Option = () => {
+    const newOpt: ParameterOption = {
+      id: `opt-p2-${Date.now()}`,
+      labelEs: "Nuevo Color / Opción",
+      labelEn: "New Color / Option",
+      priceDeltaCRC: 0,
+      priceDeltaUSD: 0,
+      imageUrl: "",
+      images: [],
+      supplierUrl: currentProductSupplierUrl || "",
+    };
+    const nextP2Opts = [...(param2.options || []), newOpt];
+    const synchronizedP1Opts = synchronizeDualParameterConnections(param1.options || [], nextP2Opts);
+
+    setParam2({ ...param2, options: nextP2Opts });
+    setParam1({ ...param1, options: synchronizedP1Opts });
+  };
+
+  const handleUpdateParam2Option = (idx: number, fields: Partial<ParameterOption>) => {
+    const nextP2Opts = [...param2.options];
+    nextP2Opts[idx] = { ...nextP2Opts[idx], ...fields };
+    const synchronizedP1Opts = synchronizeDualParameterConnections(param1.options || [], nextP2Opts);
+
+    setParam2({ ...param2, options: nextP2Opts });
+    setParam1({ ...param1, options: synchronizedP1Opts });
+  };
+
+  const handleRemoveParam2Option = (idx: number) => {
+    const nextP2Opts = param2.options.filter((_, i) => i !== idx);
+    const synchronizedP1Opts = synchronizeDualParameterConnections(param1.options || [], nextP2Opts);
+
+    setParam2({ ...param2, options: nextP2Opts });
+    setParam1({ ...param1, options: synchronizedP1Opts });
+  };
+
+  // Update a specific connection of active Opt1
+  const handleUpdateActiveConnection = (
+    connSecondOptId: string,
+    fields: Partial<ParameterOptionConnection>
+  ) => {
+    if (!activeOpt1) return;
+    const updatedP1Opts = [...param1.options];
+    const currentOpt1 = { ...updatedP1Opts[activeOpt1Index] };
+    const conns = [...(currentOpt1.connections || [])];
+    const cIdx = conns.findIndex((c) => c.secondOptionId === connSecondOptId);
+    if (cIdx !== -1) {
+      conns[cIdx] = { ...conns[cIdx], ...fields };
+      currentOpt1.connections = conns;
+      updatedP1Opts[activeOpt1Index] = currentOpt1;
+      setParam1({ ...param1, options: updatedP1Opts });
+    }
+  };
+
+  // Handle uploading images to a specific combination
+  const handleUploadConnectionImages = async (connSecondOptId: string, files: FileList | File[]) => {
+    const uploadKey = `${selectedParam1OptId}-${connSecondOptId}`;
+    setUploadingKey(uploadKey);
+    try {
+      const uploadedUrls: string[] = [];
+      for (const file of Array.from(files)) {
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("folder", "products");
+        const res = await fetch("/api/sys/upload", {
+          method: "POST",
+          body: formData,
+        });
+        const data = await res.json();
+        if (res.ok && data?.success && data?.url) {
+          uploadedUrls.push(data.url);
+        }
+      }
+
+      if (uploadedUrls.length > 0 && activeOpt1) {
+        const targetConn = activeOpt1.connections?.find((c) => c.secondOptionId === connSecondOptId);
+        const existingImages = Array.isArray(targetConn?.images) ? targetConn.images : [];
+        const nextImages = Array.from(new Set([...existingImages, ...uploadedUrls]));
+        handleUpdateActiveConnection(connSecondOptId, {
+          images: nextImages,
+          imageUrl: targetConn?.imageUrl || uploadedUrls[0],
+        });
+      }
+    } catch (e) {
+      console.error("Error uploading connection images", e);
+    } finally {
+      setUploadingKey(null);
+    }
+  };
+
+  const handleAddConnectionImageUrl = (connSecondOptId: string, url: string) => {
+    if (!url || !url.trim() || !activeOpt1) return;
+    const cleanUrl = url.trim();
+    const targetConn = activeOpt1.connections?.find((c) => c.secondOptionId === connSecondOptId);
+    const existingImages = Array.isArray(targetConn?.images) ? targetConn.images : [];
+    const nextImages = Array.from(new Set([...existingImages, cleanUrl]));
+    handleUpdateActiveConnection(connSecondOptId, {
+      images: nextImages,
+      imageUrl: targetConn?.imageUrl || cleanUrl,
+    });
+  };
+
+  const handleRemoveConnectionImage = (connSecondOptId: string, imgUrl: string) => {
+    if (!activeOpt1) return;
+    const targetConn = activeOpt1.connections?.find((c) => c.secondOptionId === connSecondOptId);
+    const existingImages = Array.isArray(targetConn?.images) ? targetConn.images : [];
+    const nextImages = existingImages.filter((img) => img !== imgUrl);
+    handleUpdateActiveConnection(connSecondOptId, {
+      images: nextImages,
+      imageUrl: targetConn?.imageUrl === imgUrl ? (nextImages[0] || "") : targetConn?.imageUrl,
+    });
+  };
+
+  const handleSetConnectionPrimaryImage = (connSecondOptId: string, imgUrl: string) => {
+    handleUpdateActiveConnection(connSecondOptId, { imageUrl: imgUrl });
+  };
+
+  // Helper: Replicate active Opt1's supplier URL base to empty connections
+  const handleFillEmptyUrlsForActiveOpt1 = () => {
+    if (!activeOpt1 || !activeOpt1.connections) return;
+    const promptUrl = window.prompt(
+      "Ingresa la URL base o enlace para las conexiones vacías de esta opción:",
+      activeOpt1.supplierUrl || currentProductSupplierUrl || ""
+    );
+    if (!promptUrl || !promptUrl.trim()) return;
+    const trimmed = promptUrl.trim();
+
+    const updatedP1Opts = [...param1.options];
+    const currentOpt1 = { ...updatedP1Opts[activeOpt1Index] };
+    const conns = (currentOpt1.connections || []).map((c) => {
+      if (!c.supplierUrl || !c.supplierUrl.trim()) {
+        return { ...c, supplierUrl: trimmed };
+      }
+      return c;
+    });
+    currentOpt1.connections = conns;
+    updatedP1Opts[activeOpt1Index] = currentOpt1;
+    setParam1({ ...param1, options: updatedP1Opts });
+  };
+
+  // Save changes and close modal
+  const handleCommitSave = () => {
+    // Re-verify synchronization before final output
+    const finalP1Opts = synchronizeDualParameterConnections(param1.options || [], param2.options || []);
+    const resultParams: ConfigurableParameter[] = [
+      { ...param1, options: finalP1Opts },
+      { ...param2 },
+    ];
+    onSave(resultParams);
+    onClose();
+  };
+
+  const totalCombinations = (param1.options?.length || 0) * (param2.options?.length || 0);
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+      <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl w-full max-w-6xl max-h-[94vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+        {/* Header */}
+        <div className="p-4 sm:p-5 border-b border-slate-200 bg-slate-50 flex items-center justify-between gap-3 shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-[#C02030] text-white flex items-center justify-center shadow-sm">
+              <Layers className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
+                  {t.devDualMatrixModalTitle || "Matriz de Doble Parámetro & Conexiones de Proveedor"}
+                </h2>
+                <span className="px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-800 text-[11px] font-extrabold border border-purple-200">
+                  {totalCombinations} {totalCombinations === 1 ? "combinación" : "combinaciones"} ({param1.options?.length || 0} × {param2.options?.length || 0})
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5 line-clamp-1">
+                {t.devDualMatrixModalSubtitle || "Configura cada combinación (Parámetro 1 × Parámetro 2). El Parámetro 2 se replica automáticamente a todas las opciones."}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleCommitSave}
+              className="px-4 py-2 rounded-xl bg-[#C02030] hover:bg-[#A01825] text-white text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+            >
+              <Check className="w-4 h-4" />
+              <span>{t.devDualMatrixSaveBtn || "Guardar y Aplicar"}</span>
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-xl transition cursor-pointer"
+              title="Cerrar ventana"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Scrollable Content Body */}
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
+          {/* Top Grid: Param 1 & Param 2 Master Definition */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Column 1: Parámetro 1 (e.g. Tip Color) */}
+            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
+              <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                <span className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                  <span className="w-5 h-5 rounded-md bg-slate-800 text-white flex items-center justify-center text-[10px] font-mono">1</span>
+                  <span>{param1.nameEs || "Primer Parámetro (Tip Color)"}</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={handleAddParam1Option}
+                  className="px-2.5 py-1 rounded-lg bg-white border border-slate-300 text-slate-700 hover:text-[#C02030] text-[11px] font-bold flex items-center gap-1 transition shadow-2xs cursor-pointer"
+                >
+                  <Plus className="w-3 h-3" />
+                  <span>+ Agregar Opción</span>
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  type="text"
+                  value={param1.nameEs}
+                  onChange={(e) => setParam1({ ...param1, nameEs: e.target.value })}
+                  placeholder="Nombre ES (ej: Color de Punta)"
+                  className="bg-white border border-slate-200 rounded-lg p-1.5 text-xs font-bold text-slate-900"
+                />
+                <input
+                  type="text"
+                  value={param1.nameEn || ""}
+                  onChange={(e) => setParam1({ ...param1, nameEn: e.target.value })}
+                  placeholder="Nombre EN (e.g. Tip Color)"
+                  className="bg-white border border-slate-200 rounded-lg p-1.5 text-xs text-slate-900"
+                />
+              </div>
+
+              {/* Options List */}
+              <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
+                {param1.options.map((opt1, idx) => {
+                  const resolvedColor = resolveOptionColorHex(opt1.labelEs || opt1.labelEn || "", opt1.colorHex);
+                  const isPaletteOpen = activeColorPaletteKey === `p1-${opt1.id}`;
+
+                  return (
+                    <div
+                      key={opt1.id}
+                      className="flex items-center gap-2 p-1.5 bg-white border border-slate-200 rounded-xl shadow-2xs"
+                    >
+                      <div className="relative">
+                        <button
+                          type="button"
+                          onClick={() => setActiveColorPaletteKey(isPaletteOpen ? null : `p1-${opt1.id}`)}
+                          className="w-6 h-6 rounded-lg border border-slate-300 flex items-center justify-center cursor-pointer shrink-0 shadow-2xs"
+                          style={{ backgroundColor: resolvedColor || "#CBD5E1" }}
+                          title="Color"
+                        />
+                        {isPaletteOpen && (
+                          <div className="absolute left-0 top-8 z-40 p-2 bg-white border border-slate-200 rounded-xl shadow-xl w-48 space-y-1.5">
+                            <div className="grid grid-cols-3 gap-1">
+                              {POPULAR_COLORS.map((c) => (
+                                <button
+                                  key={c.hex}
+                                  type="button"
+                                  onClick={() => {
+                                    handleUpdateParam1Option(idx, { colorHex: c.hex });
+                                    setActiveColorPaletteKey(null);
+                                  }}
+                                  className="w-7 h-7 rounded-lg border border-slate-200"
+                                  style={{ backgroundColor: c.hex }}
+                                  title={c.label}
+                                />
+                              ))}
+                            </div>
+                            <input
+                              type="color"
+                              value={resolvedColor || "#18181B"}
+                              onChange={(e) => handleUpdateParam1Option(idx, { colorHex: e.target.value })}
+                              className="w-full h-6 rounded cursor-pointer"
+                            />
+                          </div>
+                        )}
+                      </div>
+
+                      <input
+                        type="text"
+                        value={opt1.labelEs}
+                        onChange={(e) => handleUpdateParam1Option(idx, { labelEs: e.target.value })}
+                        placeholder="ej: Stainless"
+                        className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs font-semibold text-slate-900"
+                      />
+
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveParam1Option(idx)}
+                        className="p-1 text-slate-400 hover:text-red-600 rounded cursor-pointer"
+                        title="Eliminar"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Column 2: Parámetro 2 (Master Template - Cover Color) */}
+            <div className="p-4 rounded-2xl bg-purple-50/70 border border-purple-200 space-y-3">
+              <div className="flex items-center justify-between border-b border-purple-200/80 pb-2">
+                <span className="text-xs font-black uppercase tracking-wider text-purple-900 flex items-center gap-1.5">
+                  <span className="w-5 h-5 rounded-md bg-purple-700 text-white flex items-center justify-center text-[10px] font-mono">2</span>
+                  <span>{param2.nameEs || "Segundo Parámetro Maestro (Cover Color)"}</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={handleAddParam2Option}
+                  className="px-2.5 py-1 rounded-lg bg-white border border-purple-300 text-purple-800 hover:bg-purple-100 text-[11px] font-bold flex items-center gap-1 transition shadow-2xs cursor-pointer"
+                >
+                  <Plus className="w-3 h-3" />
+                  <span>+ Agregar Opción</span>
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  type="text"
+                  value={param2.nameEs}
+                  onChange={(e) => setParam2({ ...param2, nameEs: e.target.value })}
+                  placeholder="Nombre ES (ej: Color de Cubierta)"
+                  className="bg-white border border-purple-200 rounded-lg p-1.5 text-xs font-bold text-slate-900"
+                />
+                <input
+                  type="text"
+                  value={param2.nameEn || ""}
+                  onChange={(e) => setParam2({ ...param2, nameEn: e.target.value })}
+                  placeholder="Nombre EN (e.g. Cover Color)"
+                  className="bg-white border border-purple-200 rounded-lg p-1.5 text-xs text-slate-900"
+                />
+              </div>
+
+              {/* Master Options List (Replicated to all Param 1 connections!) */}
+              <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
+                {param2.options.map((opt2, idx) => {
+                  const resolvedColor = resolveOptionColorHex(opt2.labelEs || opt2.labelEn || "", opt2.colorHex);
+                  const isPaletteOpen = activeColorPaletteKey === `p2-${opt2.id}`;
+
+                  return (
+                    <div
+                      key={opt2.id}
+                      className="flex items-center gap-2 p-1.5 bg-white border border-purple-200 rounded-xl shadow-2xs"
+                    >
+                      <div className="relative">
+                        <button
+                          type="button"
+                          onClick={() => setActiveColorPaletteKey(isPaletteOpen ? null : `p2-${opt2.id}`)}
+                          className="w-6 h-6 rounded-lg border border-purple-300 flex items-center justify-center cursor-pointer shrink-0 shadow-2xs"
+                          style={{ backgroundColor: resolvedColor || "#0F172A" }}
+                          title="Color"
+                        />
+                        {isPaletteOpen && (
+                          <div className="absolute left-0 top-8 z-40 p-2 bg-white border border-slate-200 rounded-xl shadow-xl w-48 space-y-1.5">
+                            <div className="grid grid-cols-3 gap-1">
+                              {POPULAR_COLORS.map((c) => (
+                                <button
+                                  key={c.hex}
+                                  type="button"
+                                  onClick={() => {
+                                    handleUpdateParam2Option(idx, { colorHex: c.hex });
+                                    setActiveColorPaletteKey(null);
+                                  }}
+                                  className="w-7 h-7 rounded-lg border border-slate-200"
+                                  style={{ backgroundColor: c.hex }}
+                                  title={c.label}
+                                />
+                              ))}
+                            </div>
+                            <input
+                              type="color"
+                              value={resolvedColor || "#DC2626"}
+                              onChange={(e) => handleUpdateParam2Option(idx, { colorHex: e.target.value })}
+                              className="w-full h-6 rounded cursor-pointer"
+                            />
+                          </div>
+                        )}
+                      </div>
+
+                      <input
+                        type="text"
+                        value={opt2.labelEs}
+                        onChange={(e) => handleUpdateParam2Option(idx, { labelEs: e.target.value })}
+                        placeholder="ej: Red Carbon"
+                        className="flex-1 bg-purple-50/50 border border-purple-200 rounded-lg px-2 py-1 text-xs font-semibold text-slate-900"
+                      />
+
+                      <div className="w-20 shrink-0">
+                        <input
+                          type="number"
+                          step="1"
+                          value={opt2.priceDeltaUSD || 0}
+                          onChange={(e) => {
+                            const usd = parseFloat(e.target.value) || 0;
+                            handleUpdateParam2Option(idx, {
+                              priceDeltaUSD: usd,
+                              priceDeltaCRC: Math.round(usd * liveExchangeRate),
+                            });
+                          }}
+                          placeholder="+$ USD"
+                          className="w-full bg-purple-50/50 border border-purple-200 rounded-lg px-1.5 py-1 text-[11px] font-mono text-emerald-700 font-bold text-right"
+                          title="Delta base en USD para esta cubierta"
+                        />
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveParam2Option(idx)}
+                        className="p-1 text-slate-400 hover:text-red-600 rounded cursor-pointer"
+                        title="Eliminar"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="p-2 rounded-xl bg-purple-100/70 border border-purple-200 text-[10px] font-semibold text-purple-900 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-purple-700 shrink-0" />
+                <span>Las opciones del 2do parámetro se replican de forma automática e inmediata a todas las opciones del 1er parámetro.</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Section 2: Connection Expander (Select 1st Param -> Opens Connections to all 2nd Params) */}
+          <div className="space-y-4 pt-2 border-t border-slate-200">
+            <div>
+              <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
+                <span className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                  <Sliders className="w-4 h-4 text-[#C02030]" />
+                  <span>{t.devDualMatrixSelectFirstPrompt || "1. Selecciona una opción del 1er parámetro para abrir sus conexiones:"}</span>
+                </span>
+                <span className="text-xs text-slate-500 font-medium">
+                  Opción activa: <b className="text-slate-900 font-bold">{activeOpt1?.labelEs || "Ninguna"}</b>
+                </span>
+              </div>
+
+              {/* Selector Pills for Parameter 1 */}
+              <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
+                {param1.options.map((opt1) => {
+                  const isSelected = opt1.id === selectedParam1OptId;
+                  const color = resolveOptionColorHex(opt1.labelEs || opt1.labelEn || "", opt1.colorHex);
+                  const configuredUrlsCount = (opt1.connections || []).filter((c) => Boolean(c.supplierUrl?.trim())).length;
+                  const totalConns = opt1.connections?.length || 0;
+
+                  return (
+                    <button
+                      key={opt1.id}
+                      type="button"
+                      onClick={() => setSelectedParam1OptId(opt1.id)}
+                      className={`px-4 py-2.5 rounded-2xl text-xs font-bold transition flex items-center gap-2.5 border shadow-2xs shrink-0 cursor-pointer ${
+                        isSelected
+                          ? "bg-[#C02030] text-white border-[#C02030] ring-2 ring-[#C02030]/25 shadow-md scale-[1.02]"
+                          : "bg-white hover:bg-slate-100 text-slate-800 border-slate-300"
+                      }`}
+                    >
+                      {color && (
+                        <span
+                          className={`w-3.5 h-3.5 rounded-full border shrink-0 ${
+                            isSelected ? "border-white" : "border-slate-300"
+                          }`}
+                          style={{ backgroundColor: color }}
+                        />
+                      )}
+                      <span>{opt1.labelEs || "Sin nombre"}</span>
+                      <span
+                        className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold ${
+                          isSelected
+                            ? "bg-white/20 text-white"
+                            : configuredUrlsCount === totalConns && totalConns > 0
+                            ? "bg-emerald-100 text-emerald-800"
+                            : "bg-slate-100 text-slate-600"
+                        }`}
+                        title={`${configuredUrlsCount} de ${totalConns} URLs configuradas`}
+                      >
+                        {configuredUrlsCount}/{totalConns} URLs
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Connections Grid for Selected Parameter 1 Option */}
+            {activeOpt1 && (
+              <div className="p-4 sm:p-5 rounded-2xl bg-slate-50 border border-slate-200 space-y-4">
+                <div className="flex items-center justify-between gap-3 border-b border-slate-200 pb-3 flex-wrap">
+                  <div>
+                    <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
+                      <span>{t.devDualMatrixConnectionsFor || "Conexiones para:"}</span>
+                      <span className="px-2.5 py-0.5 rounded-lg bg-[#C02030] text-white font-extrabold text-xs">
+                        {activeOpt1.labelEs}
+                      </span>
+                      <span className="text-slate-400">×</span>
+                      <span className="text-slate-600 font-bold text-xs">Todos los Colores de Cubierta</span>
+                    </h3>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Ingresa el enlace específico de proveedor (supplierUrl), fotos o precio exclusivo de cada variante combinada.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleFillEmptyUrlsForActiveOpt1}
+                      className="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 text-xs font-bold transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                      title="Asigna una URL base a todas las conexiones que aún no tengan enlace"
+                    >
+                      <Globe className="w-3.5 h-3.5 text-blue-600" />
+                      <span>{t.devDualMatrixReplicateUrlsBtn || "Replicar supplierURL a vacías"}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Connection Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                  {(activeOpt1.connections || []).map((conn, cIdx) => {
+                    const opt2 = param2.options.find((o) => o.id === conn.secondOptionId);
+                    const opt1Color = resolveOptionColorHex(activeOpt1.labelEs || "", activeOpt1.colorHex);
+                    const opt2Color = resolveOptionColorHex(conn.secondOptionLabelEs || opt2?.labelEs || "", conn.secondOptionColorHex || opt2?.colorHex);
+                    const opt2Label = conn.secondOptionLabelEs || opt2?.labelEs || `Opción ${cIdx + 1}`;
+
+                    const baseSumUSD = (activeOpt1.priceDeltaUSD || 0) + (opt2?.priceDeltaUSD || 0);
+                    const baseSumCRC = (activeOpt1.priceDeltaCRC || 0) + (opt2?.priceDeltaCRC || 0);
+                    const isPriceOverridden = conn.priceDeltaUSD !== undefined && conn.priceDeltaUSD !== null;
+
+                    const effectiveUSD = isPriceOverridden ? conn.priceDeltaUSD! : baseSumUSD;
+                    const effectiveCRC = isPriceOverridden ? (conn.priceDeltaCRC || Math.round(effectiveUSD * liveExchangeRate)) : baseSumCRC;
+
+                    const connKey = `${activeOpt1.id}-${conn.secondOptionId}`;
+                    const isUploadingThis = uploadingKey === connKey;
+                    const connImages = Array.isArray(conn.images) && conn.images.length > 0 ? conn.images : (conn.imageUrl ? [conn.imageUrl] : []);
+
+                    return (
+                      <div
+                        key={conn.secondOptionId || cIdx}
+                        className="p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs space-y-3 hover:border-slate-300 transition"
+                      >
+                        {/* Title Bar */}
+                        <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            {/* Color Swatch Combination Dots */}
+                            <div className="flex items-center -space-x-1 shrink-0">
+                              <span
+                                className="w-4 h-4 rounded-full border border-white shadow-xs"
+                                style={{ backgroundColor: opt1Color || "#CBD5E1" }}
+                                title={activeOpt1.labelEs}
+                              />
+                              <span
+                                className="w-4 h-4 rounded-full border border-white shadow-xs"
+                                style={{ backgroundColor: opt2Color || "#0F172A" }}
+                                title={opt2Label}
+                              />
+                            </div>
+                            <span className="text-xs font-bold text-slate-900 truncate">
+                              <span className="text-slate-600">{activeOpt1.labelEs}</span> + <span className="text-[#C02030] font-black">{opt2Label}</span>
+                            </span>
+                          </div>
+
+                          <span className="px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 text-[10px] font-bold border border-purple-100 shrink-0">
+                            {t.devDualMatrixReplicatedBadge || "Replicado"}
+                          </span>
+                        </div>
+
+                        {/* Supplier URL Input */}
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-600 flex items-center justify-between">
+                            <span className="flex items-center gap-1">
+                              <Globe className="w-3 h-3 text-blue-600" />
+                              <span>supplierUrl exclusivo:</span>
+                            </span>
+                            {conn.supplierUrl && (
+                              <a
+                                href={conn.supplierUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-blue-600 hover:underline flex items-center gap-0.5 text-[10px] font-semibold"
+                              >
+                                <ExternalLink className="w-2.5 h-2.5" />
+                                <span>Abrir y probar</span>
+                              </a>
+                            )}
+                          </label>
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="url"
+                              value={conn.supplierUrl || ""}
+                              onChange={(e) => handleUpdateActiveConnection(conn.secondOptionId, { supplierUrl: e.target.value })}
+                              placeholder={`https://supplier.com/item?tip=${encodeURIComponent(activeOpt1.labelEs)}&cover=${encodeURIComponent(opt2Label)}`}
+                              className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 font-mono focus:outline-none focus:border-red-500"
+                            />
+                            {conn.supplierUrl && (
+                              <a
+                                href={conn.supplierUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="px-2 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs font-bold transition shrink-0"
+                                title="Abrir enlace"
+                              >
+                                <ExternalLink className="w-3.5 h-3.5" />
+                              </a>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Multi-Image Gallery for this Combo */}
+                        <div className="space-y-1.5 pt-2 border-t border-slate-100">
+                          <div className="flex items-center justify-between text-[10px] font-bold text-slate-600">
+                            <span className="flex items-center gap-1">
+                              <ImageIcon className="w-3 h-3 text-[#C02030]" />
+                              <span>Fotos de la Combinación ({connImages.length}):</span>
+                            </span>
+                            <label className="cursor-pointer px-2 py-0.5 rounded-md bg-slate-100 hover:bg-red-50 text-slate-700 hover:text-[#C02030] border border-slate-200 text-[10px] font-bold flex items-center gap-1 transition shrink-0">
+                              <Upload className="w-2.5 h-2.5" />
+                              <span>{isUploadingThis ? "Subiendo..." : "+ Subir Fotos"}</span>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                multiple
+                                disabled={isUploadingThis}
+                                onChange={(e) => {
+                                  if (e.target.files && e.target.files.length > 0) {
+                                    handleUploadConnectionImages(conn.secondOptionId, e.target.files);
+                                  }
+                                }}
+                                className="hidden"
+                              />
+                            </label>
+                          </div>
+
+                          {/* Thumbnails row */}
+                          {connImages.length > 0 ? (
+                            <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+                              {connImages.map((imgUrl, iIdx) => {
+                                const isPrimary = (conn.imageUrl && conn.imageUrl === imgUrl) || (!conn.imageUrl && iIdx === 0);
+                                return (
+                                  <div
+                                    key={`${imgUrl}-${iIdx}`}
+                                    className={`group relative w-11 h-11 rounded-lg border overflow-hidden shrink-0 bg-slate-100 ${
+                                      isPrimary ? "border-amber-500 ring-1 ring-amber-300" : "border-slate-200"
+                                    }`}
+                                  >
+                                    <img src={imgUrl} alt={`Foto ${iIdx + 1}`} className="w-full h-full object-cover" />
+                                    {isPrimary && (
+                                      <div className="absolute top-0 left-0 bg-amber-500 p-0.5 rounded-br">
+                                        <Star className="w-2 h-2 fill-white text-white" />
+                                      </div>
+                                    )}
+                                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-1 transition-opacity">
+                                      {!isPrimary && (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleSetConnectionPrimaryImage(conn.secondOptionId, imgUrl)}
+                                          className="p-0.5 bg-amber-500 text-white rounded cursor-pointer"
+                                          title="Hacer principal"
+                                        >
+                                          <Star className="w-2.5 h-2.5 fill-white" />
+                                        </button>
+                                      )}
+                                      <button
+                                        type="button"
+                                        onClick={() => handleRemoveConnectionImage(conn.secondOptionId, imgUrl)}
+                                        className="p-0.5 bg-red-600 text-white rounded cursor-pointer"
+                                        title="Eliminar"
+                                      >
+                                        <Trash2 className="w-2.5 h-2.5" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <p className="text-[10px] text-slate-400 italic">
+                              Sin fotos individuales. La tienda mostrará las fotos de {opt2Label}.
+                            </p>
+                          )}
+
+                          {/* Add Image URL */}
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="text"
+                              value={urlInputMap[connKey] || ""}
+                              onChange={(e) => setUrlInputMap((prev) => ({ ...prev, [connKey]: e.target.value }))}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  e.preventDefault();
+                                  handleAddConnectionImageUrl(conn.secondOptionId, urlInputMap[connKey] || "");
+                                  setUrlInputMap((prev) => ({ ...prev, [connKey]: "" }));
+                                }
+                              }}
+                              placeholder="Pegar URL de foto..."
+                              className="flex-1 bg-slate-50 border border-slate-200 rounded-md px-2 py-1 text-[11px] text-slate-700"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleAddConnectionImageUrl(conn.secondOptionId, urlInputMap[connKey] || "");
+                                setUrlInputMap((prev) => ({ ...prev, [connKey]: "" }));
+                              }}
+                              className="px-2 py-1 rounded-md bg-slate-200 hover:bg-slate-300 text-slate-700 text-[10px] font-bold"
+                            >
+                              + URL
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Price Delta Override */}
+                        <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2 text-xs flex-wrap">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] font-bold text-slate-500">Precio Combinación:</span>
+                            <span className="text-[11px] font-mono font-bold text-slate-700">
+                              {effectiveUSD > 0 ? `+$${effectiveUSD}` : effectiveUSD < 0 ? `-$${Math.abs(effectiveUSD)}` : "$0"}
+                              <span className="text-slate-400 text-[10px] font-normal ml-1">
+                                ({formatCRC(effectiveCRC)})
+                              </span>
+                            </span>
+                            {!isPriceOverridden && (
+                              <span className="text-[9px] px-1.5 py-0.2 rounded bg-slate-100 text-slate-500 font-semibold">
+                                (Suma Base)
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={conn.priceDeltaUSD !== undefined ? conn.priceDeltaUSD : ""}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                if (val === "") {
+                                  handleUpdateActiveConnection(conn.secondOptionId, {
+                                    priceDeltaUSD: undefined,
+                                    priceDeltaCRC: undefined,
+                                  });
+                                } else {
+                                  const usd = parseFloat(val) || 0;
+                                  handleUpdateActiveConnection(conn.secondOptionId, {
+                                    priceDeltaUSD: usd,
+                                    priceDeltaCRC: Math.round(usd * liveExchangeRate),
+                                  });
+                                }
+                              }}
+                              placeholder={`$${baseSumUSD} (Base)`}
+                              className="w-24 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs font-mono font-bold text-emerald-700 text-right focus:outline-none focus:border-red-500"
+                              title="Sobrescribe el precio exclusivo para esta combinación en USD"
+                            />
+                            {isPriceOverridden && (
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateActiveConnection(conn.secondOptionId, {
+                                  priceDeltaUSD: undefined,
+                                  priceDeltaCRC: undefined,
+                                })}
+                                className="text-[10px] text-slate-400 hover:text-red-600 underline font-semibold"
+                                title="Volver a la suma automática de parámetros"
+                              >
+                                Restablecer
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Modal Footer */}
+        <div className="p-4 sm:p-5 border-t border-slate-200 bg-slate-50 flex items-center justify-between gap-3 shrink-0 flex-wrap">
+          <div className="text-xs text-slate-600 font-semibold">
+            <span>Matriz de Variantes: </span>
+            <b className="text-slate-900">{totalCombinations} combinaciones totales</b>
+            <span className="text-slate-400 mx-1.5">•</span>
+            <span className="text-emerald-700 font-bold">
+              {param1.options.reduce((acc, opt) => acc + (opt.connections?.filter((c) => Boolean(c.supplierUrl?.trim())).length || 0), 0)} URLs de proveedor enlazadas
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 rounded-xl bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 text-xs font-bold transition cursor-pointer"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={handleCommitSave}
+              className="px-5 py-2 rounded-xl bg-[#C02030] hover:bg-[#A01825] text-white text-xs font-black transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+            >
+              <Check className="w-4 h-4" />
+              <span>{t.devDualMatrixSaveBtn || "Guardar y Aplicar Matriz"}</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ParametersEditorSection({
   parameters,
   onChange,
@@ -231,6 +1308,7 @@ function ParametersEditorSection({
   const [activeColorPaletteOpt, setActiveColorPaletteOpt] = useState<string | null>(null);
   const [uploadingOptId, setUploadingOptId] = useState<string | null>(null);
   const [urlInputByOpt, setUrlInputByOpt] = useState<Record<string, string>>({});
+  const [isDualMatrixModalOpen, setIsDualMatrixModalOpen] = useState<boolean>(false);
 
   const POPULAR_COLORS = [
     { label: "Naranja", hex: "#EA580C" },
@@ -669,9 +1747,9 @@ function ParametersEditorSection({
         <div className="flex items-center gap-2 flex-wrap">
           <button
             type="button"
-            onClick={handleAddDualParameterPreset}
+            onClick={() => setIsDualMatrixModalOpen(true)}
             className="px-3 py-1.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 text-xs font-bold transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
-            title="Agrega rápidamente 2 tipos de parámetros configurables: Tip Color y Cover Color"
+            title="Abrir ventana para configurar la matriz de combinaciones (Tip × Cover)"
           >
             <Layers className="w-3.5 h-3.5 text-purple-600" />
             <span>{t.devAddDualParameterPresetBtn || "+ Doble Parámetro (Tip & Cover)"}</span>
@@ -711,7 +1789,7 @@ function ParametersEditorSection({
           <div className="flex justify-center gap-2 pt-1 flex-wrap">
             <button
               type="button"
-              onClick={handleAddDualParameterPreset}
+              onClick={() => setIsDualMatrixModalOpen(true)}
               className="px-3 py-1.5 rounded-xl bg-white border border-purple-300 text-purple-700 text-xs font-bold hover:bg-purple-50 flex items-center gap-1.5 shadow-2xs cursor-pointer"
             >
               <Layers className="w-3.5 h-3.5 text-purple-600" />
@@ -737,6 +1815,32 @@ function ParametersEditorSection({
         </div>
       ) : (
         <div className="space-y-4">
+          {safeParams.length >= 2 && (
+            <div className="p-3.5 rounded-2xl bg-gradient-to-r from-purple-50 via-indigo-50 to-purple-50 border border-purple-200 flex items-center justify-between gap-3 flex-wrap shadow-2xs">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-purple-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                  <Layers className="w-4 h-4" />
+                </div>
+                <div>
+                  <span className="text-xs font-black text-purple-950 block">
+                    {t.devDualMatrixBtn || "Matriz de Doble Parámetro Activa"}
+                  </span>
+                  <span className="text-[11px] text-purple-800">
+                    Las conexiones de proveedor (supplierUrl), fotos y precios específicos por combinación se configuran en la ventana interactiva.
+                  </span>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsDualMatrixModalOpen(true)}
+                className="px-3.5 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span>Abrir Ventana de Conexiones</span>
+              </button>
+            </div>
+          )}
           {safeParams.map((param, pIdx) => {
             const isProductLinking =
               param.type === "product_linking" || param.type === "product_link";
@@ -1372,6 +2476,20 @@ function ParametersEditorSection({
           })}
         </div>
       )}
+
+      {/* Dual Parameter Combinations Window (Fraction expansion matrix modal) */}
+      <DualParameterMatrixModal
+        isOpen={isDualMatrixModalOpen}
+        onClose={() => setIsDualMatrixModalOpen(false)}
+        parameters={parameters || []}
+        onSave={(newParams) => {
+          onChange(newParams);
+        }}
+        t={t}
+        liveExchangeRate={liveExchangeRate}
+        currentProductSupplierUrl={currentProductSupplierUrl}
+        currentProductImage={currentProductImage}
+      />
     </div>
   );
 }

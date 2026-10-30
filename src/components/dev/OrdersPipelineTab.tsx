@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useLanguage } from "@/context/LanguageContext";
 import { formatCRC, formatUSD } from "@/lib/i18n";
-import { resolveOptionColorHex } from "@/lib/products";
+import { resolveOptionColorHex, resolveDualParameterConnection } from "@/lib/products";
 import {
   Search,
   RefreshCw,
@@ -3324,7 +3324,16 @@ export function OrdersPipelineTab({ onOrderDeleted, onOrderUpdated }: OrdersPipe
       const unitBaseUSD = baseProductUSD + linkedParamsUSD;
       const totalBaseUSD = unitBaseUSD * qty;
 
-      const variantSupplierUrl = resolvedParameters.find((p) => p.supplierUrl)?.supplierUrl || null;
+      const paramSelectedMap: Record<string, string> = {};
+      resolvedParameters.forEach((rp) => {
+        if (rp.parameterId && rp.optionId) {
+          paramSelectedMap[rp.parameterId] = rp.optionId;
+        }
+      });
+      const dualRes = catalogParams.length >= 2 ? resolveDualParameterConnection(catalogParams, paramSelectedMap) : null;
+      const matrixComboUrl = dualRes?.connection?.supplierUrl || null;
+
+      const variantSupplierUrl = matrixComboUrl || resolvedParameters.find((p) => p.supplierUrl)?.supplierUrl || null;
       const mainSupplierUrl = (item.supplierUrl || matchedProduct?.supplierUrl || "").trim() || null;
       const effectiveSupplierUrl = variantSupplierUrl || mainSupplierUrl;
 
@@ -3338,12 +3347,24 @@ export function OrdersPipelineTab({ onOrderDeleted, onOrderUpdated }: OrdersPipe
       }
 
       const displayImage =
+        (dualRes?.effectiveImages && dualRes.effectiveImages[0]) ||
         resolvedParameters.find((p) => p.imageUrl)?.imageUrl ||
         item.imageUrl ||
         matchedProduct?.imageUrl ||
         matchedProduct?.imgs?.[0] ||
         matchedCombo?.imageUrl ||
         null;
+
+      const allVariantSupplierUrls = [...resolvedParameters.filter((p) => Boolean(p.supplierUrl))];
+      if (matrixComboUrl && !allVariantSupplierUrls.some((u) => u.supplierUrl === matrixComboUrl)) {
+        allVariantSupplierUrls.unshift({
+          parameterId: "combo-matrix",
+          parameterName: lang === "es" ? "Combinación Dual" : "Dual Combination",
+          optionId: dualRes?.connection?.secondOptionId || "matrix",
+          optionLabel: `${dualRes?.opt1?.labelEs || ""} + ${dualRes?.connection?.secondOptionLabelEs || dualRes?.opt2?.labelEs || ""}`,
+          supplierUrl: matrixComboUrl,
+        } as any);
+      }
 
       return {
         idx,
@@ -3371,7 +3392,7 @@ export function OrdersPipelineTab({ onOrderDeleted, onOrderUpdated }: OrdersPipe
         effectiveSupplierUrl,
         mainSupplierUrl,
         isVariantUrl: Boolean(variantSupplierUrl && mainSupplierUrl && variantSupplierUrl !== mainSupplierUrl),
-        allVariantSupplierUrls: resolvedParameters.filter((p) => Boolean(p.supplierUrl)),
+        allVariantSupplierUrls,
         supplierHostname,
         supplierPlatform: matchedProduct?.supplierPlatform || null,
         supplierStockStatus: item.supplierStockStatus || matchedProduct?.supplierStockStatus || null,

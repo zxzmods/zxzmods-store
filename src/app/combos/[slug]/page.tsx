@@ -20,6 +20,7 @@ import {
   ConfigurableParameter,
   SelectedParameterItem,
   resolveOptionColorHex,
+  resolveDualParameterConnection,
   ComboUniqueProduct,
   ComboUniqueProductField,
   ProductItem,
@@ -323,9 +324,22 @@ export default function ComboDetailPage() {
     return list;
   }, [combo, selectedOptions, lang]);
 
+  // Dual parameter matrix resolution (Param 1 x Param 2 expansion)
+  const dualResolution = useMemo(() => {
+    return resolveDualParameterConnection(combo?.parameters, selectedOptions);
+  }, [combo?.parameters, selectedOptions]);
+
   // Complete combo image gallery (selected parameter variant images first, followed by deduplicated gallery images)
   const allImages = useMemo(() => {
     const list: string[] = [];
+
+    // Prioritize photos from dual parameter connection if resolved
+    if (Array.isArray(dualResolution.effectiveImages) && dualResolution.effectiveImages.length > 0) {
+      dualResolution.effectiveImages.forEach((img) => {
+        const s = typeof img === "string" ? img.trim() : "";
+        if (s && !list.includes(s)) list.push(s);
+      });
+    }
 
     // Prioritize photos belonging to currently selected parameter options
     for (const item of selectedParametersList) {
@@ -358,14 +372,17 @@ export default function ComboDetailPage() {
       });
     }
     return list.length > 0 ? list : ["/images/sxs/z10_front.png"];
-  }, [combo, selectedParametersList]);
+  }, [combo, selectedParametersList, dualResolution.effectiveImages]);
 
   const activeOptionImage = useMemo(() => {
+    if (dualResolution.effectiveImages && dualResolution.effectiveImages[0]) {
+      return dualResolution.effectiveImages[0];
+    }
     for (const item of selectedParametersList) {
       if ((item as any).imageUrl) return (item as any).imageUrl;
     }
     return null;
-  }, [selectedParametersList]);
+  }, [selectedParametersList, dualResolution.effectiveImages]);
 
   const displayImageUrl = useMemo(() => {
     if (selectedImageOverride) return selectedImageOverride;
@@ -373,8 +390,11 @@ export default function ComboDetailPage() {
   }, [selectedImageOverride, allImages, activeImageIndex]);
 
   const totalDeltaCRC = useMemo(() => {
+    if (combo?.parameters && combo.parameters.length >= 2 && dualResolution.connection) {
+      return dualResolution.effectivePriceDeltaCRC;
+    }
     return selectedParametersList.reduce((acc, p) => acc + (p.priceDeltaCRC || 0), 0);
-  }, [selectedParametersList]);
+  }, [selectedParametersList, combo?.parameters, dualResolution]);
 
   const effectivePriceCRC = (combo?.priceCRC || 0) + totalDeltaCRC;
 
@@ -476,7 +496,8 @@ export default function ComboDetailPage() {
       installationPriceCRC: combo.installationPriceCRC,
       withInstallation,
       homeInstallation: combo.homeInstallationAvailable ?? true,
-      imageUrl: combo.imageUrl,
+      imageUrl: activeOptionImage || combo.imageUrl,
+      supplierUrl: dualResolution.effectiveSupplierUrl || null,
       supplierStockStatus: combo.stockStatus || combo.availability?.status || "IN_STOCK",
       supplierStockMessage: lang === "es" ? combo.availability?.summaryEs : combo.availability?.summaryEn,
       supplierLeadDaysMin: combo.leadDaysMin || combo.availability?.leadDaysMin || 7,
