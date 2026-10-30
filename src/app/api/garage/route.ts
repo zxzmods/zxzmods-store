@@ -52,6 +52,7 @@ export async function GET(request: Request) {
         ...v,
         imageUrl: v.imageUrl || vm?.imageUrl || brandDefaultImg || null,
         brandDefaultVehicleImageUrl: brandDefaultImg,
+        brandLogoUrl: b?.logoUrl || null,
         pickupServiceAvailable: vm?.pickupServiceAvailable ?? true,
       };
     });

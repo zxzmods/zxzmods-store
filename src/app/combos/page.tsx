@@ -17,6 +17,7 @@ import { useCart } from "@/context/CartContext";
 import { useGarage } from "@/context/GarageContext";
 import { formatCRC, formatUSD, convertCRCToUSD } from "@/lib/i18n";
 import { detectVehiclePlatform, isPlatformOrVehicleMatch, is4SeaterToken, is2SeaterToken } from "@/lib/products";
+import { getSxsBrandBySlug, getBrandLogo } from "@/lib/sxsBrands";
 import {
   Search,
   X,
@@ -70,6 +71,7 @@ export default function CombosPage() {
   const [categories, setCategories] = useState<string[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [selectedVehicleBrand, setSelectedVehicleBrand] = useState<string>("all");
+  const [selectedModelCategory, setSelectedModelCategory] = useState<string>("all");
   const [selectedDistributorBrand, setSelectedDistributorBrand] = useState<string>("all");
   const [inStockOnly, setInStockOnly] = useState<boolean>(false);
   const [discountedOnly, setDiscountedOnly] = useState<boolean>(false);
@@ -80,10 +82,73 @@ export default function CombosPage() {
   const [pageDirection, setPageDirection] = useState<"next" | "prev">("next");
   const gridTopRef = useRef<HTMLDivElement>(null);
 
-  const [availableVehicleBrands, setAvailableVehicleBrands] = useState<Array<{ slug: string; title: string; count: number }>>([]);
+  const [availableVehicleBrands, setAvailableVehicleBrands] = useState<
+    Array<{
+      slug: string;
+      title: string;
+      logoUrl?: string | null;
+      defaultVehicleImageUrl?: string | null;
+      count: number;
+    }>
+  >([]);
   const [availableDistributorBrands, setAvailableDistributorBrands] = useState<Array<{ name: string; count: number }>>([]);
   const [hasInStock, setHasInStock] = useState(false);
   const [hasDiscounted, setHasDiscounted] = useState(false);
+  const [sxsBrandModels, setSxsBrandModels] = useState<
+    Record<
+      string,
+      Array<{
+        id: string;
+        name: string;
+        code?: string | null;
+        slug: string;
+        category?: string | null;
+        modelCategory?: string | null;
+        imageUrl?: string | null;
+      }>
+    >
+  >({});
+
+  const activeSxsBrand = useMemo(() => {
+    if (!selectedVehicleBrand || selectedVehicleBrand === "all") return null;
+    const target = selectedVehicleBrand.toLowerCase().trim();
+    const foundDb = availableVehicleBrands.find((b) => b.slug.toLowerCase() === target);
+    const known = getSxsBrandBySlug(target);
+    if (foundDb) {
+      return {
+        id: foundDb.slug,
+        slug: foundDb.slug,
+        title: foundDb.title,
+        logoUrl: foundDb.logoUrl || getBrandLogo(target) || "/images/logo.png",
+        sxsImageUrl: foundDb.defaultVehicleImageUrl || known?.sxsImageUrl || "/images/sxs/cfmoto_sxs.png",
+        descriptionEs: known?.descriptionEs || `Combos y paquetes especializados para ${foundDb.title}`,
+        descriptionEn: known?.descriptionEn || `Specialized combos and packages for ${foundDb.title}`,
+      };
+    }
+    return known || null;
+  }, [selectedVehicleBrand, availableVehicleBrands]);
+
+  // Model categories under the selected brand for combos (including ATV categories as requested)
+  const activeBrandCategories = useMemo(() => {
+    if (!selectedVehicleBrand || selectedVehicleBrand === "all") return [];
+    const brandModels = sxsBrandModels[selectedVehicleBrand.toLowerCase()] || [];
+    const catMap = new Map<string, number>();
+
+    brandModels.forEach((m) => {
+      const cat = (m.modelCategory && m.modelCategory.trim()) || (m.category && m.category.trim()) || "Otros";
+      catMap.set(cat, (catMap.get(cat) || 0) + 1);
+    });
+
+    return Array.from(catMap.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => {
+        const aAtv = a.name.toLowerCase().includes("atv");
+        const bAtv = b.name.toLowerCase().includes("atv");
+        if (aAtv && !bAtv) return 1;
+        if (!aAtv && bAtv) return -1;
+        return a.name.localeCompare(b.name);
+      });
+  }, [selectedVehicleBrand, sxsBrandModels]);
 
   useEffect(() => {
     let isMounted = true;
@@ -93,6 +158,7 @@ export default function CombosPage() {
     if (searchQuery.trim()) params.set("search", searchQuery.trim());
     if (selectedCategory && selectedCategory !== "all") params.set("category", selectedCategory);
     if (selectedVehicleBrand && selectedVehicleBrand !== "all") params.set("vehicleBrand", selectedVehicleBrand);
+    if (selectedModelCategory && selectedModelCategory !== "all") params.set("modelCategory", selectedModelCategory);
     if (selectedDistributorBrand && selectedDistributorBrand !== "all") params.set("distributorBrand", selectedDistributorBrand);
     if (inStockOnly) params.set("inStock", "true");
     if (discountedOnly) params.set("discounted", "true");
@@ -111,6 +177,7 @@ export default function CombosPage() {
           if (Array.isArray(res.data.categories)) setCategories(res.data.categories);
           if (Array.isArray(res.data.availableVehicleBrands)) setAvailableVehicleBrands(res.data.availableVehicleBrands);
           if (Array.isArray(res.data.availableDistributorBrands)) setAvailableDistributorBrands(res.data.availableDistributorBrands);
+          if (res.data.sxsBrandModels) setSxsBrandModels(res.data.sxsBrandModels);
           setHasInStock(Boolean(res.data.hasInStock));
           setHasDiscounted(Boolean(res.data.hasDiscounted));
         }
@@ -123,12 +190,13 @@ export default function CombosPage() {
     return () => {
       isMounted = false;
     };
-  }, [searchQuery, selectedCategory, selectedVehicleBrand, selectedDistributorBrand, inStockOnly, discountedOnly, onlyCompatibleWithGarage, vehicle]);
+  }, [searchQuery, selectedCategory, selectedVehicleBrand, selectedModelCategory, selectedDistributorBrand, inStockOnly, discountedOnly, onlyCompatibleWithGarage, vehicle]);
 
   const handleClearFilters = () => {
     setSearchQuery("");
     setSelectedCategory("all");
     setSelectedVehicleBrand("all");
+    setSelectedModelCategory("all");
     setSelectedDistributorBrand("all");
     setInStockOnly(false);
     setDiscountedOnly(false);
@@ -296,6 +364,106 @@ export default function CombosPage() {
             )}
           </div>
         </div>
+
+        {/* Special SXS Brand Search Header Banner for Combos */}
+        {activeSxsBrand && (
+          <div className="relative mb-6 rounded-3xl overflow-hidden bg-gradient-to-b from-[#F7F8FA] via-[#FFFFFF] to-[#EDEFF2] border border-gray-200/90 p-6 sm:p-8 shadow-sm flex flex-col md:flex-row items-center justify-between gap-6">
+            <div className="space-y-3 max-w-xl text-center md:text-left">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#C02030]/10 border border-[#C02030]/20 text-[11px] font-black text-[#C02030] uppercase tracking-wider">
+                <span className="w-2 h-2 rounded-full bg-[#C02030] animate-pulse" />
+                <span>{lang === "es" ? "Combos por Marca SXS" : "SXS Brand Combos"}</span>
+              </div>
+              <h2 className="text-2xl sm:text-4xl font-black text-[#111827] tracking-tight">
+                {lang === "es"
+                  ? `Combos Especializados ${activeSxsBrand.title}`
+                  : `${activeSxsBrand.title} Specialized Combos`}
+              </h2>
+
+              {/* Brand Model Categories Button Row */}
+              {activeBrandCategories.length > 0 && (
+                <div className="pt-2 space-y-1.5">
+                  <div className="flex items-center gap-2 justify-center md:justify-start">
+                    <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">
+                      {t.productsBrandCategoriesHeading}:
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 justify-center md:justify-start">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedModelCategory("all")}
+                      className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer shadow-xs ${
+                        selectedModelCategory === "all"
+                          ? "bg-[#C02030] text-white border-[#C02030] shadow-sm scale-[1.02]"
+                          : "bg-white text-gray-700 border-gray-200 hover:border-gray-400 hover:bg-gray-50"
+                      }`}
+                    >
+                      {t.productsAllModelCategories}
+                    </button>
+                    {activeBrandCategories.map((cat) => {
+                      const isCatSelected = selectedModelCategory.toLowerCase() === cat.name.toLowerCase();
+                      return (
+                        <button
+                          key={cat.name}
+                          type="button"
+                          onClick={() => {
+                            setSelectedModelCategory(isCatSelected ? "all" : cat.name);
+                          }}
+                          className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer flex items-center gap-1.5 shadow-xs ${
+                            isCatSelected
+                              ? "bg-[#111827] text-white border-[#111827] shadow-sm scale-[1.02]"
+                              : "bg-white text-gray-800 border-gray-200 hover:border-gray-400 hover:bg-gray-50"
+                          }`}
+                        >
+                          <span>{cat.name}</span>
+                          {cat.count > 0 && (
+                            <span
+                              className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                                isCatSelected
+                                  ? "bg-white/20 text-white"
+                                  : "bg-gray-100 text-gray-600"
+                              }`}
+                            >
+                              {cat.count}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Clear Brand Filter Pill */}
+              <div className="pt-1 flex flex-wrap items-center gap-3 justify-center md:justify-start">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedVehicleBrand("all");
+                    setSelectedModelCategory("all");
+                  }}
+                  className="inline-flex items-center gap-1.5 text-xs text-gray-500 hover:text-[#C02030] font-semibold transition-colors cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                  <span>{lang === "es" ? "Quitar filtro de marca SXS" : "Clear SXS brand filter"}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* SxS Isolated Vehicle Visual with Studio Shadow */}
+            <div className="relative w-64 sm:w-80 h-44 sm:h-52 flex items-center justify-center flex-shrink-0">
+              <div className="relative w-full h-full">
+                <Image
+                  src={activeSxsBrand.sxsImageUrl}
+                  alt={`${activeSxsBrand.title} SxS`}
+                  fill
+                  className="object-contain drop-shadow-md transition-all duration-300"
+                  priority
+                />
+              </div>
+              <div className="absolute bottom-1 inset-x-8 h-4 bg-gradient-to-t from-gray-300/40 to-transparent blur-md rounded-full pointer-events-none" />
+            </div>
+          </div>
+        )}
 
         {/* Minimalist Search & Dynamic Category Filter Section */}
         <div className="bg-white rounded-2xl border border-gray-200/80 p-4 sm:p-5 shadow-sm mb-8 space-y-4">
@@ -467,9 +635,54 @@ export default function CombosPage() {
               </div>
             </div>
 
+            {/* Category Button Row inside Filter Toolbar when Brand is Active */}
+            {selectedVehicleBrand !== "all" && activeBrandCategories.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-gray-200/70">
+                <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mr-1">
+                  {t.productsBrandCategoriesHeading}:
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedModelCategory("all")}
+                  className={`px-3 py-1 rounded-full text-xs font-bold transition-all border cursor-pointer ${
+                    selectedModelCategory === "all"
+                      ? "bg-[#C02030] text-white border-[#C02030] shadow-sm"
+                      : "bg-white text-gray-700 border-gray-200 hover:border-gray-400 hover:bg-gray-50"
+                  }`}
+                >
+                  {t.productsAllModelCategories}
+                </button>
+                {activeBrandCategories.map((cat) => {
+                  const isCatSelected = selectedModelCategory.toLowerCase() === cat.name.toLowerCase();
+                  return (
+                    <button
+                      key={cat.name}
+                      type="button"
+                      onClick={() => setSelectedModelCategory(isCatSelected ? "all" : cat.name)}
+                      className={`px-3 py-1 rounded-full text-xs font-bold transition-all border cursor-pointer flex items-center gap-1 ${
+                        isCatSelected
+                          ? "bg-[#111827] text-white border-[#111827] shadow-sm"
+                          : "bg-white text-gray-800 border-gray-200 hover:border-gray-400 hover:bg-gray-50"
+                      }`}
+                    >
+                      <span>{cat.name}</span>
+                      {cat.count > 0 && (
+                        <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                          isCatSelected ? "bg-white/20 text-white" : "bg-gray-100 text-gray-600"
+                        }`}>
+                          {cat.count}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
             {/* Active Filter Pills Bar */}
             {(selectedVehicleBrand !== "all" ||
               selectedDistributorBrand !== "all" ||
+              selectedModelCategory !== "all" ||
               inStockOnly ||
               discountedOnly ||
               onlyCompatibleWithGarage ||
@@ -491,7 +704,26 @@ export default function CombosPage() {
                     </span>
                     <button
                       type="button"
-                      onClick={() => setSelectedVehicleBrand("all")}
+                      onClick={() => {
+                        setSelectedVehicleBrand("all");
+                        setSelectedModelCategory("all");
+                      }}
+                      className="p-0.5 hover:bg-white/20 rounded-full transition cursor-pointer"
+                    >
+                      <X className="w-3 h-3 text-white" />
+                    </button>
+                  </div>
+                )}
+
+                {/* Brand Model Category Pill */}
+                {selectedModelCategory !== "all" && (
+                  <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#C02030] text-white text-[11px] font-semibold shadow-xs">
+                    <span>
+                      {t.productsFilterModelCategory}: <strong className="text-white">{selectedModelCategory}</strong>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedModelCategory("all")}
                       className="p-0.5 hover:bg-white/20 rounded-full transition cursor-pointer"
                     >
                       <X className="w-3 h-3 text-white" />

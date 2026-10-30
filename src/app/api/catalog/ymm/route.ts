@@ -37,6 +37,7 @@ export async function GET() {
           slug: m.slug,
           name: m.name,
           category: m.category,
+          modelCategory: m.modelCategory || null,
           imageUrl: m.imageUrl,
           pickupServiceAvailable: m.pickupServiceAvailable ?? true,
           years: years.sort((a, b) => b - a),

@@ -1,5 +1,5 @@
 import rawProductsData from "@/data/products.json";
-import { SXS_BRANDS, SXS_BRAND_PLATFORMS } from "@/lib/sxsBrands";
+import { SXS_BRANDS, SXS_BRAND_PLATFORMS, getBrandLogo } from "@/lib/sxsBrands";
 
 export interface ProductPrice {
   P_price_D: number; // processing-price in dollars
@@ -1172,7 +1172,11 @@ export function resolveVehicleImage(v?: {
     return sxsBrand.sxsImageUrl;
   }
 
-  // 5. Fallback to company logo
+  // 5. Fallback to brand logo, then company logo
+  const bLogo = getBrandLogo(bSlug);
+  if (bLogo && bLogo !== "/images/logo.png") {
+    return bLogo;
+  }
   return "/images/logo.png";
 }
 

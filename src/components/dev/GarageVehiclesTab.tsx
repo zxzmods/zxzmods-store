@@ -52,6 +52,7 @@ interface VehicleModelItem {
   code?: string | null;
   name: string;
   category: string;
+  modelCategory?: string | null;
   years: number[];
   yearsJson: string;
   imageUrl?: string | null;
@@ -80,6 +81,7 @@ export function GarageVehiclesTab({ userRole }: GarageVehiclesTabProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedBrandFilter, setSelectedBrandFilter] = useState("all");
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState("all");
+  const [selectedModelCategoryFilter, setSelectedModelCategoryFilter] = useState("all");
 
   // Search & Filters for Brands
   const [searchBrandQuery, setSearchBrandQuery] = useState("");
@@ -101,6 +103,7 @@ export function GarageVehiclesTab({ userRole }: GarageVehiclesTabProps) {
   const [formSlug, setFormSlug] = useState("");
   const [formCode, setFormCode] = useState("");
   const [formCategory, setFormCategory] = useState("UTV");
+  const [formModelCategory, setFormModelCategory] = useState("");
   const [formYearFrom, setFormYearFrom] = useState(2022);
   const [formYearTo, setFormYearTo] = useState(2027);
   const [formSelectedYears, setFormSelectedYears] = useState<number[]>([2024, 2025, 2026, 2027]);
@@ -266,6 +269,7 @@ export function GarageVehiclesTab({ userRole }: GarageVehiclesTabProps) {
     setFormSlug("");
     setFormCode("");
     setFormCategory("UTV");
+    setFormModelCategory("");
     setFormYearFrom(2022);
     setFormYearTo(2027);
     setFormSelectedYears([2024, 2025, 2026, 2027]);
@@ -285,6 +289,7 @@ export function GarageVehiclesTab({ userRole }: GarageVehiclesTabProps) {
     setFormSlug(model.slug);
     setFormCode(model.code || model.slug.replace(/[^a-zA-Z0-9]/g, "").slice(0, 6).toUpperCase());
     setFormCategory(model.category || "UTV");
+    setFormModelCategory(model.modelCategory || "");
     const sorted = [...model.years].sort((a, b) => a - b);
     if (sorted.length > 0) {
       setFormYearFrom(sorted[0]);
@@ -363,6 +368,7 @@ export function GarageVehiclesTab({ userRole }: GarageVehiclesTabProps) {
       slug: formSlug.trim() || undefined,
       code: formCode.trim().toUpperCase() || undefined,
       category: formCategory,
+      modelCategory: formModelCategory.trim() || null,
       years: formSelectedYears,
       imageUrl: formImageUrl.trim() || null,
       pickupServiceAvailable: formPickupServiceAvailable,
@@ -601,9 +607,38 @@ export function GarageVehiclesTab({ userRole }: GarageVehiclesTabProps) {
         }
       }
 
+      if (selectedModelCategoryFilter !== "all") {
+        if ((model.modelCategory || "").toLowerCase() !== selectedModelCategoryFilter.toLowerCase()) {
+          return false;
+        }
+      }
+
       return true;
     });
-  }, [models, searchQuery, selectedBrandFilter, selectedCategoryFilter]);
+  }, [models, searchQuery, selectedBrandFilter, selectedCategoryFilter, selectedModelCategoryFilter]);
+
+  const availableModelCategories = useMemo(() => {
+    const set = new Set<string>();
+    models.forEach((m) => {
+      if (selectedBrandFilter !== "all" && m.brandSlug.toLowerCase() !== selectedBrandFilter.toLowerCase()) {
+        return;
+      }
+      if (m.modelCategory) set.add(m.modelCategory);
+    });
+    return Array.from(set).sort();
+  }, [models, selectedBrandFilter]);
+
+  const brandCategorySuggestions = useMemo(() => {
+    const targetBrand = formBrandId ? brands.find((b) => b.id === formBrandId) : null;
+    if (!targetBrand) return [];
+    const set = new Set<string>();
+    models
+      .filter((m) => m.brandId === targetBrand.id || m.brandSlug === targetBrand.slug)
+      .forEach((m) => {
+        if (m.modelCategory) set.add(m.modelCategory);
+      });
+    return Array.from(set).sort();
+  }, [formBrandId, brands, models]);
 
   // Filtered Brands
   const filteredBrands = useMemo(() => {
@@ -822,6 +857,24 @@ export function GarageVehiclesTab({ userRole }: GarageVehiclesTabProps) {
                   </option>
                 ))}
               </select>
+
+              {/* Brand Model Category Filter */}
+              {availableModelCategories.length > 0 && (
+                <select
+                  value={selectedModelCategoryFilter}
+                  onChange={(e) => setSelectedModelCategoryFilter(e.target.value)}
+                  className="px-3 py-2 rounded-lg border border-slate-200 bg-white text-xs text-slate-700 font-medium focus:outline-none focus:border-slate-900 transition w-full sm:w-auto"
+                >
+                  <option value="all">
+                    {lang === "es" ? "Todas las Familias en Marca" : "All Model Categories"}
+                  </option>
+                  {availableModelCategories.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
           </div>
 
@@ -882,10 +935,17 @@ export function GarageVehiclesTab({ userRole }: GarageVehiclesTabProps) {
                 >
                   <div className="space-y-2.5">
                     {/* Top Row: Brand & Category Badge */}
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-800 text-[11px] font-extrabold tracking-wide uppercase">
-                        {model.brandName}
-                      </span>
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-800 text-[11px] font-extrabold tracking-wide uppercase">
+                          {model.brandName}
+                        </span>
+                        {model.modelCategory && (
+                          <span className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-bold">
+                            {model.modelCategory}
+                          </span>
+                        )}
+                      </div>
                       <span
                         className={`px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wider ${
                           model.category.toUpperCase() === "UTV"
@@ -1824,8 +1884,8 @@ export function GarageVehiclesTab({ userRole }: GarageVehiclesTabProps) {
                 </div>
               </div>
 
-              {/* SKU Code & Category */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* SKU Code, Type & Brand Model Category */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-700 flex items-center justify-between">
                     <span>{t.backdoorVehiclesModelCodeLabel}</span>
@@ -1860,7 +1920,49 @@ export function GarageVehiclesTab({ userRole }: GarageVehiclesTabProps) {
                     ))}
                   </select>
                 </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700 block">
+                    {lang === "es" ? "Categoría en Marca" : "Brand Model Category"}
+                  </label>
+                  <input
+                    type="text"
+                    list="brand-model-categories-list"
+                    value={formModelCategory}
+                    onChange={(e) => setFormModelCategory(e.target.value)}
+                    placeholder={lang === "es" ? "Ej: Maverick X3, Z10, Outlander" : "Ex: Maverick X3, Z10, Outlander"}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-white text-xs text-slate-800 font-semibold placeholder-slate-400 focus:outline-none focus:border-slate-900 transition"
+                  />
+                  <datalist id="brand-model-categories-list">
+                    {brandCategorySuggestions.map((cat) => (
+                      <option key={cat} value={cat} />
+                    ))}
+                  </datalist>
+                </div>
               </div>
+
+              {/* Brand Category Quick Selection Pills */}
+              {brandCategorySuggestions.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5 -mt-1">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mr-1">
+                    {lang === "es" ? "Existentes:" : "Existing:"}
+                  </span>
+                  {brandCategorySuggestions.map((cat) => (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => setFormModelCategory(cat)}
+                      className={`px-2 py-0.5 rounded-md text-[10px] font-bold transition border cursor-pointer ${
+                        formModelCategory.toLowerCase() === cat.toLowerCase()
+                          ? "bg-slate-900 text-white border-slate-900"
+                          : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+                      }`}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+              )}
 
               {/* Compatible Years Configuration */}
               <div className="space-y-2 bg-slate-50 p-3.5 rounded-xl border border-slate-200">

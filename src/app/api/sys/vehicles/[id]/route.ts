@@ -28,6 +28,9 @@ export async function PATCH(
     if (body.name !== undefined) updateData.name = body.name.trim();
     if (body.brandId !== undefined) updateData.brandId = body.brandId;
     if (body.category !== undefined) updateData.category = body.category;
+    if (body.modelCategory !== undefined) {
+      updateData.modelCategory = body.modelCategory ? String(body.modelCategory).trim() : null;
+    }
     if (body.code !== undefined) {
       updateData.code = body.code ? String(body.code).trim().toUpperCase() : null;
     }
@@ -86,6 +89,7 @@ export async function PATCH(
         code: updated.code,
         name: updated.name,
         category: updated.category,
+        modelCategory: updated.modelCategory,
         years: parsedYears,
         yearsJson: updated.yearsJson,
         imageUrl: updated.imageUrl,

@@ -34,6 +34,7 @@ model VehicleModel {
   code                   String?  // e.g. "Z10", "Z10-4", "X3", "PROR", "TALON"
   name                   String
   category               String   // UTV, ATV, SSV
+  modelCategory          String?  // e.g. "Maverick X3", "Maverick R", "Defender", "Commander", "Outlander (ATV)", etc.
   yearsJson              String   // e.g. "[2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025]"
   imageUrl               String?
   pickupServiceAvailable Boolean  @default(true)

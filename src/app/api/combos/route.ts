@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { calculateComboAvailability } from "@/lib/comboAvailability";
 import { detectProductVehicleBrands, normalizeBrandName, detectVehiclePlatform, is4SeaterToken, is2SeaterToken } from "@/lib/products";
-import { SXS_BRAND_PLATFORMS, SXS_BRANDS } from "@/lib/sxsBrands";
+import { SXS_BRAND_PLATFORMS, SXS_BRANDS, getBrandLogo } from "@/lib/sxsBrands";
 
 export const dynamic = "force-dynamic";
 
@@ -193,6 +193,7 @@ export async function GET(request: NextRequest) {
     const category = searchParams.get("category");
     const search = searchParams.get("search") || searchParams.get("q");
     const vehicleBrand = searchParams.get("vehicleBrand") || searchParams.get("sxs");
+    const modelCategory = searchParams.get("modelCategory") || searchParams.get("vehicleCategory");
     const vehicleModel = searchParams.get("vehicleModel") || undefined;
     const vehicleYear = searchParams.get("vehicleYear") || undefined;
     const distributorBrand = searchParams.get("distributorBrand") || searchParams.get("brand");
@@ -401,10 +402,43 @@ export async function GET(request: NextRequest) {
 
     const includeArchived = searchParams.get("includeArchived") === "true";
 
-    const allCombos = await prisma.combo.findMany({
-      where: includeArchived ? {} : { isArchived: false },
-      orderBy: { createdAt: "desc" },
-    });
+    const [allCombos, dbBrands] = await Promise.all([
+      prisma.combo.findMany({
+        where: includeArchived ? {} : { isArchived: false },
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.brand.findMany({
+        include: {
+          models: {
+            orderBy: { name: "asc" },
+          },
+        },
+      }),
+    ]);
+
+    const sxsBrandModels: Record<
+      string,
+      Array<{
+        id: string;
+        name: string;
+        code?: string | null;
+        slug: string;
+        category?: string | null;
+        modelCategory?: string | null;
+        imageUrl?: string | null;
+      }>
+    > = {};
+    for (const b of dbBrands) {
+      sxsBrandModels[b.slug.toLowerCase()] = b.models.map((m) => ({
+        id: m.id,
+        name: m.name,
+        code: m.code,
+        slug: m.slug,
+        category: m.category,
+        modelCategory: m.modelCategory || null,
+        imageUrl: m.imageUrl && m.imageUrl !== "null" && m.imageUrl !== "undefined" ? m.imageUrl.trim() : null,
+      }));
+    }
 
     const formattedAllCombos = allCombos.map((c) => {
       const availability = calculateComboAvailability(c.itemsJson, catalogProducts);
@@ -490,14 +524,51 @@ export async function GET(request: NextRequest) {
       }
     });
 
-    // ONLY show vehicle brands present in combos
-    const availableVehicleBrands = SXS_BRANDS.filter(
-      (sb) => (vehicleBrandCounts[sb.slug.toLowerCase()] || 0) > 0
-    ).map((sb) => ({
-      slug: sb.slug,
-      title: sb.title,
-      count: vehicleBrandCounts[sb.slug.toLowerCase()] || 0,
-    }));
+    // ONLY show vehicle brands present in combos with dynamic database fields
+    const availableVehicleBrands: Array<{
+      slug: string;
+      title: string;
+      logoUrl?: string | null;
+      defaultVehicleImageUrl?: string | null;
+      count: number;
+    }> = [];
+
+    dbBrands.forEach((b) => {
+      const cnt = vehicleBrandCounts[b.slug.toLowerCase()] || 0;
+      if (cnt > 0) {
+        const known = SXS_BRANDS.find((sb) => sb.slug.toLowerCase() === b.slug.toLowerCase());
+        availableVehicleBrands.push({
+          slug: b.slug,
+          title: b.name || known?.title || b.slug.toUpperCase(),
+          logoUrl: b.logoUrl || getBrandLogo(b.slug) || null,
+          defaultVehicleImageUrl: b.defaultVehicleImageUrl || known?.sxsImageUrl || null,
+          count: cnt,
+        });
+      }
+    });
+
+    SXS_BRANDS.forEach((sb) => {
+      if (!availableVehicleBrands.some((av) => av.slug.toLowerCase() === sb.slug.toLowerCase())) {
+        const cnt = vehicleBrandCounts[sb.slug.toLowerCase()] || 0;
+        if (cnt > 0) {
+          availableVehicleBrands.push({
+            slug: sb.slug,
+            title: sb.title,
+            logoUrl: getBrandLogo(sb.slug),
+            defaultVehicleImageUrl: sb.sxsImageUrl,
+            count: cnt,
+          });
+        }
+      }
+    });
+
+    availableVehicleBrands.sort((a, b) => {
+      const aIsCf = a.slug.toLowerCase() === "cfmoto";
+      const bIsCf = b.slug.toLowerCase() === "cfmoto";
+      if (aIsCf) return -1;
+      if (bIsCf) return 1;
+      return a.title.localeCompare(b.title);
+    });
 
     // ONLY show distributor brands present in combos
     const availableDistributorBrands = Object.entries(distributorBrandCounts)
@@ -562,6 +633,40 @@ export async function GET(request: NextRequest) {
         }
       }
 
+      // 3c. Model Category filter (e.g. "Maverick X3", "Maverick R", "Defender", "Commander", "Outlander (ATV)", etc.)
+      if (modelCategory && modelCategory.toLowerCase() !== "all") {
+        const targetCategoryNorm = modelCategory.toLowerCase().trim();
+        const comboText = `${c.titleEs || ""} ${c.titleEn || ""} ${c.badgeEs || ""} ${c.badgeEn || ""} ${c.descriptionEs || ""} ${(c.items || []).join(" ")}`.toLowerCase();
+
+        const tokensToMatch = new Set<string>();
+        tokensToMatch.add(targetCategoryNorm);
+        const cleanToken = targetCategoryNorm.replace(/\([^)]*\)/g, "").trim();
+        if (cleanToken) tokensToMatch.add(cleanToken);
+
+        for (const [_, bModels] of Object.entries(sxsBrandModels)) {
+          for (const m of bModels) {
+            const catMatch =
+              (m.modelCategory && m.modelCategory.toLowerCase() === targetCategoryNorm) ||
+              (m.category && m.category.toLowerCase() === targetCategoryNorm);
+            if (catMatch) {
+              tokensToMatch.add(m.slug.toLowerCase());
+              tokensToMatch.add(m.name.toLowerCase());
+              if (m.code) tokensToMatch.add(m.code.toLowerCase());
+            }
+          }
+        }
+
+        const matchesCat = Array.from(tokensToMatch).some((tok) => {
+          if (comboText.includes(tok)) return true;
+          const tokPlat = detectVehiclePlatform(tok);
+          const comboPlat = detectVehiclePlatform(comboText);
+          if (tokPlat && comboPlat && tokPlat === comboPlat) return true;
+          return false;
+        });
+
+        if (!matchesCat) return false;
+      }
+
       // 4. Distributor Brand
       if (distributorBrand && distributorBrand.toLowerCase() !== "all") {
         const targetDb = distributorBrand.toLowerCase().trim();
@@ -596,6 +701,7 @@ export async function GET(request: NextRequest) {
         categories: uniqueCategories,
         availableVehicleBrands,
         availableDistributorBrands,
+        sxsBrandModels,
         hasInStock: globalHasInStock,
         hasDiscounted: globalHasDiscounted,
       },

@@ -251,7 +251,7 @@ export default function GarageFleetPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {vehicles.map((v) => {
                   const isActive = activeVehicle?.id === v.id || v.isActive;
-                  const logoUrl = getBrandLogo(v.brandSlug);
+                  const logoUrl = v.brandLogoUrl || getBrandLogo(v.brandSlug);
 
                   return (
                     <div

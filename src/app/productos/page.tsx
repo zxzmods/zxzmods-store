@@ -19,7 +19,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { CatalogPagination } from "@/components/ui/CatalogPagination";
 import { motion, AnimatePresence } from "framer-motion";
 import { ProductItem, normalizeBrandList, isPlatformOrVehicleMatch, detectVehiclePlatform, isUniversalFit, SelectedParameterItem } from "@/lib/products";
-import { getSxsBrandBySlug } from "@/lib/sxsBrands";
+import { getSxsBrandBySlug, getBrandLogo } from "@/lib/sxsBrands";
 import { SxsBrandIntro } from "@/components/intro/SxsBrandIntro";
 import {
   Wrench,
@@ -400,18 +400,81 @@ function ProductsContent() {
   const [selectedModelSlug, setSelectedModelSlug] = useState<string>(
     () => searchParams.get("vehicleModel") || ""
   );
+  const [selectedModelCategory, setSelectedModelCategory] = useState<string>(
+    () => searchParams.get("modelCategory") || searchParams.get("vehicleCategory") || "all"
+  );
   const [sortBy, setSortBy] = useState<"relevant" | "price-asc" | "price-desc" | "stars">("relevant");
 
   const [availableCategories, setAvailableCategories] = useState<string[]>([]);
-  const [availableVehicleBrands, setAvailableVehicleBrands] = useState<Array<{ slug: string; title: string; count: number }>>([]);
+  const [availableVehicleBrands, setAvailableVehicleBrands] = useState<
+    Array<{
+      slug: string;
+      title: string;
+      logoUrl?: string | null;
+      defaultVehicleImageUrl?: string | null;
+      count: number;
+    }>
+  >([]);
   const [availableDistributorBrands, setAvailableDistributorBrands] = useState<Array<{ name: string; count: number }>>([]);
   const [hasInStock, setHasInStock] = useState(false);
   const [hasDiscounted, setHasDiscounted] = useState(false);
   const [sxsBrandModels, setSxsBrandModels] = useState<
-    Record<string, Array<{ id: string; name: string; code?: string | null; slug: string; imageUrl?: string | null }>>
+    Record<
+      string,
+      Array<{
+        id: string;
+        name: string;
+        code?: string | null;
+        slug: string;
+        category?: string | null;
+        modelCategory?: string | null;
+        imageUrl?: string | null;
+      }>
+    >
   >({});
 
-  const activeSxsBrand = getSxsBrandBySlug(selectedVehicleBrand !== "all" ? selectedVehicleBrand : undefined);
+  const activeSxsBrand = useMemo(() => {
+    if (!selectedVehicleBrand || selectedVehicleBrand === "all") return null;
+    const target = selectedVehicleBrand.toLowerCase().trim();
+    const foundDb = availableVehicleBrands.find((b) => b.slug.toLowerCase() === target);
+    const known = getSxsBrandBySlug(target);
+    if (foundDb) {
+      return {
+        id: foundDb.slug,
+        slug: foundDb.slug,
+        title: foundDb.title,
+        logoUrl: foundDb.logoUrl || getBrandLogo(target) || "/images/logo.png",
+        sxsImageUrl: foundDb.defaultVehicleImageUrl || known?.sxsImageUrl || "/images/sxs/cfmoto_sxs.png",
+        descriptionEs: known?.descriptionEs || `Catálogo y modelos especializados para ${foundDb.title}`,
+        descriptionEn: known?.descriptionEn || `Specialized catalog and models for ${foundDb.title}`,
+        exploreLink: known?.exploreLink || `/productos?sxs=${foundDb.slug}`,
+        models: known?.models || [],
+      };
+    }
+    return known || null;
+  }, [selectedVehicleBrand, availableVehicleBrands]);
+
+  // Model categories under the selected brand (including ATV categories as requested)
+  const activeBrandCategories = useMemo(() => {
+    if (!selectedVehicleBrand || selectedVehicleBrand === "all") return [];
+    const brandModels = sxsBrandModels[selectedVehicleBrand.toLowerCase()] || [];
+    const catMap = new Map<string, number>();
+
+    brandModels.forEach((m) => {
+      const cat = (m.modelCategory && m.modelCategory.trim()) || (m.category && m.category.trim()) || "Otros";
+      catMap.set(cat, (catMap.get(cat) || 0) + 1);
+    });
+
+    return Array.from(catMap.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => {
+        const aAtv = a.name.toLowerCase().includes("atv");
+        const bAtv = b.name.toLowerCase().includes("atv");
+        if (aAtv && !bAtv) return 1;
+        if (!aAtv && bAtv) return -1;
+        return a.name.localeCompare(b.name);
+      });
+  }, [selectedVehicleBrand, sxsBrandModels]);
 
   // Intro animation state for SxS brands (CFMOTO, CAN-AM, POLARIS)
   const [activeIntroBrand, setActiveIntroBrand] = useState<string | null>(() => {
@@ -476,8 +539,23 @@ function ProductsContent() {
     ) {
       return selectedVehicleModel.imageUrl.trim();
     }
+    if (selectedModelCategory && selectedModelCategory !== "all") {
+      const brandModels = sxsBrandModels[selectedVehicleBrand.toLowerCase()] || [];
+      const catModelWithImg = brandModels.find(
+        (m) =>
+          (m.modelCategory?.toLowerCase() === selectedModelCategory.toLowerCase() ||
+            m.category?.toLowerCase() === selectedModelCategory.toLowerCase()) &&
+          m.imageUrl &&
+          m.imageUrl.trim() &&
+          m.imageUrl !== "null" &&
+          m.imageUrl !== "undefined"
+      );
+      if (catModelWithImg?.imageUrl) {
+        return catModelWithImg.imageUrl.trim();
+      }
+    }
     return activeSxsBrand?.sxsImageUrl || "/images/sxs/cfmoto_sxs.png";
-  }, [selectedVehicleModel, activeSxsBrand]);
+  }, [selectedVehicleModel, selectedModelCategory, selectedVehicleBrand, sxsBrandModels, activeSxsBrand]);
 
   const [bannerImageError, setBannerImageError] = useState(false);
 
@@ -515,6 +593,9 @@ function ProductsContent() {
 
     const vm = searchParams.get("vehicleModel");
     setSelectedModelSlug(vm || "");
+
+    const mc = searchParams.get("modelCategory") || searchParams.get("vehicleCategory");
+    setSelectedModelCategory(mc || "all");
 
     const db = searchParams.get("distributorBrand") || parseBrandParam(searchParams);
     setSelectedDistributorBrand(db || "all");
@@ -554,6 +635,9 @@ function ProductsContent() {
     if (inStockOnly) params.set("inStock", "true");
     if (discountedOnly) params.set("discounted", "true");
     if (sortBy && sortBy !== "relevant") params.set("sort", sortBy);
+    if (selectedModelCategory && selectedModelCategory !== "all") {
+      params.set("modelCategory", selectedModelCategory);
+    }
     if (selectedModelSlug) {
       params.set("vehicleModel", selectedModelSlug);
       if (selectedVehicleBrand && selectedVehicleBrand !== "all") {
@@ -617,6 +701,7 @@ function ProductsContent() {
     sortBy,
     onlyCompatibleWithGarage,
     selectedModelSlug,
+    selectedModelCategory,
     vehicle,
   ]);
 
@@ -748,6 +833,7 @@ function ProductsContent() {
     sortBy,
     onlyCompatibleWithGarage,
     selectedModelSlug,
+    selectedModelCategory,
     vehicle,
   ]);
 
@@ -820,84 +906,155 @@ function ProductsContent() {
                   : `${activeSxsBrand.title} Specialized Catalog`}
               </h2>
 
-              {/* Quick Model Chips */}
+              {/* Brand Model Categories Button Row & Sub-Model Refinement */}
               {(() => {
                 const currentModels = sxsBrandModels[selectedVehicleBrand?.toLowerCase()] || [];
-                if (loading && currentModels.length === 0) {
+                if (loading && activeBrandCategories.length === 0) {
                   return (
                     <div className="pt-2 flex flex-wrap items-center gap-2 justify-center md:justify-start">
                       <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">
-                        {lang === "es" ? "Modelos:" : "Models:"}
+                        {t.productsBrandCategoriesHeading}:
                       </span>
-                      <div className="h-6 w-20 rounded-full bg-gray-200 animate-pulse" />
-                      <div className="h-6 w-24 rounded-full bg-gray-200 animate-pulse" />
+                      <div className="h-7 w-24 rounded-xl bg-gray-200 animate-pulse" />
+                      <div className="h-7 w-28 rounded-xl bg-gray-200 animate-pulse" />
+                      <div className="h-7 w-24 rounded-xl bg-gray-200 animate-pulse" />
                     </div>
                   );
                 }
-                if (currentModels.length === 0) return null;
+                if (activeBrandCategories.length === 0 && currentModels.length === 0) return null;
+
+                // Sub-models to display under the selected category (or all if "all")
+                const visibleModels = selectedModelCategory !== "all"
+                  ? currentModels.filter(
+                      (m) =>
+                        (m.modelCategory && m.modelCategory.toLowerCase() === selectedModelCategory.toLowerCase()) ||
+                        (m.category && m.category.toLowerCase() === selectedModelCategory.toLowerCase())
+                    )
+                  : currentModels;
 
                 return (
-                  <div className="pt-2 flex flex-wrap items-center gap-2 justify-center md:justify-start">
-                    <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">
-                      {lang === "es" ? "Modelos:" : "Models:"}
-                    </span>
-                    {currentModels.map((mod) => {
-                      const modNameNorm = mod.name.toLowerCase().trim();
-                      const modCodeNorm = (mod.code || "").toLowerCase().trim();
-                      const modSlugNorm = mod.slug.toLowerCase().trim();
-                      const qNorm = searchQuery.toLowerCase().trim();
-                      const selModelNorm = selectedModelSlug.toLowerCase().trim();
-
-                      // Strict single-model selection:
-                      // Exactly ONE model can be selected. Checks dedicated selectedModelSlug (by slug, name or code)
-                      // or exact match on search query if no model slug is set.
-                      const isSelected = selModelNorm
-                        ? selModelNorm === modSlugNorm ||
-                          selModelNorm === modNameNorm ||
-                          (Boolean(modCodeNorm) && selModelNorm === modCodeNorm)
-                        : Boolean(qNorm) && (
-                            qNorm === modNameNorm ||
-                            qNorm === modSlugNorm ||
-                            (Boolean(modCodeNorm) && qNorm === modCodeNorm)
-                          );
-
-                      return (
+                  <div className="pt-2 space-y-3">
+                    {/* Primary Button Row: Model Categories in Brand (including ATV categories) */}
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-2 justify-center md:justify-start">
+                        <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">
+                          {t.productsBrandCategoriesHeading}:
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 justify-center md:justify-start">
+                        {/* "All Categories" Button */}
                         <button
-                          key={mod.id || mod.slug}
                           type="button"
                           onClick={() => {
-                            if (isSelected) {
-                              setSelectedModelSlug("");
-                              if (qNorm === modNameNorm || qNorm === modSlugNorm) {
-                                setSearchQuery("");
-                                updateUrlParams({ vehicleModel: null, q: null });
-                              } else {
-                                updateUrlParams({ vehicleModel: null });
-                              }
-                            } else {
-                              setSelectedModelSlug(mod.slug);
-                              // If search bar was filled with an old model name, clear it so user gets pure model fitment
-                              const isOtherModelSearch = currentModels.some(
-                                (m) => m.name.toLowerCase() === qNorm || m.slug.toLowerCase() === qNorm
-                              );
-                              if (isOtherModelSearch) {
-                                setSearchQuery("");
-                                updateUrlParams({ vehicleModel: mod.slug, q: null });
-                              } else {
-                                updateUrlParams({ vehicleModel: mod.slug });
-                              }
-                            }
+                            setSelectedModelCategory("all");
+                            setSelectedModelSlug("");
+                            updateUrlParams({ modelCategory: null, vehicleModel: null });
                           }}
-                          className={`px-3 py-1 rounded-full text-xs font-semibold transition-all border cursor-pointer ${
-                            isSelected
-                              ? "bg-[#C02030] text-white border-[#C02030] shadow-sm"
-                              : "bg-white text-gray-700 border-gray-200 hover:border-gray-400 hover:text-black"
+                          className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer shadow-xs ${
+                            selectedModelCategory === "all" && !selectedModelSlug
+                              ? "bg-[#C02030] text-white border-[#C02030] shadow-sm scale-[1.02]"
+                              : "bg-white text-gray-700 border-gray-200 hover:border-gray-400 hover:bg-gray-50"
                           }`}
                         >
-                          {mod.name}
+                          {t.productsAllModelCategories}
                         </button>
-                      );
-                    })}
+
+                        {/* Category Buttons (e.g. Maverick X3, Maverick R, Defender, Outlander (ATV), etc.) */}
+                        {activeBrandCategories.map((cat) => {
+                          const isCatSelected = selectedModelCategory.toLowerCase() === cat.name.toLowerCase();
+                          return (
+                            <button
+                              key={cat.name}
+                              type="button"
+                              onClick={() => {
+                                if (isCatSelected) {
+                                  setSelectedModelCategory("all");
+                                  setSelectedModelSlug("");
+                                  updateUrlParams({ modelCategory: null, vehicleModel: null });
+                                } else {
+                                  setSelectedModelCategory(cat.name);
+                                  setSelectedModelSlug("");
+                                  updateUrlParams({ modelCategory: cat.name, vehicleModel: null });
+                                }
+                              }}
+                              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer flex items-center gap-1.5 shadow-xs ${
+                                isCatSelected
+                                  ? "bg-[#111827] text-white border-[#111827] shadow-sm scale-[1.02]"
+                                  : "bg-white text-gray-800 border-gray-200 hover:border-gray-400 hover:bg-gray-50"
+                              }`}
+                            >
+                              <span>{cat.name}</span>
+                              {cat.count > 0 && (
+                                <span
+                                  className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                                    isCatSelected
+                                      ? "bg-white/20 text-white"
+                                      : "bg-gray-100 text-gray-600"
+                                  }`}
+                                >
+                                  {cat.count}
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Secondary Row: Specific Model Chips (when refined to a category or when sub-models exist) */}
+                    {visibleModels.length > 0 && (
+                      <div className="space-y-1 pt-1 border-t border-gray-200/60">
+                        <div className="flex items-center gap-2 justify-center md:justify-start">
+                          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                            {selectedModelCategory !== "all"
+                              ? `${selectedModelCategory} - ${t.productsModelsInCategory}:`
+                              : `${t.productsModelsInCategory}:`}
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-1.5 justify-center md:justify-start">
+                          {visibleModels.map((mod) => {
+                            const modNameNorm = mod.name.toLowerCase().trim();
+                            const modCodeNorm = (mod.code || "").toLowerCase().trim();
+                            const modSlugNorm = mod.slug.toLowerCase().trim();
+                            const qNorm = searchQuery.toLowerCase().trim();
+                            const selModelNorm = selectedModelSlug.toLowerCase().trim();
+
+                            const isSelected = selModelNorm
+                              ? selModelNorm === modSlugNorm ||
+                                selModelNorm === modNameNorm ||
+                                (Boolean(modCodeNorm) && selModelNorm === modCodeNorm)
+                              : Boolean(qNorm) && (
+                                  qNorm === modNameNorm ||
+                                  qNorm === modSlugNorm ||
+                                  (Boolean(modCodeNorm) && qNorm === modCodeNorm)
+                                );
+
+                            return (
+                              <button
+                                key={mod.id || mod.slug}
+                                type="button"
+                                onClick={() => {
+                                  if (isSelected) {
+                                    setSelectedModelSlug("");
+                                    updateUrlParams({ vehicleModel: null });
+                                  } else {
+                                    setSelectedModelSlug(mod.slug);
+                                    updateUrlParams({ vehicleModel: mod.slug });
+                                  }
+                                }}
+                                className={`px-2.5 py-1 rounded-full text-[11px] font-semibold transition-all border cursor-pointer ${
+                                  isSelected
+                                    ? "bg-[#C02030] text-white border-[#C02030] shadow-sm"
+                                    : "bg-white text-gray-600 border-gray-200 hover:border-gray-400 hover:text-black"
+                                }`}
+                              >
+                                {mod.name}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })()}
@@ -908,8 +1065,9 @@ function ProductsContent() {
                   type="button"
                   onClick={() => {
                     setSelectedVehicleBrand("all");
+                    setSelectedModelCategory("all");
                     setSelectedModelSlug("");
-                    updateUrlParams({ vehicleBrand: null, sxs: null, vehicleModel: null });
+                    updateUrlParams({ vehicleBrand: null, sxs: null, modelCategory: null, vehicleModel: null });
                   }}
                   className="inline-flex items-center gap-1.5 text-xs text-gray-500 hover:text-[#C02030] font-semibold transition-colors cursor-pointer"
                 >
@@ -1142,9 +1300,68 @@ function ProductsContent() {
               </div>
             </div>
 
+            {/* Category Button Row inside Filter Toolbar when Brand is Active */}
+            {selectedVehicleBrand !== "all" && activeBrandCategories.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-gray-200/70">
+                <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mr-1">
+                  {t.productsBrandCategoriesHeading}:
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedModelCategory("all");
+                    setSelectedModelSlug("");
+                    updateUrlParams({ modelCategory: null, vehicleModel: null });
+                  }}
+                  className={`px-3 py-1 rounded-full text-xs font-bold transition-all border cursor-pointer ${
+                    selectedModelCategory === "all"
+                      ? "bg-[#C02030] text-white border-[#C02030] shadow-sm"
+                      : "bg-white text-gray-700 border-gray-200 hover:border-gray-400 hover:bg-gray-50"
+                  }`}
+                >
+                  {t.productsAllModelCategories}
+                </button>
+                {activeBrandCategories.map((cat) => {
+                  const isCatSelected = selectedModelCategory.toLowerCase() === cat.name.toLowerCase();
+                  return (
+                    <button
+                      key={cat.name}
+                      type="button"
+                      onClick={() => {
+                        if (isCatSelected) {
+                          setSelectedModelCategory("all");
+                          setSelectedModelSlug("");
+                          updateUrlParams({ modelCategory: null, vehicleModel: null });
+                        } else {
+                          setSelectedModelCategory(cat.name);
+                          setSelectedModelSlug("");
+                          updateUrlParams({ modelCategory: cat.name, vehicleModel: null });
+                        }
+                      }}
+                      className={`px-3 py-1 rounded-full text-xs font-bold transition-all border cursor-pointer flex items-center gap-1 ${
+                        isCatSelected
+                          ? "bg-[#111827] text-white border-[#111827] shadow-sm"
+                          : "bg-white text-gray-800 border-gray-200 hover:border-gray-400 hover:bg-gray-50"
+                      }`}
+                    >
+                      <span>{cat.name}</span>
+                      {cat.count > 0 && (
+                        <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                          isCatSelected ? "bg-white/20 text-white" : "bg-gray-100 text-gray-600"
+                        }`}>
+                          {cat.count}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
             {/* Active Filter Pills Bar */}
             {(selectedVehicleBrand !== "all" ||
               selectedDistributorBrand !== "all" ||
+              selectedModelCategory !== "all" ||
               Boolean(selectedModelSlug) ||
               inStockOnly ||
               discountedOnly ||
@@ -1169,8 +1386,28 @@ function ProductsContent() {
                       type="button"
                       onClick={() => {
                         setSelectedVehicleBrand("all");
+                        setSelectedModelCategory("all");
                         setSelectedModelSlug("");
-                        updateUrlParams({ vehicleBrand: null, sxs: null, vehicleModel: null });
+                        updateUrlParams({ vehicleBrand: null, sxs: null, modelCategory: null, vehicleModel: null });
+                      }}
+                      className="p-0.5 hover:bg-white/20 rounded-full transition cursor-pointer"
+                    >
+                      <X className="w-3 h-3 text-white" />
+                    </button>
+                  </div>
+                )}
+
+                {/* Brand Model Category Pill */}
+                {selectedModelCategory !== "all" && (
+                  <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#C02030] text-white text-[11px] font-semibold shadow-xs">
+                    <span>
+                      {t.productsFilterModelCategory}: <strong className="text-white">{selectedModelCategory}</strong>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedModelCategory("all");
+                        updateUrlParams({ modelCategory: null });
                       }}
                       className="p-0.5 hover:bg-white/20 rounded-full transition cursor-pointer"
                     >

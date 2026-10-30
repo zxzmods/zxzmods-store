@@ -578,6 +578,10 @@ export interface Translations {
   productsFilterBrand: string;
   productsFilterVehicleBrand: string;
   productsAllVehicleBrands: string;
+  productsFilterModelCategory: string;
+  productsAllModelCategories: string;
+  productsBrandCategoriesHeading: string;
+  productsModelsInCategory: string;
   productsFilterDistributorBrand: string;
   productsAllDistributorBrands: string;
   productsFilterInStock: string;
@@ -2543,6 +2547,10 @@ export const translations: Record<Language, Translations> = {
     productsFilterBrand: "Marca",
     productsFilterVehicleBrand: "Marca de Vehículo",
     productsAllVehicleBrands: "Todos los Vehículos",
+    productsFilterModelCategory: "Categoría en Marca",
+    productsAllModelCategories: "Todas las Categorías",
+    productsBrandCategoriesHeading: "Categorías y Familias",
+    productsModelsInCategory: "Modelos",
     productsFilterDistributorBrand: "Marca Fabricante",
     productsAllDistributorBrands: "Todas las Marcas",
     productsFilterInStock: "En Stock",
@@ -4502,6 +4510,10 @@ export const translations: Record<Language, Translations> = {
     productsFilterBrand: "Brand",
     productsFilterVehicleBrand: "Vehicle Brand",
     productsAllVehicleBrands: "All Vehicles",
+    productsFilterModelCategory: "Brand Model Category",
+    productsAllModelCategories: "All Categories",
+    productsBrandCategoriesHeading: "Categories & Families",
+    productsModelsInCategory: "Models",
     productsFilterDistributorBrand: "Distributor Brand",
     productsAllDistributorBrands: "All Brands",
     productsFilterInStock: "In Stock",

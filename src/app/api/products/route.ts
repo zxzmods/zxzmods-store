@@ -11,7 +11,7 @@ import {
   detectProductVehicleBrands,
 } from "@/lib/products";
 import { prisma } from "@/lib/prisma";
-import { SXS_BRAND_PLATFORMS, SXS_BRANDS } from "@/lib/sxsBrands";
+import { SXS_BRAND_PLATFORMS, SXS_BRANDS, getBrandLogo } from "@/lib/sxsBrands";
 import { getStealthSession } from "@/lib/stealthAuth";
 import { sanitizeSearchQuery } from "@/lib/security/inputSanitizer";
 
@@ -259,6 +259,7 @@ export async function GET(request: Request) {
 
     // Vehicle Brand parameter (separated, e.g. "cfmoto", "can-am", "polaris", "kawasaki")
     const vehicleBrand = searchParams.get("vehicleBrand") || searchParams.get("sxs") || undefined;
+    const modelCategory = searchParams.get("modelCategory") || searchParams.get("vehicleCategory") || undefined;
 
     // Distributor Brand parameter (separated, e.g. "Shock Therapy", "EVP")
     let distributorBrand = searchParams.get("distributorBrand") || searchParams.get("brand") || searchParams.get("marca") || undefined;
@@ -268,7 +269,7 @@ export async function GET(request: Request) {
           k &&
           !v &&
           !distributorBrand &&
-          !["q", "category", "sxs", "vehicleBrand", "distributorBrand", "inStock", "discounted", "sort", "intro", "comp", "vehicleModel", "slug", "id"].includes(k)
+          !["q", "category", "sxs", "vehicleBrand", "distributorBrand", "inStock", "discounted", "sort", "intro", "comp", "vehicleModel", "modelCategory", "vehicleCategory", "slug", "id"].includes(k)
         ) {
           distributorBrand = k;
         }
@@ -648,13 +649,26 @@ export async function GET(request: Request) {
       }),
     ]);
 
-    const sxsBrandModels: Record<string, Array<{ id: string; name: string; code?: string | null; slug: string; imageUrl?: string | null }>> = {};
+    const sxsBrandModels: Record<
+      string,
+      Array<{
+        id: string;
+        name: string;
+        code?: string | null;
+        slug: string;
+        category?: string | null;
+        modelCategory?: string | null;
+        imageUrl?: string | null;
+      }>
+    > = {};
     for (const b of dbBrands) {
       sxsBrandModels[b.slug.toLowerCase()] = b.models.map((m) => ({
         id: m.id,
         name: m.name,
         code: m.code,
         slug: m.slug,
+        category: m.category,
+        modelCategory: m.modelCategory || null,
         imageUrl: m.imageUrl && m.imageUrl !== "null" && m.imageUrl !== "undefined" ? m.imageUrl.trim() : null,
       }));
     }
@@ -699,11 +713,51 @@ export async function GET(request: Request) {
     });
 
     // ONLY show vehicle brands present in products (e.g. if no Yamaha products, Yamaha is NOT shown)
-    const availableVehicleBrands = SXS_BRANDS.filter((sb) => (vehicleBrandCounts[sb.slug.toLowerCase()] || 0) > 0).map((sb) => ({
-      slug: sb.slug,
-      title: sb.title,
-      count: vehicleBrandCounts[sb.slug.toLowerCase()] || 0,
-    }));
+    // Dynamic mapping from live dbBrands with fallback to SXS_BRANDS
+    const availableVehicleBrands: Array<{
+      slug: string;
+      title: string;
+      logoUrl?: string | null;
+      defaultVehicleImageUrl?: string | null;
+      count: number;
+    }> = [];
+
+    dbBrands.forEach((b) => {
+      const cnt = vehicleBrandCounts[b.slug.toLowerCase()] || 0;
+      if (cnt > 0) {
+        const known = SXS_BRANDS.find((sb) => sb.slug.toLowerCase() === b.slug.toLowerCase());
+        availableVehicleBrands.push({
+          slug: b.slug,
+          title: b.name || known?.title || b.slug.toUpperCase(),
+          logoUrl: b.logoUrl || getBrandLogo(b.slug) || null,
+          defaultVehicleImageUrl: b.defaultVehicleImageUrl || known?.sxsImageUrl || null,
+          count: cnt,
+        });
+      }
+    });
+
+    SXS_BRANDS.forEach((sb) => {
+      if (!availableVehicleBrands.some((av) => av.slug.toLowerCase() === sb.slug.toLowerCase())) {
+        const cnt = vehicleBrandCounts[sb.slug.toLowerCase()] || 0;
+        if (cnt > 0) {
+          availableVehicleBrands.push({
+            slug: sb.slug,
+            title: sb.title,
+            logoUrl: getBrandLogo(sb.slug),
+            defaultVehicleImageUrl: sb.sxsImageUrl,
+            count: cnt,
+          });
+        }
+      }
+    });
+
+    availableVehicleBrands.sort((a, b) => {
+      const aIsCf = a.slug.toLowerCase() === "cfmoto";
+      const bIsCf = b.slug.toLowerCase() === "cfmoto";
+      if (aIsCf) return -1;
+      if (bIsCf) return 1;
+      return a.title.localeCompare(b.title);
+    });
 
     // ONLY show distributor brands present in products
     const availableDistributorBrands = Object.entries(distributorBrandCounts)
@@ -821,6 +875,42 @@ export async function GET(request: Request) {
           }
 
           if (!matchesVehicle) return false;
+        }
+      }
+
+      // 3.1 Model Category filter (e.g. "Maverick X3", "Maverick R", "Defender", "Commander", "Outlander (ATV)", etc.)
+      if (modelCategory && modelCategory.toLowerCase() !== "all") {
+        const targetCategoryNorm = modelCategory.toLowerCase().trim();
+        const isUniversal = isUniversalFit(product.comp);
+
+        if (!isUniversal) {
+          // Gather models under this category
+          const tokensToMatch = new Set<string>();
+          tokensToMatch.add(targetCategoryNorm);
+          const cleanToken = targetCategoryNorm.replace(/\([^)]*\)/g, "").trim();
+          if (cleanToken) tokensToMatch.add(cleanToken);
+
+          // Check if any registered brand model matches this modelCategory
+          for (const [_, bModels] of Object.entries(sxsBrandModels)) {
+            for (const m of bModels) {
+              const catMatch =
+                (m.modelCategory && m.modelCategory.toLowerCase() === targetCategoryNorm) ||
+                (m.category && m.category.toLowerCase() === targetCategoryNorm);
+              if (catMatch) {
+                tokensToMatch.add(m.slug.toLowerCase());
+                tokensToMatch.add(m.name.toLowerCase());
+                if (m.code) tokensToMatch.add(m.code.toLowerCase());
+              }
+            }
+          }
+
+          const matchesCategory = Array.from(tokensToMatch).some((tok) => {
+            if (product.comp && product.comp.some((c) => isPlatformOrVehicleMatch(c, tok))) return true;
+            if (product.modelYearCompatibility && product.modelYearCompatibility.some((myc) => isPlatformOrVehicleMatch(myc.model, tok))) return true;
+            return false;
+          });
+
+          if (!matchesCategory) return false;
         }
       }
 

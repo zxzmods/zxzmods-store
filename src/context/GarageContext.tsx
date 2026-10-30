@@ -12,6 +12,8 @@ export interface ActiveVehicle {
   modelName: string;
   category?: string | null;
   imageUrl?: string | null;
+  brandDefaultVehicleImageUrl?: string | null;
+  brandLogoUrl?: string | null;
   pickupServiceAvailable?: boolean;
 }
 
@@ -28,6 +30,8 @@ export interface RegisteredVehicle {
   color?: string | null;
   notes?: string | null;
   imageUrl?: string | null;
+  brandDefaultVehicleImageUrl?: string | null;
+  brandLogoUrl?: string | null;
   pickupServiceAvailable?: boolean;
   isActive: boolean;
   createdAt?: string;

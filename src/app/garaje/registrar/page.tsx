@@ -34,6 +34,7 @@ interface YMMBrand {
   slug: string;
   name: string;
   logoUrl?: string | null;
+  defaultVehicleImageUrl?: string | null;
   models: YMMModel[];
 }
 
@@ -156,7 +157,7 @@ export default function RegisterVehiclePage() {
         modelSlug: currentModel.slug,
         modelName: currentModel.name,
         category: currentModel.category,
-        imageUrl: currentModel.imageUrl || undefined,
+        imageUrl: currentModel.imageUrl || currentBrand.defaultVehicleImageUrl || undefined,
         setAsActive: true,
       };
 
@@ -259,6 +260,8 @@ export default function RegisterVehiclePage() {
               modelSlug={currentModel?.slug}
               imageUrl={currentModel?.imageUrl}
               category={currentModel?.category}
+              defaultVehicleImageUrl={currentBrand?.defaultVehicleImageUrl}
+              brandLogoUrl={currentBrand?.logoUrl}
             />
 
             {/* SPECIFICATIONS CONFIGURATION FORM (Simplified: Year, Make, Model only) */}

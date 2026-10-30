@@ -66,7 +66,7 @@ export default function MarcasPage() {
               slug: b.slug,
               title: b.name || known?.title || b.slug.toUpperCase(),
               exploreLink: known?.exploreLink || `/productos?sxs=${b.slug}`,
-              sxsImageUrl: known?.sxsImageUrl || modelWithImg?.imageUrl || b.logoUrl || "/images/sxs/cfmoto_sxs.png",
+              sxsImageUrl: b.defaultVehicleImageUrl || known?.sxsImageUrl || modelWithImg?.imageUrl || b.logoUrl || "/images/sxs/cfmoto_sxs.png",
               models: modelsList,
               descriptionEs: b.descriptionEs || known?.descriptionEs || `Especialistas en ${b.name}.`,
               descriptionEn: b.descriptionEn || known?.descriptionEn || `Specialists in ${b.name}.`,
