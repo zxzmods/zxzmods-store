@@ -397,6 +397,9 @@ function ProductsContent() {
   const [inStockOnly, setInStockOnly] = useState(initialInStock);
   const [discountedOnly, setDiscountedOnly] = useState(initialDiscounted);
   const [onlyCompatibleWithGarage, setOnlyCompatibleWithGarage] = useState(false);
+  const [selectedModelSlug, setSelectedModelSlug] = useState<string>(
+    () => searchParams.get("vehicleModel") || ""
+  );
   const [sortBy, setSortBy] = useState<"relevant" | "price-asc" | "price-desc" | "stars">("relevant");
 
   const [availableCategories, setAvailableCategories] = useState<string[]>([]);
@@ -425,64 +428,44 @@ function ProductsContent() {
     const currentModels = sxsBrandModels[selectedVehicleBrand?.toLowerCase()] || [];
     if (currentModels.length === 0) return null;
 
+    if (selectedModelSlug) {
+      const targetSlug = selectedModelSlug.toLowerCase().trim();
+      const match = currentModels.find(
+        (m) =>
+          m.slug.toLowerCase() === targetSlug ||
+          m.name.toLowerCase() === targetSlug ||
+          (Boolean(m.code) && m.code!.toLowerCase() === targetSlug)
+      );
+      if (match) return match;
+    }
+
     const qNorm = searchQuery.toLowerCase().trim();
-    const vModelParam = (searchParams.get("vehicleModel") || "").toLowerCase().trim();
-    const escapeRegex = (s: string) => s.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
-
-    if (qNorm || vModelParam) {
-      for (const mod of currentModels) {
-        const modNameNorm = mod.name.toLowerCase().trim();
-        const modCodeNorm = (mod.code || "").toLowerCase().trim();
-        const modSlugNorm = mod.slug.toLowerCase().trim();
-
-        if (qNorm) {
-          if (qNorm === modNameNorm || (modCodeNorm && qNorm === modCodeNorm) || qNorm === modSlugNorm) {
-            return mod;
-          }
-
-          // Strict 2-seater (Z10) vs 4-seater (Z10-4) isolation
-          const qIs4 = qNorm.includes("-4") || qNorm.includes(" 4") || /\bz10[-_\s]?4\b/i.test(qNorm);
-          const modIs4 = modNameNorm.includes("-4") || modNameNorm.includes(" 4") || modSlugNorm.includes("-4") || (Boolean(modCodeNorm) && modCodeNorm.includes("4"));
-          if (qIs4 !== modIs4) {
-            continue;
-          }
-
-          const qPlat = detectVehiclePlatform(qNorm);
-          const modPlat = detectVehiclePlatform(mod.code || mod.name || mod.slug);
-          if (qPlat && modPlat && qPlat === modPlat) {
-            return mod;
-          }
-          if (modCodeNorm) {
-            const codeRegex = new RegExp(`(^|[\\s\\-_/])${escapeRegex(modCodeNorm)}($|[\\s\\-_/])`, "i");
-            if (codeRegex.test(qNorm)) return mod;
-          }
-          if (qNorm.includes(modNameNorm) || (modNameNorm.length > 5 && modNameNorm.includes(qNorm))) {
-            return mod;
-          }
-        }
-
-        if (vModelParam) {
-          if (vModelParam === modNameNorm || (modCodeNorm && vModelParam === modCodeNorm) || vModelParam === modSlugNorm) {
-            return mod;
-          }
-          if (vModelParam.includes(modNameNorm) || (modCodeNorm && vModelParam.includes(modCodeNorm))) {
-            return mod;
-          }
-        }
-      }
+    if (qNorm) {
+      const match = currentModels.find(
+        (m) =>
+          m.name.toLowerCase() === qNorm ||
+          m.slug.toLowerCase() === qNorm ||
+          (Boolean(m.code) && m.code!.toLowerCase() === qNorm)
+      );
+      if (match) return match;
     }
 
     if (onlyCompatibleWithGarage && vehicle) {
       const vNameNorm = `${vehicle.brandName || ""} ${vehicle.modelName || ""}`.toLowerCase().trim();
+      const vSlugNorm = (vehicle.modelSlug || "").toLowerCase().trim();
       for (const mod of currentModels) {
-        if (vNameNorm.includes(mod.name.toLowerCase().trim())) {
+        if (
+          mod.slug.toLowerCase() === vSlugNorm ||
+          vNameNorm.includes(mod.name.toLowerCase().trim()) ||
+          vSlugNorm.includes(mod.slug.toLowerCase())
+        ) {
           return mod;
         }
       }
     }
 
     return null;
-  }, [sxsBrandModels, selectedVehicleBrand, searchQuery, searchParams, onlyCompatibleWithGarage, vehicle]);
+  }, [sxsBrandModels, selectedVehicleBrand, selectedModelSlug, searchQuery, onlyCompatibleWithGarage, vehicle]);
 
   const bannerVehicleImageUrl = useMemo(() => {
     if (
@@ -530,6 +513,9 @@ function ProductsContent() {
     const vb = searchParams.get("vehicleBrand") || searchParams.get("sxs");
     setSelectedVehicleBrand(vb || "all");
 
+    const vm = searchParams.get("vehicleModel");
+    setSelectedModelSlug(vm || "");
+
     const db = searchParams.get("distributorBrand") || parseBrandParam(searchParams);
     setSelectedDistributorBrand(db || "all");
 
@@ -568,7 +554,12 @@ function ProductsContent() {
     if (inStockOnly) params.set("inStock", "true");
     if (discountedOnly) params.set("discounted", "true");
     if (sortBy && sortBy !== "relevant") params.set("sort", sortBy);
-    if (onlyCompatibleWithGarage && vehicle) {
+    if (selectedModelSlug) {
+      params.set("vehicleModel", selectedModelSlug);
+      if (selectedVehicleBrand && selectedVehicleBrand !== "all") {
+        params.set("vehicleBrand", selectedVehicleBrand);
+      }
+    } else if (onlyCompatibleWithGarage && vehicle) {
       params.set("vehicleModel", vehicle.modelSlug || `${vehicle.brandName} ${vehicle.modelName}`);
       params.set("vehicleBrand", vehicle.brandSlug || vehicle.brandName);
       if (vehicle.year) params.set("vehicleYear", String(vehicle.year));
@@ -625,6 +616,7 @@ function ProductsContent() {
     discountedOnly,
     sortBy,
     onlyCompatibleWithGarage,
+    selectedModelSlug,
     vehicle,
   ]);
 
@@ -639,6 +631,7 @@ function ProductsContent() {
     setSelectedCategory("all");
     setSelectedVehicleBrand("all");
     setSelectedDistributorBrand("all");
+    setSelectedModelSlug("");
     setInStockOnly(false);
     setDiscountedOnly(false);
     setOnlyCompatibleWithGarage(false);
@@ -736,6 +729,7 @@ function ProductsContent() {
     selectedCategory !== "all" ||
     selectedVehicleBrand !== "all" ||
     selectedDistributorBrand !== "all" ||
+    Boolean(selectedModelSlug) ||
     inStockOnly ||
     discountedOnly ||
     onlyCompatibleWithGarage;
@@ -753,6 +747,7 @@ function ProductsContent() {
     discountedOnly,
     sortBy,
     onlyCompatibleWithGarage,
+    selectedModelSlug,
     vehicle,
   ]);
 
@@ -847,52 +842,51 @@ function ProductsContent() {
                       {lang === "es" ? "Modelos:" : "Models:"}
                     </span>
                     {currentModels.map((mod) => {
-                      const qNorm = searchQuery.toLowerCase().trim();
                       const modNameNorm = mod.name.toLowerCase().trim();
                       const modCodeNorm = (mod.code || "").toLowerCase().trim();
                       const modSlugNorm = mod.slug.toLowerCase().trim();
-                      const escapeRegex = (s: string) => s.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
+                      const qNorm = searchQuery.toLowerCase().trim();
+                      const selModelNorm = selectedModelSlug.toLowerCase().trim();
 
-                      // Strict model chip selection: NEVER allow Z1000 to highlight Z10, or Z10 to highlight Z10-4
-                      const isSelected = Boolean(qNorm) && (() => {
-                        if (qNorm === modNameNorm || (Boolean(modCodeNorm) && qNorm === modCodeNorm) || qNorm === modSlugNorm) {
-                          return true;
-                        }
-
-                        // Prevent 2-seater (Z10) vs 4-seater (Z10-4) cross-highlighting
-                        const qIs4 = qNorm.includes("-4") || qNorm.includes(" 4") || /\bz10[-_\s]?4\b/i.test(qNorm);
-                        const modIs4 = modNameNorm.includes("-4") || modNameNorm.includes(" 4") || modSlugNorm.includes("-4") || (Boolean(modCodeNorm) && modCodeNorm.includes("4"));
-                        if (qIs4 !== modIs4) {
-                          return false;
-                        }
-
-                        const qPlat = detectVehiclePlatform(qNorm);
-                        const modPlat = detectVehiclePlatform(mod.code || mod.name || mod.slug);
-                        if (qPlat && modPlat) {
-                          return qPlat === modPlat;
-                        }
-                        if (modCodeNorm) {
-                          const codeRegex = new RegExp(`(^|[\\s\\-_/])${escapeRegex(modCodeNorm)}($|[\\s\\-_/])`, "i");
-                          if (codeRegex.test(qNorm)) return true;
-                        }
-                        return qNorm.includes(modNameNorm);
-                      })();
+                      // Strict single-model selection:
+                      // Exactly ONE model can be selected. Checks dedicated selectedModelSlug (by slug, name or code)
+                      // or exact match on search query if no model slug is set.
+                      const isSelected = selModelNorm
+                        ? selModelNorm === modSlugNorm ||
+                          selModelNorm === modNameNorm ||
+                          (Boolean(modCodeNorm) && selModelNorm === modCodeNorm)
+                        : Boolean(qNorm) && (
+                            qNorm === modNameNorm ||
+                            qNorm === modSlugNorm ||
+                            (Boolean(modCodeNorm) && qNorm === modCodeNorm)
+                          );
 
                       return (
                         <button
                           key={mod.id || mod.slug}
                           type="button"
                           onClick={() => {
-                            // Use mod.name for clear human-readable search, e.g. "ZForce 1000 Sport R"
-                            const newQuery = isSelected ? "" : mod.name;
-                            setSearchQuery(newQuery);
-                            const params = new URLSearchParams(searchParams.toString());
-                            if (newQuery) {
-                              params.set("q", newQuery);
+                            if (isSelected) {
+                              setSelectedModelSlug("");
+                              if (qNorm === modNameNorm || qNorm === modSlugNorm) {
+                                setSearchQuery("");
+                                updateUrlParams({ vehicleModel: null, q: null });
+                              } else {
+                                updateUrlParams({ vehicleModel: null });
+                              }
                             } else {
-                              params.delete("q");
+                              setSelectedModelSlug(mod.slug);
+                              // If search bar was filled with an old model name, clear it so user gets pure model fitment
+                              const isOtherModelSearch = currentModels.some(
+                                (m) => m.name.toLowerCase() === qNorm || m.slug.toLowerCase() === qNorm
+                              );
+                              if (isOtherModelSearch) {
+                                setSearchQuery("");
+                                updateUrlParams({ vehicleModel: mod.slug, q: null });
+                              } else {
+                                updateUrlParams({ vehicleModel: mod.slug });
+                              }
                             }
-                            router.replace(`/productos?${params.toString()}`);
                           }}
                           className={`px-3 py-1 rounded-full text-xs font-semibold transition-all border cursor-pointer ${
                             isSelected
@@ -914,7 +908,8 @@ function ProductsContent() {
                   type="button"
                   onClick={() => {
                     setSelectedVehicleBrand("all");
-                    updateUrlParams({ vehicleBrand: null, sxs: null });
+                    setSelectedModelSlug("");
+                    updateUrlParams({ vehicleBrand: null, sxs: null, vehicleModel: null });
                   }}
                   className="inline-flex items-center gap-1.5 text-xs text-gray-500 hover:text-[#C02030] font-semibold transition-colors cursor-pointer"
                 >
@@ -1150,6 +1145,7 @@ function ProductsContent() {
             {/* Active Filter Pills Bar */}
             {(selectedVehicleBrand !== "all" ||
               selectedDistributorBrand !== "all" ||
+              Boolean(selectedModelSlug) ||
               inStockOnly ||
               discountedOnly ||
               selectedCategory !== "all" ||
@@ -1173,7 +1169,30 @@ function ProductsContent() {
                       type="button"
                       onClick={() => {
                         setSelectedVehicleBrand("all");
-                        updateUrlParams({ vehicleBrand: null, sxs: null });
+                        setSelectedModelSlug("");
+                        updateUrlParams({ vehicleBrand: null, sxs: null, vehicleModel: null });
+                      }}
+                      className="p-0.5 hover:bg-white/20 rounded-full transition cursor-pointer"
+                    >
+                      <X className="w-3 h-3 text-white" />
+                    </button>
+                  </div>
+                )}
+
+                {/* Specific Vehicle Model Pill */}
+                {Boolean(selectedModelSlug) && (
+                  <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#111827] text-white text-[11px] font-semibold shadow-xs">
+                    <span>
+                      {lang === "es" ? "Modelo:" : "Model:"}{" "}
+                      <strong className="text-white">
+                        {selectedVehicleModel?.name || selectedModelSlug}
+                      </strong>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedModelSlug("");
+                        updateUrlParams({ vehicleModel: null });
                       }}
                       className="p-0.5 hover:bg-white/20 rounded-full transition cursor-pointer"
                     >
