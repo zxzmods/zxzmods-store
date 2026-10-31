@@ -270,16 +270,16 @@ function DualParameterMatrixModal({
       p1 = JSON.parse(JSON.stringify(parameters[0]));
       p2 = JSON.parse(JSON.stringify(parameters[1]));
     } else {
-      // Default Preset from user screenshot
+      // Default Preset from user screenshot with complete bilingual support (Spanish & English)
       p1 = {
         id: `param-${Date.now()}-tip`,
-        nameEs: "Color de Punta (Tip Color)",
+        nameEs: "Color de Punta",
         nameEn: "Tip Color",
         type: "button",
         options: [
           {
             id: `opt-tip-1`,
-            labelEs: "Stainless",
+            labelEs: "Inoxidable",
             labelEn: "Stainless",
             colorHex: "#CBD5E1",
             priceDeltaCRC: 0,
@@ -290,7 +290,7 @@ function DualParameterMatrixModal({
           },
           {
             id: `opt-tip-2`,
-            labelEs: "Black",
+            labelEs: "Negro",
             labelEn: "Black",
             colorHex: "#18181B",
             priceDeltaCRC: 0,
@@ -301,8 +301,8 @@ function DualParameterMatrixModal({
           },
           {
             id: `opt-tip-3`,
-            labelEs: "Blue/Gold",
-            labelEn: "Blue/Gold",
+            labelEs: "Azul / Oro",
+            labelEn: "Blue / Gold",
             colorHex: "#2563EB",
             priceDeltaCRC: 0,
             priceDeltaUSD: 0,
@@ -312,7 +312,7 @@ function DualParameterMatrixModal({
           },
           {
             id: `opt-tip-4`,
-            labelEs: "Gold",
+            labelEs: "Oro",
             labelEn: "Gold",
             colorHex: "#EAB308",
             priceDeltaCRC: 0,
@@ -326,13 +326,13 @@ function DualParameterMatrixModal({
 
       p2 = {
         id: `param-${Date.now() + 1}-cover`,
-        nameEs: "Color de Cubierta (Cover Color)",
+        nameEs: "Color de Cubierta",
         nameEn: "Cover Color",
         type: "button",
         options: [
           {
             id: `opt-cov-1`,
-            labelEs: "Gloss Carbon",
+            labelEs: "Fibra Carbono Brillante",
             labelEn: "Gloss Carbon",
             colorHex: "#0F172A",
             priceDeltaCRC: 0,
@@ -343,7 +343,7 @@ function DualParameterMatrixModal({
           },
           {
             id: `opt-cov-2`,
-            labelEs: "Matte Carbon",
+            labelEs: "Fibra Carbono Mate",
             labelEn: "Matte Carbon",
             colorHex: "#334155",
             priceDeltaCRC: 0,
@@ -354,7 +354,7 @@ function DualParameterMatrixModal({
           },
           {
             id: `opt-cov-3`,
-            labelEs: "Red Carbon",
+            labelEs: "Fibra Carbono Roja",
             labelEn: "Red Carbon",
             colorHex: "#DC2626",
             priceDeltaCRC: 0,
@@ -365,7 +365,7 @@ function DualParameterMatrixModal({
           },
           {
             id: `opt-cov-4`,
-            labelEs: "Gloss Forged Carbon",
+            labelEs: "Carbono Forjado Brillante",
             labelEn: "Gloss Forged Carbon",
             colorHex: "#0F172A",
             priceDeltaCRC: 0,
@@ -376,7 +376,7 @@ function DualParameterMatrixModal({
           },
           {
             id: `opt-cov-5`,
-            labelEs: "Matte Forged Carbon",
+            labelEs: "Carbono Forjado Mate",
             labelEn: "Matte Forged Carbon",
             colorHex: "#334155",
             priceDeltaCRC: 0,
@@ -387,7 +387,7 @@ function DualParameterMatrixModal({
           },
           {
             id: `opt-cov-6`,
-            labelEs: "Gold Forged Carbon",
+            labelEs: "Carbono Forjado Dorado",
             labelEn: "Gold Forged Carbon",
             colorHex: "#EAB308",
             priceDeltaCRC: 0,
@@ -398,7 +398,7 @@ function DualParameterMatrixModal({
           },
           {
             id: `opt-cov-7`,
-            labelEs: "Red Forged Carbon",
+            labelEs: "Carbono Forjado Rojo",
             labelEn: "Red Forged Carbon",
             colorHex: "#EF4444",
             priceDeltaCRC: 0,
@@ -409,7 +409,7 @@ function DualParameterMatrixModal({
           },
           {
             id: `opt-cov-8`,
-            labelEs: "Blue Forged Carbon",
+            labelEs: "Carbono Forjado Azul",
             labelEn: "Blue Forged Carbon",
             colorHex: "#3B82F6",
             priceDeltaCRC: 0,
@@ -752,13 +752,24 @@ function DualParameterMatrixModal({
                         )}
                       </div>
 
-                      <input
-                        type="text"
-                        value={opt1.labelEs}
-                        onChange={(e) => handleUpdateParam1Option(idx, { labelEs: e.target.value })}
-                        placeholder="ej: Stainless"
-                        className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs font-semibold text-slate-900"
-                      />
+                      <div className="flex-1 grid grid-cols-2 gap-1.5 min-w-0">
+                        <input
+                          type="text"
+                          value={opt1.labelEs}
+                          onChange={(e) => handleUpdateParam1Option(idx, { labelEs: e.target.value })}
+                          placeholder="ES: Inoxidable"
+                          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs font-semibold text-slate-900 focus:outline-none focus:border-red-500"
+                          title="Nombre en Español"
+                        />
+                        <input
+                          type="text"
+                          value={opt1.labelEn || ""}
+                          onChange={(e) => handleUpdateParam1Option(idx, { labelEn: e.target.value })}
+                          placeholder="EN: Stainless"
+                          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs text-slate-900 focus:outline-none focus:border-red-500"
+                          title="Name in English"
+                        />
+                      </div>
 
                       <button
                         type="button"
@@ -854,13 +865,24 @@ function DualParameterMatrixModal({
                         )}
                       </div>
 
-                      <input
-                        type="text"
-                        value={opt2.labelEs}
-                        onChange={(e) => handleUpdateParam2Option(idx, { labelEs: e.target.value })}
-                        placeholder="ej: Red Carbon"
-                        className="flex-1 bg-purple-50/50 border border-purple-200 rounded-lg px-2 py-1 text-xs font-semibold text-slate-900"
-                      />
+                      <div className="flex-1 grid grid-cols-2 gap-1.5 min-w-0">
+                        <input
+                          type="text"
+                          value={opt2.labelEs}
+                          onChange={(e) => handleUpdateParam2Option(idx, { labelEs: e.target.value })}
+                          placeholder="ES: Carbono Rojo"
+                          className="w-full bg-purple-50/50 border border-purple-200 rounded-lg px-2 py-1 text-xs font-semibold text-slate-900 focus:outline-none focus:border-purple-500"
+                          title="Nombre en Español"
+                        />
+                        <input
+                          type="text"
+                          value={opt2.labelEn || ""}
+                          onChange={(e) => handleUpdateParam2Option(idx, { labelEn: e.target.value })}
+                          placeholder="EN: Red Carbon"
+                          className="w-full bg-purple-50/50 border border-purple-200 rounded-lg px-2 py-1 text-xs text-slate-900 focus:outline-none focus:border-purple-500"
+                          title="Name in English"
+                        />
+                      </div>
 
                       <div className="w-20 shrink-0">
                         <input
@@ -940,7 +962,14 @@ function DualParameterMatrixModal({
                           style={{ backgroundColor: color }}
                         />
                       )}
-                      <span>{opt1.labelEs || "Sin nombre"}</span>
+                      <span>
+                        {opt1.labelEs || "Sin nombre"}
+                        {opt1.labelEn && opt1.labelEn !== opt1.labelEs ? (
+                          <span className={isSelected ? "text-white/80 font-normal ml-1" : "text-slate-400 font-normal ml-1"}>
+                            ({opt1.labelEn})
+                          </span>
+                        ) : null}
+                      </span>
                       <span
                         className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold ${
                           isSelected
@@ -994,9 +1023,13 @@ function DualParameterMatrixModal({
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
                   {(activeOpt1.connections || []).map((conn, cIdx) => {
                     const opt2 = param2.options.find((o) => o.id === conn.secondOptionId);
-                    const opt1Color = resolveOptionColorHex(activeOpt1.labelEs || "", activeOpt1.colorHex);
-                    const opt2Color = resolveOptionColorHex(conn.secondOptionLabelEs || opt2?.labelEs || "", conn.secondOptionColorHex || opt2?.colorHex);
-                    const opt2Label = conn.secondOptionLabelEs || opt2?.labelEs || `Opción ${cIdx + 1}`;
+                    const opt1LabelEs = activeOpt1.labelEs || "Opción 1";
+                    const opt1LabelEn = activeOpt1.labelEn || opt1LabelEs;
+                    const opt2LabelEs = conn.secondOptionLabelEs || opt2?.labelEs || `Opción ${cIdx + 1}`;
+                    const opt2LabelEn = conn.secondOptionLabelEn || opt2?.labelEn || opt2LabelEs;
+
+                    const opt1Color = resolveOptionColorHex(opt1LabelEs || opt1LabelEn, activeOpt1.colorHex);
+                    const opt2Color = resolveOptionColorHex(opt2LabelEs || opt2LabelEn, conn.secondOptionColorHex || opt2?.colorHex);
 
                     const baseSumUSD = (activeOpt1.priceDeltaUSD || 0) + (opt2?.priceDeltaUSD || 0);
                     const baseSumCRC = (activeOpt1.priceDeltaCRC || 0) + (opt2?.priceDeltaCRC || 0);
@@ -1022,16 +1055,24 @@ function DualParameterMatrixModal({
                               <span
                                 className="w-4 h-4 rounded-full border border-white shadow-xs"
                                 style={{ backgroundColor: opt1Color || "#CBD5E1" }}
-                                title={activeOpt1.labelEs}
+                                title={`${opt1LabelEs} (${opt1LabelEn})`}
                               />
                               <span
                                 className="w-4 h-4 rounded-full border border-white shadow-xs"
                                 style={{ backgroundColor: opt2Color || "#0F172A" }}
-                                title={opt2Label}
+                                title={`${opt2LabelEs} (${opt2LabelEn})`}
                               />
                             </div>
                             <span className="text-xs font-bold text-slate-900 truncate">
-                              <span className="text-slate-600">{activeOpt1.labelEs}</span> + <span className="text-[#C02030] font-black">{opt2Label}</span>
+                              <span className="text-slate-700 font-extrabold">{opt1LabelEs}</span>
+                              {opt1LabelEn !== opt1LabelEs && (
+                                <span className="text-slate-400 font-normal text-[11px] ml-1">({opt1LabelEn})</span>
+                              )}
+                              <span className="text-slate-400 mx-1.5">+</span>
+                              <span className="text-[#C02030] font-black">{opt2LabelEs}</span>
+                              {opt2LabelEn !== opt2LabelEs && (
+                                <span className="text-rose-400 font-normal text-[11px] ml-1">({opt2LabelEn})</span>
+                              )}
                             </span>
                           </div>
 
@@ -1064,7 +1105,7 @@ function DualParameterMatrixModal({
                               type="url"
                               value={conn.supplierUrl || ""}
                               onChange={(e) => handleUpdateActiveConnection(conn.secondOptionId, { supplierUrl: e.target.value })}
-                              placeholder={`https://supplier.com/item?tip=${encodeURIComponent(activeOpt1.labelEs)}&cover=${encodeURIComponent(opt2Label)}`}
+                              placeholder={`https://supplier.com/item?tip=${encodeURIComponent(opt1LabelEs)}&cover=${encodeURIComponent(opt2LabelEs)}`}
                               className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 font-mono focus:outline-none focus:border-red-500"
                             />
                             {conn.supplierUrl && (
@@ -1150,7 +1191,7 @@ function DualParameterMatrixModal({
                             </div>
                           ) : (
                             <p className="text-[10px] text-slate-400 italic">
-                              Sin fotos individuales. La tienda mostrará las fotos de {opt2Label}.
+                              Sin fotos individuales. La tienda mostrará las fotos de {opt2LabelEs}.
                             </p>
                           )}
 
@@ -1346,13 +1387,13 @@ function ParametersEditorSection({
   const handleAddDualParameterPreset = () => {
     const tipParam: ConfigurableParameter = {
       id: `param-${Date.now()}-tip`,
-      nameEs: "Color de Punta (Tip Color)",
+      nameEs: "Color de Punta",
       nameEn: "Tip Color",
       type: "button",
       options: [
         {
           id: `opt-tip-${Date.now()}-1`,
-          labelEs: "Stainless",
+          labelEs: "Inoxidable",
           labelEn: "Stainless",
           colorHex: "#CBD5E1",
           priceDeltaCRC: 0,
@@ -1363,7 +1404,7 @@ function ParametersEditorSection({
         },
         {
           id: `opt-tip-${Date.now()}-2`,
-          labelEs: "Black",
+          labelEs: "Negro",
           labelEn: "Black",
           colorHex: "#18181B",
           priceDeltaCRC: 0,
@@ -1374,8 +1415,8 @@ function ParametersEditorSection({
         },
         {
           id: `opt-tip-${Date.now()}-3`,
-          labelEs: "Blue/Gold",
-          labelEn: "Blue/Gold",
+          labelEs: "Azul / Oro",
+          labelEn: "Blue / Gold",
           colorHex: "#2563EB",
           priceDeltaCRC: 0,
           priceDeltaUSD: 0,
@@ -1385,7 +1426,7 @@ function ParametersEditorSection({
         },
         {
           id: `opt-tip-${Date.now()}-4`,
-          labelEs: "Gold",
+          labelEs: "Oro",
           labelEn: "Gold",
           colorHex: "#EAB308",
           priceDeltaCRC: 0,
@@ -1399,13 +1440,13 @@ function ParametersEditorSection({
 
     const coverParam: ConfigurableParameter = {
       id: `param-${Date.now() + 1}-cover`,
-      nameEs: "Color de Cubierta (Cover Color)",
+      nameEs: "Color de Cubierta",
       nameEn: "Cover Color",
       type: "button",
       options: [
         {
           id: `opt-cov-${Date.now()}-1`,
-          labelEs: "Gloss Carbon",
+          labelEs: "Fibra Carbono Brillante",
           labelEn: "Gloss Carbon",
           colorHex: "#0F172A",
           priceDeltaCRC: 0,
@@ -1416,7 +1457,7 @@ function ParametersEditorSection({
         },
         {
           id: `opt-cov-${Date.now()}-2`,
-          labelEs: "Matte Carbon",
+          labelEs: "Fibra Carbono Mate",
           labelEn: "Matte Carbon",
           colorHex: "#334155",
           priceDeltaCRC: 0,
@@ -1427,7 +1468,7 @@ function ParametersEditorSection({
         },
         {
           id: `opt-cov-${Date.now()}-3`,
-          labelEs: "Red Carbon",
+          labelEs: "Fibra Carbono Roja",
           labelEn: "Red Carbon",
           colorHex: "#DC2626",
           priceDeltaCRC: 0,
@@ -1438,7 +1479,7 @@ function ParametersEditorSection({
         },
         {
           id: `opt-cov-${Date.now()}-4`,
-          labelEs: "Gloss Forged Carbon",
+          labelEs: "Carbono Forjado Brillante",
           labelEn: "Gloss Forged Carbon",
           colorHex: "#0F172A",
           priceDeltaCRC: 0,
@@ -1449,7 +1490,7 @@ function ParametersEditorSection({
         },
         {
           id: `opt-cov-${Date.now()}-5`,
-          labelEs: "Matte Forged Carbon",
+          labelEs: "Carbono Forjado Mate",
           labelEn: "Matte Forged Carbon",
           colorHex: "#334155",
           priceDeltaCRC: 0,
@@ -1460,9 +1501,9 @@ function ParametersEditorSection({
         },
         {
           id: `opt-cov-${Date.now()}-6`,
-          labelEs: "Gold Forged Carbon",
+          labelEs: "Carbono Forjado Dorado",
           labelEn: "Gold Forged Carbon",
-          colorHex: "#CA8A04",
+          colorHex: "#EAB308",
           priceDeltaCRC: 0,
           priceDeltaUSD: 0,
           imageUrl: "",
@@ -1471,9 +1512,9 @@ function ParametersEditorSection({
         },
         {
           id: `opt-cov-${Date.now()}-7`,
-          labelEs: "Red Forged Carbon",
+          labelEs: "Carbono Forjado Rojo",
           labelEn: "Red Forged Carbon",
-          colorHex: "#B91C1C",
+          colorHex: "#EF4444",
           priceDeltaCRC: 0,
           priceDeltaUSD: 0,
           imageUrl: "",
@@ -1482,9 +1523,9 @@ function ParametersEditorSection({
         },
         {
           id: `opt-cov-${Date.now()}-8`,
-          labelEs: "Blue Forged Carbon",
+          labelEs: "Carbono Forjado Azul",
           labelEn: "Blue Forged Carbon",
-          colorHex: "#1D4ED8",
+          colorHex: "#3B82F6",
           priceDeltaCRC: 0,
           priceDeltaUSD: 0,
           imageUrl: "",
@@ -1493,6 +1534,9 @@ function ParametersEditorSection({
         },
       ],
     };
+
+    // Synchronize connections immediately across the entire parameter matrix
+    tipParam.options = synchronizeDualParameterConnections(tipParam.options, coverParam.options);
 
     onChange([...(parameters || []), tipParam, coverParam]);
   };
