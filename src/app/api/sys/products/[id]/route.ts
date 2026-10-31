@@ -89,6 +89,11 @@ export async function PATCH(
     } else if (body.relatedProductIdsJson !== undefined) {
       updateData.relatedProductIdsJson = typeof body.relatedProductIdsJson === "string" ? body.relatedProductIdsJson : JSON.stringify(body.relatedProductIdsJson);
     }
+    if (body.requiredProductIds !== undefined) {
+      updateData.requiredProductIdsJson = Array.isArray(body.requiredProductIds) ? JSON.stringify(body.requiredProductIds) : String(body.requiredProductIds);
+    } else if (body.requiredProductIdsJson !== undefined) {
+      updateData.requiredProductIdsJson = typeof body.requiredProductIdsJson === "string" ? body.requiredProductIdsJson : JSON.stringify(body.requiredProductIdsJson);
+    }
     if (body.suggestedProductIds !== undefined) {
       updateData.suggestedProductIdsJson = Array.isArray(body.suggestedProductIds) ? JSON.stringify(body.suggestedProductIds) : String(body.suggestedProductIds);
     } else if (body.suggestedProductIdsJson !== undefined) {
@@ -618,6 +623,12 @@ export async function PATCH(
           target.relatedProductIds = Array.isArray(body.relatedProductIds) ? body.relatedProductIds : [];
         } else if (updatedProduct.relatedProductIdsJson) {
           try { target.relatedProductIds = JSON.parse(updatedProduct.relatedProductIdsJson); } catch {}
+        }
+
+        if (body.requiredProductIds !== undefined) {
+          target.requiredProductIds = Array.isArray(body.requiredProductIds) ? body.requiredProductIds : [];
+        } else if ((updatedProduct as any).requiredProductIdsJson) {
+          try { target.requiredProductIds = JSON.parse((updatedProduct as any).requiredProductIdsJson); } catch {}
         }
 
         if (body.suggestedProductIds !== undefined) {

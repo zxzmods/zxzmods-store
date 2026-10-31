@@ -234,6 +234,9 @@ export async function POST(request: Request) {
         relatedProductIdsJson: Array.isArray(body.relatedProductIds)
           ? JSON.stringify(body.relatedProductIds)
           : (typeof body.relatedProductIdsJson === "string" ? body.relatedProductIdsJson : "[]"),
+        requiredProductIdsJson: Array.isArray(body.requiredProductIds)
+          ? JSON.stringify(body.requiredProductIds)
+          : (typeof body.requiredProductIdsJson === "string" ? body.requiredProductIdsJson : "[]"),
         suggestedProductIdsJson: Array.isArray(body.suggestedProductIds)
           ? JSON.stringify(body.suggestedProductIds)
           : (typeof body.suggestedProductIdsJson === "string" ? body.suggestedProductIdsJson : "[]"),

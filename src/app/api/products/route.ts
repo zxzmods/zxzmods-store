@@ -219,6 +219,15 @@ function dbProductToProductItem(dbProd: any, jsonProd?: ProductItem | null, isSt
       }
       return [];
     })(),
+    requiredProductIds: (() => {
+      if ((dbProd as any).requiredProductIdsJson) {
+        try {
+          const parsed = JSON.parse((dbProd as any).requiredProductIdsJson);
+          if (Array.isArray(parsed)) return parsed;
+        } catch {}
+      }
+      return [];
+    })(),
     suggestedProductIds: (() => {
       if ((dbProd as any).suggestedProductIdsJson) {
         try {
@@ -627,6 +636,26 @@ export async function GET(request: Request) {
           }));
       } else {
         finalProduct.suggestedCombos = [];
+      }
+
+      if (finalProduct.requiredProductIds && finalProduct.requiredProductIds.length > 0) {
+        const reqIds = finalProduct.requiredProductIds;
+        const reqDb = await prisma.product.findMany({
+          where: {
+            OR: [
+              { id: { in: reqIds } },
+              { sku: { in: reqIds } },
+              { slug: { in: reqIds } },
+            ],
+            isArchived: false,
+          },
+          include: { category: true, compatibilities: true },
+        });
+        finalProduct.requiredProducts = reqDb.map((p) =>
+          dbProductToProductItem(p, null, isStaff)
+        );
+      } else {
+        finalProduct.requiredProducts = [];
       }
 
       return NextResponse.json({ success: true, product: finalProduct });

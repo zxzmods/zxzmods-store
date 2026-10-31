@@ -90,6 +90,7 @@ model Product {
   parametersJson             String?                @default("[]")
   voidsWarranty              Boolean                @default(false)
   relatedProductIdsJson      String?                @default("[]")
+  requiredProductIdsJson     String?                @default("[]")
   suggestedProductIdsJson    String?                @default("[]")
   suggestedComboIdsJson      String?                @default("[]")
   compatibilities           ProductCompatibility[]

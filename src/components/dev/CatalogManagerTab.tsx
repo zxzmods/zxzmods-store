@@ -177,6 +177,8 @@ interface Product {
   voidsWarranty?: boolean;
   relatedProductIds?: string[];
   relatedProductIdsJson?: string | null;
+  requiredProductIds?: string[];
+  requiredProductIdsJson?: string | null;
   suggestedProductIds?: string[];
   suggestedProductIdsJson?: string | null;
   suggestedComboIds?: string[];
@@ -3192,6 +3194,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
     selectedCategories: [] as string[],
     voidsWarranty: false,
     relatedProductIds: [] as string[],
+    requiredProductIds: [] as string[],
     suggestedProductIds: [] as string[],
     suggestedComboIds: [] as string[],
     compText: "",
@@ -3256,6 +3259,10 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
   // Related products search in product editor
   const [relatedProductSearch, setRelatedProductSearch] = useState("");
   const [isRelatedSearchDropdownOpen, setIsRelatedSearchDropdownOpen] = useState(false);
+
+  // Required products (requirements attachment) search in product editor
+  const [requiredProductSearch, setRequiredProductSearch] = useState("");
+  const [isRequiredSearchDropdownOpen, setIsRequiredSearchDropdownOpen] = useState(false);
 
   // Active description tab in editor
   const [activeDescTab, setActiveDescTab] = useState<"es" | "en">("es");
@@ -3851,6 +3858,16 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
         }
         return [];
       })(),
+      requiredProductIds: (() => {
+        if (Array.isArray(prod.requiredProductIds)) return prod.requiredProductIds;
+        if (prod.requiredProductIdsJson) {
+          try {
+            const parsed = JSON.parse(prod.requiredProductIdsJson);
+            if (Array.isArray(parsed)) return parsed;
+          } catch {}
+        }
+        return [];
+      })(),
       suggestedProductIds: (() => {
         if (Array.isArray(prod.suggestedProductIds)) return prod.suggestedProductIds;
         if (prod.suggestedProductIdsJson) {
@@ -3934,6 +3951,8 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
     setSupplierTestResult(null);
     setRelatedProductSearch("");
     setIsRelatedSearchDropdownOpen(false);
+    setRequiredProductSearch("");
+    setIsRequiredSearchDropdownOpen(false);
     setInitialFormSnapshot(JSON.stringify({ ...editInitialForm, selectedVehicles: initialVehicles }));
     setIsSkuManuallyEdited(true);
     setIsEditingProductView(true);
@@ -3962,6 +3981,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       selectedCategories: [defaultCat],
       voidsWarranty: false,
       relatedProductIds: [] as string[],
+      requiredProductIds: [] as string[],
       compText: "",
       warrantyCategory: "BOLT_ON_ELECTRICAL",
       stockStatus: "IN_STOCK_US",
@@ -4015,6 +4035,10 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
     };
     setProductForm(createInitialForm);
     setSupplierTestResult(null);
+    setRelatedProductSearch("");
+    setIsRelatedSearchDropdownOpen(false);
+    setRequiredProductSearch("");
+    setIsRequiredSearchDropdownOpen(false);
     setInitialFormSnapshot(JSON.stringify({ ...createInitialForm, category: defaultCat, selectedVehicles: initialCreateVehicles }));
     setIsEditingProductView(true);
     setFeedback(null);
@@ -4549,6 +4573,8 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       voidsWarranty: Boolean(productForm.voidsWarranty),
       relatedProductIds: productForm.relatedProductIds || [],
       relatedProductIdsJson: JSON.stringify(productForm.relatedProductIds || []),
+      requiredProductIds: productForm.requiredProductIds || [],
+      requiredProductIdsJson: JSON.stringify(productForm.requiredProductIds || []),
       suggestedProductIds: productForm.suggestedProductIds || [],
       suggestedProductIdsJson: JSON.stringify(productForm.suggestedProductIds || []),
       suggestedComboIds: productForm.suggestedComboIds || [],
@@ -7083,6 +7109,165 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                     className="w-full bg-slate-50 border border-red-200 rounded-xl p-2.5 text-xs text-slate-900 focus:outline-none focus:border-red-500"
                   />
                   <p className="text-[10px] text-slate-500 mt-1">Notas de instalación, combustible mínimo o ajustes de motor necesarios.</p>
+                </div>
+
+                {/* Attached Required Products Section (Requirements Attachment) */}
+                <div className="space-y-3 pt-3 border-t border-slate-100">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-800 flex items-center gap-1.5">
+                      <Link2 className="w-3.5 h-3.5 text-amber-600" />
+                      <span>{t.devRequiredProductsTitle}</span>
+                    </span>
+                    <span className="text-[10px] text-slate-500 font-mono">
+                      {(productForm.requiredProductIds || []).length} {lang === "es" ? "seleccionado(s)" : "selected"}
+                    </span>
+                  </div>
+
+                  <p className="text-[10px] text-slate-500 leading-relaxed">
+                    {t.devRequiredProductsDesc}
+                  </p>
+
+                  {/* Search & Add Picker */}
+                  <div className="relative">
+                    <div className="flex items-center gap-2 bg-slate-50 border border-amber-200 rounded-2xl p-2.5 focus-within:border-amber-500 transition">
+                      <Search className="w-4 h-4 text-slate-400 shrink-0 ml-1" />
+                      <input
+                        type="text"
+                        value={requiredProductSearch}
+                        onChange={(e) => {
+                          setRequiredProductSearch(e.target.value);
+                          setIsRequiredSearchDropdownOpen(true);
+                        }}
+                        onFocus={() => setIsRequiredSearchDropdownOpen(true)}
+                        placeholder={t.devAddRequiredProductPlaceholder}
+                        className="w-full bg-transparent text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none"
+                      />
+                      {requiredProductSearch && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setRequiredProductSearch("");
+                            setIsRequiredSearchDropdownOpen(false);
+                          }}
+                          className="p-1 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Dropdown Results */}
+                    {isRequiredSearchDropdownOpen && requiredProductSearch.trim().length > 0 && (
+                      <div className="absolute z-20 left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-2xl shadow-xl max-h-64 overflow-y-auto divide-y divide-slate-100">
+                        {products
+                          .filter((p) => {
+                            if (editingProduct && (p.id === editingProduct.id || p.sku === editingProduct.sku)) return false;
+                            if ((productForm.requiredProductIds || []).includes(p.id) || (p.sku && (productForm.requiredProductIds || []).includes(p.sku))) return false;
+                            const q = normalizeSearchStr(requiredProductSearch).trim();
+                            const haystack = normalizeSearchStr(
+                              [p.nameEs, p.nameEn, p.p_title, p.sku, p.slug, p.brandName, ...(Array.isArray(p.brand) ? p.brand : [])].join(" ")
+                            );
+                            return haystack.includes(q);
+                          })
+                          .slice(0, 8)
+                          .map((candidate) => (
+                            <button
+                              key={candidate.id}
+                              type="button"
+                              onClick={() => {
+                                const idToAdd = candidate.id;
+                                setProductForm((prev) => ({
+                                  ...prev,
+                                  requiredProductIds: Array.from(new Set([...(prev.requiredProductIds || []), idToAdd])),
+                                }));
+                                setRequiredProductSearch("");
+                                setIsRequiredSearchDropdownOpen(false);
+                              }}
+                              className="w-full p-2.5 text-left hover:bg-amber-50 flex items-center justify-between gap-3 transition cursor-pointer"
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <div className="w-8 h-8 rounded-lg bg-slate-100 border border-slate-200 p-0.5 flex items-center justify-center shrink-0">
+                                  <img
+                                    src={candidate.imageUrl || "/images/logo.png"}
+                                    alt=""
+                                    className="max-h-full max-w-full object-contain"
+                                  />
+                                </div>
+                                <div className="min-w-0">
+                                  <span className="text-xs font-bold text-slate-800 block truncate">
+                                    {lang === "es" ? (candidate.nameEs || candidate.p_title || candidate.nameEn) : (candidate.nameEn || candidate.nameEs || candidate.p_title)}
+                                  </span>
+                                  <span className="text-[10px] text-slate-500 font-mono">
+                                    #{candidate.sku} · {formatCRC(candidate.priceCRC || candidate.price?.T_price || 0)}
+                                  </span>
+                                </div>
+                              </div>
+                              <span className="text-xs font-bold text-amber-700 bg-amber-100/80 px-2 py-0.5 rounded-lg flex items-center gap-1 shrink-0">
+                                <Plus className="w-3 h-3" />
+                                <span>{lang === "es" ? "Adjuntar" : "Attach"}</span>
+                              </span>
+                            </button>
+                          ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Selected Required Products List */}
+                  <div className="space-y-2">
+                    {(productForm.requiredProductIds || []).length === 0 ? (
+                      <div className="p-3 text-center rounded-2xl bg-slate-50 border border-dashed border-slate-200 text-xs text-slate-400">
+                        {t.devNoRequiredProducts}
+                      </div>
+                    ) : (
+                      (productForm.requiredProductIds || []).map((reqId, idx) => {
+                        const matchedProd = products.find((p) => p.id === reqId || p.sku === reqId || p.slug === reqId);
+                        return (
+                          <div
+                            key={reqId || idx}
+                            className="p-2.5 bg-amber-50/40 rounded-2xl border border-amber-200 flex items-center justify-between gap-3"
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div className="w-10 h-10 rounded-xl bg-white border border-slate-200 p-1 flex items-center justify-center shrink-0">
+                                <img
+                                  src={matchedProd?.imageUrl || "/images/logo.png"}
+                                  alt=""
+                                  className="max-h-full max-w-full object-contain"
+                                />
+                              </div>
+                              <div className="min-w-0">
+                                <span className="text-xs font-bold text-slate-900 block truncate">
+                                  {lang === "es"
+                                    ? (matchedProd?.nameEs || matchedProd?.p_title || matchedProd?.nameEn || reqId)
+                                    : (matchedProd?.nameEn || matchedProd?.nameEs || matchedProd?.p_title || reqId)}
+                                </span>
+                                <div className="flex items-center gap-2 text-[10px] text-slate-500 font-mono">
+                                  {matchedProd?.sku && <span>#{matchedProd.sku}</span>}
+                                  {matchedProd && (
+                                    <span className="text-emerald-700 font-bold">
+                                      {formatCRC(matchedProd.priceCRC || matchedProd.price?.T_price || 0)}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setProductForm((prev) => ({
+                                  ...prev,
+                                  requiredProductIds: (prev.requiredProductIds || []).filter((id) => id !== reqId),
+                                }));
+                              }}
+                              className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-100/60 rounded-xl transition cursor-pointer"
+                              title={lang === "es" ? "Quitar de requeridos" : "Remove from required"}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
                 </div>
 
                 {/* reviews */}

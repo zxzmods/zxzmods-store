@@ -84,6 +84,8 @@ export interface ProductItem {
   installationDurationMinutes?: number;
   relatedProductIds?: string[];
   relatedProducts?: ProductItem[];
+  requiredProductIds?: string[];
+  requiredProducts?: ProductItem[];
   suggestedProductIds?: string[];
   suggestedComboIds?: string[];
   suggestedProducts?: ProductItem[];

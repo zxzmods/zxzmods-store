@@ -1705,6 +1705,14 @@ export interface Translations {
   productRelatedTitle: string;
   productRelatedSubtitle: string;
 
+  // Required Products (Requirements Attachment)
+  devRequiredProductsTitle: string;
+  devRequiredProductsDesc: string;
+  devAddRequiredProductPlaceholder: string;
+  devNoRequiredProducts: string;
+  productRequiredBadge: string;
+  productViewRequiredProductBtn: string;
+
   // Suggested Products & Combos (For function & damage prevention - distinct from recommended)
   productSuggestionsSectionTitle: string;
   productSuggestionsSectionSubtitle: string;
@@ -3689,6 +3697,14 @@ export const translations: Record<Language, Translations> = {
     productRelatedTitle: "Productos Recomendados & Complementarios",
     productRelatedSubtitle: "Mejoras sugeridas por el equipo técnico de ZxZ Mods para complementar este producto.",
 
+    // Required Products (Requirements Attachment)
+    devRequiredProductsTitle: "Piezas / Productos Requeridos (requirements)",
+    devRequiredProductsDesc: "Adjunta los componentes o productos indispensables que este artículo requiere para su instalación o funcionamiento.",
+    devAddRequiredProductPlaceholder: "Buscar y adjuntar producto requerido...",
+    devNoRequiredProducts: "No hay productos requeridos adjuntos aún.",
+    productRequiredBadge: "Componente Requerido",
+    productViewRequiredProductBtn: "Ver Componente Requerido",
+
     // Suggested Products & Combos (For function & damage prevention - distinct from recommended)
     productSuggestionsSectionTitle: "Sugeridos para Mejor Funcionamiento y Prevención",
     productSuggestionsSectionSubtitle: "Componentes sugeridos para prevenir fallas o desgaste y garantizar un funcionamiento óptimo.",
@@ -5670,6 +5686,14 @@ export const translations: Record<Language, Translations> = {
     devNoRelatedProducts: "No related products assigned yet.",
     productRelatedTitle: "Recommended & Related Products",
     productRelatedSubtitle: "Upgrades recommended by the ZxZ Mods technical team to complement this product.",
+
+    // Required Products (Requirements Attachment)
+    devRequiredProductsTitle: "Required Parts / Products (requirements)",
+    devRequiredProductsDesc: "Attach mandatory or indispensable parts/products that this item requires for installation or proper operation.",
+    devAddRequiredProductPlaceholder: "Search and attach required product...",
+    devNoRequiredProducts: "No required products attached yet.",
+    productRequiredBadge: "Required Component",
+    productViewRequiredProductBtn: "View Required Component",
 
     // Suggested Products & Combos (For function & damage prevention - distinct from recommended)
     productSuggestionsSectionTitle: "Suggested for Optimal Operation & Prevention",

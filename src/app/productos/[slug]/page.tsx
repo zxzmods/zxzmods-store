@@ -1850,15 +1850,65 @@ export default function ProductDetailPage() {
                 ) : null}
 
                 {/* Requirements Notice if defined on product */}
-                {product.requirements && (
-                  <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-950 text-xs flex items-start gap-2.5">
-                    <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-                    <div className="leading-relaxed">
-                      <span className="font-bold text-amber-900">
-                        {t.productsRequirementsNotice}:{" "}
-                      </span>
-                      <span>{product.requirements}</span>
+                {(product.requirements || (product.requiredProducts && product.requiredProducts.length > 0)) && (
+                  <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-950 text-xs flex flex-col gap-2">
+                    <div className="flex items-start gap-2.5">
+                      <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                      <div className="leading-relaxed">
+                        <span className="font-bold text-amber-900">
+                          {t.productsRequirementsNotice}:{" "}
+                        </span>
+                        <span>{product.requirements || (lang === "es" ? "Este componente requiere piezas complementarias para su instalación o funcionamiento." : "This part requires complementary components for installation or proper operation.")}</span>
+                      </div>
                     </div>
+
+                    {product.requiredProducts && product.requiredProducts.length > 0 && (
+                      <div className="mt-1 pt-2 border-t border-amber-500/20 space-y-1.5">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-amber-900 block">
+                          {t.productRequiredBadge} ({product.requiredProducts.length}):
+                        </span>
+                        <div className="space-y-1.5">
+                          {product.requiredProducts.map((req) => {
+                            const reqPriceDisplay = currency === "USD"
+                              ? formatUSD(convertCRCToUSD(req.price?.T_price ?? (req as any).priceCRC ?? 0, sellRate))
+                              : formatCRC(req.price?.T_price ?? (req as any).priceCRC ?? 0);
+                            const reqTitle = lang === "es"
+                              ? (req.nameEs || req.p_title || req.nameEn)
+                              : (req.nameEn || req.nameEs || req.p_title);
+
+                            return (
+                              <Link
+                                key={req.id}
+                                href={`/productos/${req.slug || req.id}`}
+                                className="flex items-center justify-between gap-2 p-2 rounded-xl bg-white/90 hover:bg-white border border-amber-300/70 hover:border-amber-500 transition shadow-2xs group"
+                              >
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <div className="w-8 h-8 rounded-lg bg-amber-50 border border-amber-200 p-0.5 flex items-center justify-center shrink-0">
+                                    <img
+                                      src={req.imgs?.[0] || (req as any).imageUrl || "/images/logo.png"}
+                                      alt=""
+                                      className="max-h-full max-w-full object-contain"
+                                    />
+                                  </div>
+                                  <div className="min-w-0">
+                                    <span className="text-xs font-bold text-slate-900 group-hover:text-amber-800 truncate block">
+                                      {reqTitle}
+                                    </span>
+                                    <span className="text-[10px] text-amber-800 font-mono font-semibold">
+                                      #{req.sku} · {reqPriceDisplay}
+                                    </span>
+                                  </div>
+                                </div>
+                                <span className="text-[11px] font-bold text-amber-700 group-hover:underline flex items-center gap-0.5 shrink-0">
+                                  <span>{lang === "es" ? "Ver" : "View"}</span>
+                                  <ChevronRight className="w-3 h-3" />
+                                </span>
+                              </Link>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -2024,7 +2074,7 @@ export default function ProductDetailPage() {
             </div>
 
             {/* Requirements Shelf (if product specifies required components) */}
-            {product.requirements && (
+            {(product.requirements || (product.requiredProducts && product.requiredProducts.length > 0)) && (
               <section className="mt-16 pt-10 border-t border-gray-200">
                 <div className="mb-6 space-y-1">
                   <div className="flex items-center gap-2">
@@ -2038,21 +2088,90 @@ export default function ProductDetailPage() {
                   </p>
                 </div>
 
-                <div className="p-6 rounded-3xl bg-amber-500/10 border border-amber-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                  <div className="flex items-start gap-3">
-                    <AlertCircle className="w-6 h-6 text-amber-600 flex-shrink-0 mt-0.5" />
-                    <div>
-                      <h3 className="font-bold text-sm text-amber-950">
-                        {product.requirements}
-                      </h3>
-                      <p className="text-xs text-amber-800/90 mt-1">
-                        {lang === "es"
-                          ? "Para asegurar la máxima confiabilidad mecánica y rendimiento del vehículo con este accesorio, recomendamos instalar este componente complementario."
-                          : "To ensure maximum mechanical reliability and performance with this upgrade, we recommend this complementary component."}
-                      </p>
+                {product.requirements && (
+                  <div className="p-6 rounded-3xl bg-amber-500/10 border border-amber-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
+                    <div className="flex items-start gap-3">
+                      <AlertCircle className="w-6 h-6 text-amber-600 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <h3 className="font-bold text-sm text-amber-950">
+                          {product.requirements}
+                        </h3>
+                        <p className="text-xs text-amber-800/90 mt-1">
+                          {lang === "es"
+                            ? "Para asegurar la máxima confiabilidad mecánica y rendimiento del vehículo con este accesorio, recomendamos instalar este componente complementario."
+                            : "To ensure maximum mechanical reliability and performance with this upgrade, we recommend this complementary component."}
+                        </p>
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
+
+                {product.requiredProducts && product.requiredProducts.length > 0 && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
+                    {product.requiredProducts.map((req) => {
+                      const brandDisplay = normalizeBrandName(
+                        req.brand?.[0] || (req as any).brandName || ""
+                      );
+                      const reqPriceDisplay = currency === "USD"
+                        ? formatUSD(convertCRCToUSD(req.price?.T_price ?? (req as any).priceCRC ?? 0, sellRate))
+                        : formatCRC(req.price?.T_price ?? (req as any).priceCRC ?? 0);
+                      const reqTitle = lang === "es"
+                        ? (req.nameEs || req.p_title || req.nameEn)
+                        : (req.nameEn || req.nameEs || req.p_title);
+
+                      return (
+                        <div
+                          key={req.id}
+                          className="group flex flex-col bg-amber-50/20 rounded-3xl border border-amber-200/90 overflow-hidden hover:shadow-xl hover:border-amber-400 transition-all duration-300 p-4 justify-between"
+                        >
+                          <div>
+                            <div className="relative h-44 w-full bg-gradient-to-b from-[#FBFBFC] to-[#F1F3F5] rounded-2xl overflow-hidden mb-3">
+                              <Image
+                                src={req.imgs?.[0] || (req as any).imageUrl || "/images/logo.png"}
+                                alt={reqTitle || "Required product"}
+                                fill
+                                className="object-contain p-3 group-hover:scale-105 transition-transform duration-300"
+                              />
+                              <span className="absolute top-2.5 left-2.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-amber-600 text-white shadow-xs flex items-center gap-1">
+                                <AlertCircle className="w-3 h-3" />
+                                <span>{t.productRequiredBadge}</span>
+                              </span>
+                            </div>
+
+                            <div className="space-y-1">
+                              {brandDisplay && (
+                                <span className="text-[10px] font-bold text-gray-600 bg-gray-100 px-2 py-0.5 rounded-full inline-block">
+                                  {brandDisplay}
+                                </span>
+                              )}
+                              <h3 className="font-bold text-xs text-gray-900 group-hover:text-amber-800 transition-colors line-clamp-2 mt-1">
+                                {reqTitle}
+                              </h3>
+                              <p className="text-[10px] text-gray-500 font-mono">
+                                #{req.sku}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="pt-3 border-t border-amber-100/80 mt-3 flex items-center justify-between">
+                            <div>
+                              <div className="text-base font-black text-gray-900 font-mono">
+                                {reqPriceDisplay}
+                              </div>
+                            </div>
+                            <Link
+                              href={`/productos/${req.slug || req.id}`}
+                              className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-[11px] font-bold transition flex items-center gap-1 shadow-2xs"
+                            >
+                              <span>{t.productViewRequiredProductBtn}</span>
+                              <ChevronRight className="w-3.5 h-3.5" />
+                            </Link>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </section>
             )}
 
