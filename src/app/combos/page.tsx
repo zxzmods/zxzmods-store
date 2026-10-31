@@ -66,7 +66,7 @@ export default function CombosPage() {
   const { vehicle, openModal } = useGarage();
   const router = useRouter();
 
-  const ITEMS_PER_PAGE = 20; // 4 combos per row × 5 rows = 20 items max per page
+  const ITEMS_PER_PAGE = 16; // 4 combos per row × 4 rows = 16 items max per page (User Requirement)
   const [combos, setCombos] = useState<ComboItem[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>("all");

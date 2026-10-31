@@ -384,7 +384,7 @@ function ProductsContent() {
   const { requireVehicleBeforeAction, vehicle } = useGarage();
 
   // Component state
-  const ITEMS_PER_PAGE = 20; // 4 products per row × 5 rows = 20 items max per page
+  const ITEMS_PER_PAGE = 16; // 4 products per row × 4 rows = 16 items max per page (User Requirement)
   const [products, setProducts] = useState<ProductItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);

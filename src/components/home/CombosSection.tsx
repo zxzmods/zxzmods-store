@@ -55,7 +55,7 @@ export function CombosSection({ combos }: CombosSectionProps) {
   const { addItem } = useCart();
   const router = useRouter();
 
-  const ITEMS_PER_PAGE = 20;
+  const ITEMS_PER_PAGE = 16; // 4 combos per row × 4 rows = 16 items max per page (User Requirement)
   const [currentPage, setCurrentPage] = useState(1);
   const [pageDirection, setPageDirection] = useState<"next" | "prev">("next");
   const gridTopRef = useRef<HTMLDivElement>(null);
