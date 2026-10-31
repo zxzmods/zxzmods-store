@@ -32,6 +32,8 @@ import {
   resolveDualParameterConnection,
   normalizeAudioUrl,
   normalizeVideoUrl,
+  getRecommendedFillerProducts,
+  getRecommendedFillerCombos,
 } from "@/lib/products";
 import { ProductReviewsSection } from "@/components/reviews/ProductReviewsSection";
 import { SuggestedSection } from "@/components/product/SuggestedSection";
@@ -603,7 +605,7 @@ export default function ProductDetailPage() {
     }
   };
 
-  // Fetch suggested combos containing this product or related category/brand (LE-03)
+  // Fetch suggested combos strictly prioritizing vehicle compatibility and category
   useEffect(() => {
     if (!product) return;
     setCombosLoading(true);
@@ -612,44 +614,32 @@ export default function ProductDetailPage() {
       .then((res) => res.json())
       .then((data) => {
         if (data.success && Array.isArray(data.combos)) {
-          const prodId = (product.id || "").toLowerCase();
-          const prodSku = ((product as any).sku || "").toLowerCase();
-          const prodSlug = (product.slug || "").toLowerCase();
-          const prodBrand = (product.brand?.[0] || "").toLowerCase();
-          const prodCat = (product.category?.[0] || "").toLowerCase();
+          // Explicit combos seed if already configured or suggested
+          const explicitCombos = Array.isArray(product.suggestedCombos) && product.suggestedCombos.length > 0
+            ? product.suggestedCombos
+            : (Array.isArray(product.suggestedComboIds) && product.suggestedComboIds.length > 0
+              ? data.combos.filter((c: any) =>
+                  product.suggestedComboIds?.some((id: string) =>
+                    id.toLowerCase() === (c.id || "").toLowerCase() || id.toLowerCase() === (c.slug || "").toLowerCase()
+                  )
+                )
+              : []);
 
-          // 1. Combos that explicitly contain this item
-          const containingCombos = data.combos.filter((combo: any) => {
-            let comboItems: any[] = [];
-            try {
-              comboItems = typeof combo.itemsJson === "string" ? JSON.parse(combo.itemsJson) : combo.itemsJson || [];
-            } catch {}
-            return comboItems.some((it: any) => {
-              const itId = typeof it === "string" ? it.toLowerCase() : (it.id || it.sku || "").toLowerCase();
-              return itId === prodId || (prodSku && itId === prodSku) || (prodSlug && itId === prodSlug);
-            });
-          });
-
-          // 2. Combos that match brand or category
-          const matchingCategory = data.combos.filter((combo: any) => {
-            if (containingCombos.some((m: any) => m.id === combo.id)) return false;
-            const comboBrand = (combo.brand || "").toLowerCase();
-            const comboCategory = (combo.category || "").toLowerCase();
-            return (
-              (prodBrand && comboBrand && (comboBrand.includes(prodBrand) || prodBrand.includes(comboBrand))) ||
-              (prodCat && comboCategory && comboCategory.includes(prodCat))
-            );
-          });
-
-          const combined = [...containingCombos, ...matchingCategory];
-          setSuggestedCombos(combined.length > 0 ? combined.slice(0, 4) : data.combos.slice(0, 4));
+          const recommended = getRecommendedFillerCombos(
+            product,
+            data.combos,
+            undefined,
+            4,
+            explicitCombos
+          );
+          setSuggestedCombos(recommended);
         }
       })
       .catch((err) => console.error("Error fetching suggested combos:", err))
       .finally(() => setCombosLoading(false));
   }, [product?.id]);
 
-  // Fetch related & suggested products (up to 10 products, dynamically filled by category or brand)
+  // Fetch related & suggested products (strictly prioritizing vehicle compatibility, category, brand)
   useEffect(() => {
     if (!product) return;
 
@@ -665,99 +655,44 @@ export default function ProductDetailPage() {
       .then((res) => res.json())
       .then((data) => {
         if (data.success && Array.isArray(data.products)) {
-          const list: ProductItem[] = [];
-          const seen = new Set<string>([product.id]);
+          // Explicit attached items (NEVER replace or remove them)
+          const explicitList: ProductItem[] = [];
+          const seen = new Set<string>();
 
-          // 1. Initial seeds from product.relatedProducts
           if (product.relatedProducts && product.relatedProducts.length > 0) {
             for (const p of product.relatedProducts) {
-              if (p && p.id && !seen.has(p.id)) {
-                seen.add(p.id);
-                list.push(p);
+              if (p && p.id && !seen.has(p.id.toLowerCase())) {
+                seen.add(p.id.toLowerCase());
+                explicitList.push(p);
               }
             }
           }
 
-          // 2. Explicit relatedProductIds if present
-          if (list.length < 10 && Array.isArray(product.relatedProductIds) && product.relatedProductIds.length > 0) {
+          if (Array.isArray(product.relatedProductIds) && product.relatedProductIds.length > 0) {
             const explicit = data.products.filter((p: ProductItem) =>
-              !seen.has(p.id) && (
-                product.relatedProductIds?.includes(p.id) ||
-                ((p as any).sku && product.relatedProductIds?.includes((p as any).sku)) ||
-                (p.slug && product.relatedProductIds?.includes(p.slug))
+              !seen.has(p.id.toLowerCase()) && (
+                product.relatedProductIds?.some((id: string) =>
+                  id.toLowerCase() === p.id.toLowerCase() ||
+                  id.toLowerCase() === ((p as any).sku || "").toLowerCase() ||
+                  id.toLowerCase() === (p.slug || "").toLowerCase()
+                )
               )
             );
             for (const p of explicit) {
-              if (list.length >= 10) break;
-              if (!seen.has(p.id)) {
-                seen.add(p.id);
-                list.push(p);
+              if (!seen.has(p.id.toLowerCase())) {
+                seen.add(p.id.toLowerCase());
+                explicitList.push(p);
               }
             }
           }
 
-          const primaryCat = product.category?.[0];
-          const primaryBrand = product.brand?.[0];
-
-          // 3. Fill missing up to 10 with same category and same platform fitment
-          for (const p of data.products) {
-            if (list.length >= 10) break;
-            if (seen.has(p.id)) continue;
-            const sameCat = primaryCat && p.category?.some((c: string) => c.toLowerCase() === primaryCat.toLowerCase());
-            const samePlat = product.comp?.some((c) =>
-              p.comp?.some((candC: string) => isPlatformOrVehicleMatch(candC, c))
-            );
-            if (sameCat && samePlat) {
-              seen.add(p.id);
-              list.push(p);
-            }
-          }
-
-          // 4. Fill missing up to 10 with same category
-          for (const p of data.products) {
-            if (list.length >= 10) break;
-            if (seen.has(p.id)) continue;
-            const sameCat = primaryCat && p.category?.some((c: string) => c.toLowerCase() === primaryCat.toLowerCase());
-            if (sameCat) {
-              seen.add(p.id);
-              list.push(p);
-            }
-          }
-
-          // 5. Fill missing up to 10 with same brand
-          for (const p of data.products) {
-            if (list.length >= 10) break;
-            if (seen.has(p.id)) continue;
-            const sameBrand = primaryBrand && p.brand?.some((b: string) => b.toLowerCase() === primaryBrand.toLowerCase());
-            if (sameBrand) {
-              seen.add(p.id);
-              list.push(p);
-            }
-          }
-
-          // 6. Fill missing up to 10 with same vehicle platform
-          for (const p of data.products) {
-            if (list.length >= 10) break;
-            if (seen.has(p.id)) continue;
-            const samePlat = product.comp?.some((c) =>
-              p.comp?.some((candC: string) => isPlatformOrVehicleMatch(candC, c))
-            );
-            if (samePlat) {
-              seen.add(p.id);
-              list.push(p);
-            }
-          }
-
-          // 7. Fill missing up to 10 with any other active products
-          for (const p of data.products) {
-            if (list.length >= 10) break;
-            if (!seen.has(p.id)) {
-              seen.add(p.id);
-              list.push(p);
-            }
-          }
-
-          setRelatedProducts(list.slice(0, 10));
+          const recommended = getRecommendedFillerProducts(
+            product,
+            data.products,
+            10,
+            explicitList
+          );
+          setRelatedProducts(recommended);
         }
       })
       .catch((err) => console.error("Error fetching related products:", err))

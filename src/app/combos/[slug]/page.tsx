@@ -25,6 +25,8 @@ import {
   ComboUniqueProductField,
   ProductItem,
   normalizeBrandName,
+  getRecommendedFillerProducts,
+  getRecommendedFillerCombos,
 } from "@/lib/products";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useTouchSwipe } from "@/lib/useTouchSwipe";
@@ -155,11 +157,11 @@ export default function ComboDetailPage() {
   const [relatedProducts, setRelatedProducts] = useState<ProductItem[]>([]);
   const [relatedProductsLoading, setRelatedProductsLoading] = useState(false);
 
-  // Fetch / assemble related products up to 10 matching combo category or brand
+  // Fetch / assemble related products up to 10 strictly prioritizing vehicle compatibility, category, brand
   useEffect(() => {
     if (!combo) return;
 
-    const initialList = [
+    const initialList: ProductItem[] = [
       ...(Array.isArray(combo.relatedProducts) ? combo.relatedProducts : []),
       ...(Array.isArray(combo.suggestedProducts) ? combo.suggestedProducts : []),
     ];
@@ -175,51 +177,13 @@ export default function ComboDetailPage() {
       .then((res) => res.json())
       .then((data) => {
         if (data.success && Array.isArray(data.products)) {
-          const list: ProductItem[] = [];
-          const seen = new Set<string>();
-
-          for (const p of initialList) {
-            if (p && p.id && !seen.has(p.id)) {
-              seen.add(p.id);
-              list.push(p);
-            }
-          }
-
-          const comboCategory = (combo.category || "performance").toLowerCase();
-
-          // 1. Fill missing up to 10 with same category
-          for (const p of data.products) {
-            if (list.length >= 10) break;
-            if (seen.has(p.id)) continue;
-            const pCats = Array.isArray(p.category) ? p.category.map((c: string) => c.toLowerCase()) : [];
-            if (pCats.includes(comboCategory) || pCats.some((c: string) => c.includes(comboCategory))) {
-              seen.add(p.id);
-              list.push(p);
-            }
-          }
-
-          // 2. Fill missing up to 10 with matching brand
-          const comboTitle = (combo.titleEs + " " + combo.titleEn).toLowerCase();
-          for (const p of data.products) {
-            if (list.length >= 10) break;
-            if (seen.has(p.id)) continue;
-            const pBrands = Array.isArray(p.brand) ? p.brand.map((b: string) => b.toLowerCase()) : [];
-            if (pBrands.some((b: string) => comboTitle.includes(b))) {
-              seen.add(p.id);
-              list.push(p);
-            }
-          }
-
-          // 3. Fill missing up to 10 with other active products
-          for (const p of data.products) {
-            if (list.length >= 10) break;
-            if (!seen.has(p.id)) {
-              seen.add(p.id);
-              list.push(p);
-            }
-          }
-
-          setRelatedProducts(list.slice(0, 10));
+          const recommended = getRecommendedFillerProducts(
+            combo,
+            data.products,
+            10,
+            initialList
+          );
+          setRelatedProducts(recommended);
         }
       })
       .catch((err) => console.error("Error fetching related products for combo:", err))
@@ -267,18 +231,39 @@ export default function ComboDetailPage() {
       .finally(() => setLoading(false));
   }, [slug]);
 
-  // Fetch related combos
+  // Fetch related combos strictly prioritizing vehicle compatibility and category
   useEffect(() => {
+    if (!combo) return;
     fetch("/api/combos")
       .then((res) => res.json())
       .then((data) => {
-        if (data.success && Array.isArray(data.data?.combos)) {
-          const others = data.data.combos.filter((c: ComboItem) => c.slug !== slug);
-          setRelatedCombos(others);
+        const comboList = Array.isArray(data?.combos)
+          ? data.combos
+          : (Array.isArray(data?.data?.combos) ? data.data.combos : []);
+
+        if (comboList.length > 0) {
+          const explicitCombos = Array.isArray(combo.suggestedCombos) && combo.suggestedCombos.length > 0
+            ? combo.suggestedCombos
+            : (Array.isArray(combo.suggestedComboIds) && combo.suggestedComboIds.length > 0
+              ? comboList.filter((c: any) =>
+                  combo.suggestedComboIds?.some((id: string) =>
+                    id.toLowerCase() === (c.id || "").toLowerCase() || id.toLowerCase() === (c.slug || "").toLowerCase()
+                  )
+                )
+              : []);
+
+          const recommended = getRecommendedFillerCombos(
+            combo,
+            comboList,
+            undefined,
+            4,
+            explicitCombos
+          );
+          setRelatedCombos(recommended);
         }
       })
       .catch((err) => console.error("Error fetching related combos:", err));
-  }, [slug]);
+  }, [combo, slug]);
 
   // Handle escape key to close lightbox
   useEffect(() => {

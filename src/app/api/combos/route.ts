@@ -1,7 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { calculateComboAvailability } from "@/lib/comboAvailability";
-import { detectProductVehicleBrands, normalizeBrandName, detectVehiclePlatform, is4SeaterToken, is2SeaterToken } from "@/lib/products";
+import {
+  detectProductVehicleBrands,
+  normalizeBrandName,
+  detectVehiclePlatform,
+  is4SeaterToken,
+  is2SeaterToken,
+  getRecommendedFillerProducts,
+  getRecommendedFillerCombos,
+} from "@/lib/products";
 import { SXS_BRAND_PLATFORMS, SXS_BRANDS, getBrandLogo } from "@/lib/sxsBrands";
 import { evaluateComboSearch, buildDealerBrandSearchRefs } from "@/lib/search";
 
@@ -263,7 +271,8 @@ export async function GET(request: NextRequest) {
         return [];
       })();
 
-      let suggestedProducts: any[] = [];
+      // 1. Explicit suggested/related products
+      let explicitProducts: any[] = [];
       const seenProdIds = new Set<string>();
 
       if (sugProdIds.length > 0) {
@@ -272,82 +281,45 @@ export async function GET(request: NextRequest) {
           if (idSet.has(p.id.toLowerCase()) || idSet.has(p.sku.toLowerCase()) || idSet.has(p.slug.toLowerCase())) {
             if (!seenProdIds.has(p.id)) {
               seenProdIds.add(p.id);
-              suggestedProducts.push(p);
+              explicitProducts.push(p);
             }
           }
         }
       }
 
-      // Dynamically fill up to 10 with temporary products matching category or brand (without modifying DB)
-      if (suggestedProducts.length < 10) {
-        const comboCat = (combo.category || "performance").toLowerCase();
+      // 2. Dynamically fill related products strictly prioritizing vehicle compatibility, category, brand
+      // Seed explicit items first, never replacing them.
+      let suggestedProducts = getRecommendedFillerProducts(
+        combo,
+        catalogProducts as any[],
+        10,
+        explicitProducts
+      );
 
-        // Priority A: Same category
-        for (const p of catalogProducts) {
-          if (suggestedProducts.length >= 10) break;
-          if (seenProdIds.has(p.id)) continue;
-          const pCats: string[] = (() => {
-            if (p.categoryJson) {
-              try {
-                const parsed = JSON.parse(p.categoryJson);
-                if (Array.isArray(parsed)) return parsed.map((c: string) => String(c).toLowerCase());
-              } catch {}
-            }
-            return [];
-          })();
-          if (pCats.includes(comboCat) || pCats.some((c: string) => c.includes(comboCat))) {
-            seenProdIds.add(p.id);
-            suggestedProducts.push(p);
-          }
-        }
+      // 3. Recommended combos strictly prioritizing vehicle compatibility and category
+      const allDbCombos = await prisma.combo.findMany({
+        where: { isArchived: false },
+      });
+      const parsedCombos = allDbCombos.map((c) => ({
+        ...c,
+        items: (() => {
+          try { return JSON.parse(c.itemsJson || "[]"); } catch { return []; }
+        })(),
+      }));
 
-        // Priority B: Matching brand in combo title
-        const comboTitle = (combo.titleEs + " " + combo.titleEn).toLowerCase();
-        for (const p of catalogProducts) {
-          if (suggestedProducts.length >= 10) break;
-          if (seenProdIds.has(p.id)) continue;
-          const pBrands: string[] = [];
-          if (p.brandName) pBrands.push(p.brandName.toLowerCase());
-          if (p.brandJson) {
-            try {
-              const parsed = JSON.parse(p.brandJson);
-              if (Array.isArray(parsed)) parsed.forEach((b: string) => pBrands.push(String(b).toLowerCase()));
-            } catch {}
-          }
-          const matchesBrand = pBrands.some((b: string) => comboTitle.includes(b));
-          if (matchesBrand) {
-            seenProdIds.add(p.id);
-            suggestedProducts.push(p);
-          }
-        }
-
-        // Priority C: Other active catalog products
-        for (const p of catalogProducts) {
-          if (suggestedProducts.length >= 10) break;
-          if (!seenProdIds.has(p.id)) {
-            seenProdIds.add(p.id);
-            suggestedProducts.push(p);
-          }
-        }
-      }
-
-      suggestedProducts = suggestedProducts.slice(0, 10);
-
-      let suggestedCombos: any[] = [];
+      let explicitCombos: any[] = [];
       if (sugComboIds.length > 0) {
         const cIdSet = new Set(sugComboIds.map((s) => s.toLowerCase()));
-        const allDbCombos = await prisma.combo.findMany({
-          where: { isArchived: false },
-        });
-        suggestedCombos = allDbCombos
-          .filter((c) => cIdSet.has(c.id.toLowerCase()) || cIdSet.has(c.slug.toLowerCase()))
-          .map((c) => ({
-            ...c,
-            items: (() => {
-              try { return JSON.parse(c.itemsJson || "[]"); } catch { return []; }
-            })(),
-          }));
+        explicitCombos = parsedCombos.filter((c) => cIdSet.has(c.id.toLowerCase()) || cIdSet.has(c.slug.toLowerCase()));
       }
+
+      const suggestedCombos = getRecommendedFillerCombos(
+        combo,
+        parsedCombos,
+        catalogProducts as any[],
+        4,
+        explicitCombos
+      );
 
       const comboImgs = extractComboImages(combo, catalogProducts);
 

@@ -9,6 +9,8 @@ import {
   normalizeAudioUrl,
   normalizeVideoUrl,
   detectProductVehicleBrands,
+  getRecommendedFillerProducts,
+  getRecommendedFillerCombos,
 } from "@/lib/products";
 import { prisma } from "@/lib/prisma";
 import { SXS_BRAND_PLATFORMS, SXS_BRANDS, getBrandLogo } from "@/lib/sxsBrands";
@@ -515,91 +517,24 @@ export async function GET(request: Request) {
         );
       }
 
-      // 2. Dynamically fill related products up to 10 with temporary products matching category or brand
-      // NOTE: Do not mutate or add to database array, only attach to the response
-      const relatedMap = new Map<string, ProductItem>();
-      const currentKeys = new Set([
-        (finalProduct.id || "").toLowerCase(),
-        (finalProduct.sku || "").toLowerCase(),
-        (finalProduct.slug || "").toLowerCase(),
-      ]);
-
-      // Seed explicit items first
-      explicitRelated.forEach((p) => {
-        if (!currentKeys.has(p.id.toLowerCase())) {
-          relatedMap.set(p.id, p);
-        }
+      // 2. Dynamically fill related products up to 10 with strict priority waterfall:
+      // Compatibility + Category -> Compatibility -> Vehicle Brand + Category -> Vehicle Brand -> Dealer Brand -> Any product
+      // Seed explicit items first, never replacing them.
+      const candidateRows = await prisma.product.findMany({
+        where: {
+          isArchived: false,
+          id: { not: dbProd.id },
+        },
+        include: { category: true, compatibilities: true },
       });
+      const candidates = candidateRows.map((p) => dbProductToProductItem(p, null, isStaff));
 
-      if (relatedMap.size < 10) {
-        const primaryCat = finalProduct.category?.[0];
-        const primaryBrand = finalProduct.brand?.[0];
-
-        const candidateRows = await prisma.product.findMany({
-          where: {
-            isArchived: false,
-            id: { not: dbProd.id },
-          },
-          include: { category: true, compatibilities: true },
-          take: 40,
-        });
-        const candidates = candidateRows.map((p) => dbProductToProductItem(p, null, isStaff));
-
-        // Priority A: Same category AND compatible with vehicle platform
-        for (const cand of candidates) {
-          if (relatedMap.size >= 10) break;
-          if (relatedMap.has(cand.id)) continue;
-          const sameCat = primaryCat && cand.category?.some((c) => c.toLowerCase() === primaryCat.toLowerCase());
-          const samePlat = finalProduct.comp?.some((c) =>
-            cand.comp?.some((candC) => isPlatformOrVehicleMatch(candC, c))
-          );
-          if (sameCat && samePlat) {
-            relatedMap.set(cand.id, cand);
-          }
-        }
-
-        // Priority B: Same category
-        for (const cand of candidates) {
-          if (relatedMap.size >= 10) break;
-          if (relatedMap.has(cand.id)) continue;
-          const sameCat = primaryCat && cand.category?.some((c) => c.toLowerCase() === primaryCat.toLowerCase());
-          if (sameCat) {
-            relatedMap.set(cand.id, cand);
-          }
-        }
-
-        // Priority C: Same brand
-        for (const cand of candidates) {
-          if (relatedMap.size >= 10) break;
-          if (relatedMap.has(cand.id)) continue;
-          const sameBrand = primaryBrand && cand.brand?.some((b) => b.toLowerCase() === primaryBrand.toLowerCase());
-          if (sameBrand) {
-            relatedMap.set(cand.id, cand);
-          }
-        }
-
-        // Priority D: Same vehicle platform
-        for (const cand of candidates) {
-          if (relatedMap.size >= 10) break;
-          if (relatedMap.has(cand.id)) continue;
-          const samePlat = finalProduct.comp?.some((c) =>
-            cand.comp?.some((candC) => isPlatformOrVehicleMatch(candC, c))
-          );
-          if (samePlat) {
-            relatedMap.set(cand.id, cand);
-          }
-        }
-
-        // Priority E: Other active catalog products
-        for (const cand of candidates) {
-          if (relatedMap.size >= 10) break;
-          if (!relatedMap.has(cand.id)) {
-            relatedMap.set(cand.id, cand);
-          }
-        }
-      }
-
-      finalProduct.relatedProducts = Array.from(relatedMap.values()).slice(0, 10);
+      finalProduct.relatedProducts = getRecommendedFillerProducts(
+        finalProduct,
+        candidates,
+        10,
+        explicitRelated
+      );
 
       if (finalProduct.suggestedProductIds && finalProduct.suggestedProductIds.length > 0) {
         const sugIds = finalProduct.suggestedProductIds;
@@ -621,22 +556,30 @@ export async function GET(request: Request) {
         finalProduct.suggestedProducts = [];
       }
 
+      // Combos recommendation: prioritize vehicle compatibility and category
+      const dbCombos = await prisma.combo.findMany({
+        where: { isArchived: false },
+      });
+      const parsedCombos = dbCombos.map((c) => ({
+        ...c,
+        items: (() => {
+          try { return JSON.parse(c.itemsJson || "[]"); } catch { return []; }
+        })(),
+      }));
+
+      let explicitCombos: any[] = [];
       if (finalProduct.suggestedComboIds && finalProduct.suggestedComboIds.length > 0) {
         const sugComboIds = new Set(finalProduct.suggestedComboIds.map((r: string) => r.toLowerCase()));
-        const dbCombos = await prisma.combo.findMany({
-          where: { isArchived: false },
-        });
-        finalProduct.suggestedCombos = dbCombos
-          .filter((c) => sugComboIds.has(c.id.toLowerCase()) || sugComboIds.has(c.slug.toLowerCase()))
-          .map((c) => ({
-            ...c,
-            items: (() => {
-              try { return JSON.parse(c.itemsJson || "[]"); } catch { return []; }
-            })(),
-          }));
-      } else {
-        finalProduct.suggestedCombos = [];
+        explicitCombos = parsedCombos.filter((c) => sugComboIds.has(c.id.toLowerCase()) || sugComboIds.has(c.slug.toLowerCase()));
       }
+
+      finalProduct.suggestedCombos = getRecommendedFillerCombos(
+        finalProduct,
+        parsedCombos,
+        candidates,
+        4,
+        explicitCombos
+      );
 
       if (finalProduct.requiredProductIds && finalProduct.requiredProductIds.length > 0) {
         const reqIds = finalProduct.requiredProductIds;
