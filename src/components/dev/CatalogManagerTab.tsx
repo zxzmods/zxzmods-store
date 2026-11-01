@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useLanguage } from "@/context/LanguageContext";
 import { formatCRC } from "@/lib/i18n";
 import {
@@ -46,6 +46,9 @@ import {
   ExternalLink,
   Receipt,
   Loader2,
+  GripVertical,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import {
   ConfigurableParameter,
@@ -3369,6 +3372,15 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
   const [initialFormSnapshot, setInitialFormSnapshot] = useState<string>("");
   const [showUnsavedChangesModal, setShowUnsavedChangesModal] = useState<boolean>(false);
 
+  // Image Drag-and-Drop Reordering state (Product & Combo)
+  const [draggedProductImgIdx, setDraggedProductImgIdx] = useState<number | null>(null);
+  const [dragOverProductImgIdx, setDragOverProductImgIdx] = useState<number | null>(null);
+  const isDraggingProductImgRef = useRef<boolean>(false);
+
+  const [draggedComboImgIdx, setDraggedComboImgIdx] = useState<number | null>(null);
+  const [dragOverComboImgIdx, setDragOverComboImgIdx] = useState<number | null>(null);
+  const isDraggingComboImgRef = useRef<boolean>(false);
+
   // Categories & Registered Brands/Models State
   const [categories, setCategories] = useState<any[]>([]);
   const [brands, setBrands] = useState<any[]>([]);
@@ -5531,6 +5543,102 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => handleMediaUpload(e, "image");
 
+  // Product Image Reordering (Drag and Drop + Quick Step)
+  const handleDropProductImage = useCallback((toIdx: number) => {
+    if (draggedProductImgIdx === null || draggedProductImgIdx === toIdx) {
+      setDraggedProductImgIdx(null);
+      setDragOverProductImgIdx(null);
+      return;
+    }
+    const fromIdx = draggedProductImgIdx;
+    const currentList = productForm.imgsText
+      ? productForm.imgsText.split("\n").map((s) => s.trim()).filter(Boolean)
+      : productForm.imageUrl
+      ? [productForm.imageUrl]
+      : [];
+    if (fromIdx < 0 || fromIdx >= currentList.length || toIdx < 0 || toIdx >= currentList.length) {
+      setDraggedProductImgIdx(null);
+      setDragOverProductImgIdx(null);
+      return;
+    }
+    const updated = [...currentList];
+    const [moved] = updated.splice(fromIdx, 1);
+    updated.splice(toIdx, 0, moved);
+    setProductForm((prev) => ({
+      ...prev,
+      imageUrl: updated[0] || "",
+      imgsText: updated.join("\n"),
+    }));
+    setDraggedProductImgIdx(null);
+    setDragOverProductImgIdx(null);
+  }, [draggedProductImgIdx, productForm.imgsText, productForm.imageUrl]);
+
+  const handleMoveProductImage = useCallback((idx: number, direction: "left" | "right") => {
+    const currentList = productForm.imgsText
+      ? productForm.imgsText.split("\n").map((s) => s.trim()).filter(Boolean)
+      : productForm.imageUrl
+      ? [productForm.imageUrl]
+      : [];
+    const targetIdx = direction === "left" ? idx - 1 : idx + 1;
+    if (targetIdx < 0 || targetIdx >= currentList.length) return;
+    const updated = [...currentList];
+    const [moved] = updated.splice(idx, 1);
+    updated.splice(targetIdx, 0, moved);
+    setProductForm((prev) => ({
+      ...prev,
+      imageUrl: updated[0] || "",
+      imgsText: updated.join("\n"),
+    }));
+  }, [productForm.imgsText, productForm.imageUrl]);
+
+  // Combo Image Reordering (Drag and Drop + Quick Step)
+  const handleDropComboImage = useCallback((toIdx: number) => {
+    if (draggedComboImgIdx === null || draggedComboImgIdx === toIdx) {
+      setDraggedComboImgIdx(null);
+      setDragOverComboImgIdx(null);
+      return;
+    }
+    const fromIdx = draggedComboImgIdx;
+    const currentList = comboForm.imgsText
+      ? comboForm.imgsText.split("\n").map((s) => s.trim()).filter(Boolean)
+      : comboForm.imageUrl
+      ? [comboForm.imageUrl]
+      : [];
+    if (fromIdx < 0 || fromIdx >= currentList.length || toIdx < 0 || toIdx >= currentList.length) {
+      setDraggedComboImgIdx(null);
+      setDragOverComboImgIdx(null);
+      return;
+    }
+    const updated = [...currentList];
+    const [moved] = updated.splice(fromIdx, 1);
+    updated.splice(toIdx, 0, moved);
+    setComboForm((prev) => ({
+      ...prev,
+      imageUrl: updated[0] || "",
+      imgsText: updated.join("\n"),
+    }));
+    setDraggedComboImgIdx(null);
+    setDragOverComboImgIdx(null);
+  }, [draggedComboImgIdx, comboForm.imgsText, comboForm.imageUrl]);
+
+  const handleMoveComboImage = useCallback((idx: number, direction: "left" | "right") => {
+    const currentList = comboForm.imgsText
+      ? comboForm.imgsText.split("\n").map((s) => s.trim()).filter(Boolean)
+      : comboForm.imageUrl
+      ? [comboForm.imageUrl]
+      : [];
+    const targetIdx = direction === "left" ? idx - 1 : idx + 1;
+    if (targetIdx < 0 || targetIdx >= currentList.length) return;
+    const updated = [...currentList];
+    const [moved] = updated.splice(idx, 1);
+    updated.splice(targetIdx, 0, moved);
+    setComboForm((prev) => ({
+      ...prev,
+      imageUrl: updated[0] || "",
+      imgsText: updated.join("\n"),
+    }));
+  }, [comboForm.imgsText, comboForm.imageUrl]);
+
   // Dynamic computation of available vehicle brands & distributor brands
   // (Zero Mock Data Policy: only show parameters actually present in catalog with count > 0)
   const availableProductVehicleBrands = useMemo(() => {
@@ -6749,67 +6857,180 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                   )}
                 </div>
 
-                {/* Thumbnail Strip */}
+                {/* Thumbnail Strip with Drag & Drop Reordering */}
                 {parsedImgsList.length > 0 && (
-                  <div className="flex items-center gap-2 overflow-x-auto pb-1.5 pt-1">
-                    {parsedImgsList.map((imgUrl, idx) => {
-                      const isPrimary = (productForm.imageUrl || parsedImgsList[0]) === imgUrl;
-                      return (
-                        <div
-                          key={idx}
-                          className={`relative group shrink-0 w-16 h-16 rounded-xl border-2 overflow-hidden transition cursor-pointer ${
-                            isPrimary ? "border-[#C02030] shadow-sm ring-2 ring-red-200" : "border-slate-200 hover:border-slate-400 opacity-80 hover:opacity-100"
-                          }`}
-                          onClick={() => {
-                            const remaining = parsedImgsList.filter((u) => u !== imgUrl);
-                            const reordered = [imgUrl, ...remaining];
-                            setProductForm({
-                              ...productForm,
-                              imageUrl: imgUrl,
-                              imgsText: reordered.join("\n"),
-                            });
-                          }}
-                          title={lang === "es" ? `Click para establecer como principal (${imgUrl})` : `Click to set as primary (${imgUrl})`}
-                        >
-                          <img src={imgUrl} alt={`Thumb ${idx + 1}`} className="w-full h-full object-contain p-1 bg-white" />
-                          {isPrimary && (
-                            <span className="absolute bottom-0 inset-x-0 bg-[#C02030] text-white text-[8px] font-bold text-center py-0.5 leading-none">
-                              {lang === "es" ? "Principal" : "Primary"}
-                            </span>
-                          )}
-                          <label
-                            onClick={(e) => e.stopPropagation()}
-                            className="absolute top-0.5 left-0.5 w-4 h-4 bg-slate-900/85 hover:bg-slate-900 text-white rounded-full text-[9px] leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 transition shadow cursor-pointer"
-                            title={lang === "es" ? "Reemplazar imagen" : "Replace image"}
-                          >
-                            <Upload className="w-2.5 h-2.5" />
-                            <input
-                              type="file"
-                              accept="image/*"
-                              onChange={(e) => handleMediaUpload(e, "image", idx)}
-                              className="hidden"
-                            />
-                          </label>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              const updated = parsedImgsList.filter((_, i) => i !== idx);
-                              const newPrimary = isPrimary ? (updated[0] || "") : (updated.includes(productForm.imageUrl) ? productForm.imageUrl : (updated[0] || ""));
-                              setProductForm({
-                                ...productForm,
-                                imageUrl: newPrimary,
-                                imgsText: updated.join("\n"),
-                              });
+                  <div className="space-y-1.5 pt-1">
+                    <div className="flex items-center justify-between text-[11px] text-slate-500 px-0.5">
+                      <span className="flex items-center gap-1 font-semibold text-slate-700">
+                        <GripVertical className="w-3.5 h-3.5 text-[#C02030]" />
+                        {lang === "es" ? "Arrastra las miniaturas para reordenar las imágenes:" : "Hold & drag thumbnails to reorder images:"}
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-medium">
+                        {lang === "es" ? "La imagen #1 es la principal" : "Image #1 is primary"}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2.5 overflow-x-auto pb-2 pt-1 px-1">
+                      {parsedImgsList.map((imgUrl, idx) => {
+                        const isPrimary = idx === 0 || (productForm.imageUrl || parsedImgsList[0]) === imgUrl;
+                        const isDragging = draggedProductImgIdx === idx;
+                        const isOver = dragOverProductImgIdx === idx && !isDragging;
+
+                        return (
+                          <div
+                            key={`${imgUrl}-${idx}`}
+                            draggable
+                            onDragStart={(e) => {
+                              isDraggingProductImgRef.current = true;
+                              setDraggedProductImgIdx(idx);
+                              e.dataTransfer.effectAllowed = "move";
+                              e.dataTransfer.setData("text/plain", String(idx));
                             }}
-                            className="absolute top-0.5 right-0.5 w-4 h-4 bg-red-600 text-white rounded-full text-[10px] leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 transition shadow"
-                            title={lang === "es" ? "Eliminar de la lista y base de datos" : "Delete from list & database"}
+                            onDragOver={(e) => {
+                              e.preventDefault();
+                              e.dataTransfer.dropEffect = "move";
+                              if (dragOverProductImgIdx !== idx) {
+                                setDragOverProductImgIdx(idx);
+                              }
+                            }}
+                            onDragEnter={(e) => {
+                              e.preventDefault();
+                              setDragOverProductImgIdx(idx);
+                            }}
+                            onDragLeave={(e) => {
+                              e.preventDefault();
+                            }}
+                            onDrop={(e) => {
+                              e.preventDefault();
+                              handleDropProductImage(idx);
+                            }}
+                            onDragEnd={() => {
+                              setDraggedProductImgIdx(null);
+                              setDragOverProductImgIdx(null);
+                              setTimeout(() => {
+                                isDraggingProductImgRef.current = false;
+                              }, 120);
+                            }}
+                            onClick={() => {
+                              if (isDraggingProductImgRef.current) return;
+                              if (idx === 0) return;
+                              const remaining = parsedImgsList.filter((_, i) => i !== idx);
+                              const reordered = [imgUrl, ...remaining];
+                              setProductForm((prev) => ({
+                                ...prev,
+                                imageUrl: imgUrl,
+                                imgsText: reordered.join("\n"),
+                              }));
+                            }}
+                            className={`relative group shrink-0 w-20 h-20 rounded-xl border-2 overflow-hidden transition-all cursor-grab active:cursor-grabbing select-none ${
+                              isDragging
+                                ? "opacity-30 scale-90 border-dashed border-red-500 bg-red-50 ring-2 ring-red-300"
+                                : isOver
+                                ? "border-[#C02030] ring-4 ring-red-400/80 ring-offset-2 scale-105 bg-red-50 shadow-lg z-20"
+                                : isPrimary
+                                ? "border-[#C02030] shadow-sm ring-2 ring-red-200 bg-white"
+                                : "border-slate-200 hover:border-slate-400 opacity-90 hover:opacity-100 bg-white"
+                            }`}
+                            title={lang === "es" ? `Arrastra para mover la imagen #${idx + 1} (${imgUrl})` : `Hold & drag to reorder image #${idx + 1} (${imgUrl})`}
                           >
-                            ✕
-                          </button>
-                        </div>
-                      );
-                    })}
+                            {/* Sequence Number Badge */}
+                            <span className="absolute top-1 left-1 z-10 bg-slate-900/80 backdrop-blur-xs text-white text-[9px] font-mono font-bold px-1 rounded-sm leading-tight shadow-xs pointer-events-none">
+                              #{idx + 1}
+                            </span>
+
+                            {/* Grip Indicator on Hover */}
+                            <span className="absolute top-1 left-6 z-10 bg-white/90 text-slate-600 rounded p-0.5 opacity-0 group-hover:opacity-100 transition shadow-xs pointer-events-none">
+                              <GripVertical className="w-2.5 h-2.5" />
+                            </span>
+
+                            {/* Image Thumbnail */}
+                            <img
+                              src={imgUrl}
+                              alt={`Thumb ${idx + 1}`}
+                              draggable={false}
+                              className="w-full h-full object-contain p-1.5 bg-white pointer-events-none select-none"
+                            />
+
+                            {/* Primary Badge */}
+                            {isPrimary && (
+                              <span className="absolute bottom-0 inset-x-0 z-10 bg-[#C02030] text-white text-[8px] font-bold text-center py-0.5 leading-none tracking-wider pointer-events-none">
+                                {lang === "es" ? "PRINCIPAL" : "PRIMARY"}
+                              </span>
+                            )}
+
+                            {/* Quick Step Left / Right Buttons */}
+                            <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 flex items-center justify-between px-0.5 opacity-0 group-hover:opacity-100 transition z-10 pointer-events-auto">
+                              {idx > 0 && (
+                                <button
+                                  type="button"
+                                  onMouseDown={(e) => e.stopPropagation()}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleMoveProductImage(idx, "left");
+                                  }}
+                                  className="w-4 h-4 bg-slate-900/80 hover:bg-slate-900 text-white rounded-full flex items-center justify-center text-[10px] shadow-xs cursor-pointer"
+                                  title={lang === "es" ? "Mover a la izquierda" : "Move left"}
+                                >
+                                  <ChevronLeft className="w-3 h-3" />
+                                </button>
+                              )}
+                              {idx < parsedImgsList.length - 1 && (
+                                <button
+                                  type="button"
+                                  onMouseDown={(e) => e.stopPropagation()}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleMoveProductImage(idx, "right");
+                                  }}
+                                  className="w-4 h-4 bg-slate-900/80 hover:bg-slate-900 text-white rounded-full flex items-center justify-center text-[10px] shadow-xs ml-auto cursor-pointer"
+                                  title={lang === "es" ? "Mover a la derecha" : "Move right"}
+                                >
+                                  <ChevronRight className="w-3 h-3" />
+                                </button>
+                              )}
+                            </div>
+
+                            {/* Replace Image Button */}
+                            <label
+                              onMouseDown={(e) => e.stopPropagation()}
+                              onClick={(e) => e.stopPropagation()}
+                              className="absolute top-1 right-6 w-4 h-4 bg-slate-900/85 hover:bg-slate-900 text-white rounded-full text-[9px] leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 transition shadow-xs cursor-pointer z-10"
+                              title={lang === "es" ? "Reemplazar imagen" : "Replace image"}
+                            >
+                              <Upload className="w-2.5 h-2.5" />
+                              <input
+                                type="file"
+                                accept="image/*"
+                                onChange={(e) => handleMediaUpload(e, "image", idx)}
+                                className="hidden"
+                              />
+                            </label>
+
+                            {/* Delete Image Button */}
+                            <button
+                              type="button"
+                              onMouseDown={(e) => e.stopPropagation()}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const updated = parsedImgsList.filter((_, i) => i !== idx);
+                                const newPrimary = isPrimary
+                                  ? (updated[0] || "")
+                                  : (updated.includes(productForm.imageUrl) ? productForm.imageUrl : (updated[0] || ""));
+                                setProductForm((prev) => ({
+                                  ...prev,
+                                  imageUrl: newPrimary,
+                                  imgsText: updated.join("\n"),
+                                }));
+                              }}
+                              className="absolute top-1 right-1 w-4 h-4 bg-red-600 hover:bg-red-700 text-white rounded-full text-[10px] leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 transition shadow-xs z-10 cursor-pointer"
+                              title={lang === "es" ? "Eliminar de la lista" : "Delete from list"}
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
 
@@ -10236,26 +10457,64 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                       />
                     </div>
 
-                    {/* Thumbnail strip with Replace & Delete buttons */}
+                    {/* Thumbnail strip with Drag & Drop, Replace & Delete buttons */}
                     {list.length > 0 && (
-                      <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                        {list.map((imgUrl, idx) => {
-                          const isPrimary = (comboForm.imageUrl || list[0]) === imgUrl;
-                          return (
-                            <div
-                              key={idx}
-                              className={`group relative rounded-xl border-2 p-1 bg-slate-50 overflow-hidden flex flex-col items-center justify-center transition-all ${
-                                isPrimary
-                                  ? "border-purple-600 ring-2 ring-purple-500/20 shadow-xs"
-                                  : "border-slate-200 hover:border-slate-300"
-                              }`}
-                            >
-                              <img
-                                src={imgUrl}
-                                alt={`Combo media ${idx + 1}`}
-                                className="w-full h-16 object-contain rounded-lg cursor-pointer"
+                      <div className="space-y-1.5 pt-1">
+                        <div className="flex items-center justify-between text-[11px] text-slate-500 px-0.5">
+                          <span className="flex items-center gap-1 font-semibold text-slate-700">
+                            <GripVertical className="w-3.5 h-3.5 text-purple-600" />
+                            {lang === "es" ? "Arrastra las miniaturas para reordenar las imágenes:" : "Hold & drag thumbnails to reorder images:"}
+                          </span>
+                          <span className="text-[10px] text-slate-400 font-medium">
+                            {lang === "es" ? "La imagen #1 es la principal" : "Image #1 is primary"}
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                          {list.map((imgUrl, idx) => {
+                            const isPrimary = idx === 0 || (comboForm.imageUrl || list[0]) === imgUrl;
+                            const isDragging = draggedComboImgIdx === idx;
+                            const isOver = dragOverComboImgIdx === idx && !isDragging;
+
+                            return (
+                              <div
+                                key={`${imgUrl}-${idx}`}
+                                draggable
+                                onDragStart={(e) => {
+                                  isDraggingComboImgRef.current = true;
+                                  setDraggedComboImgIdx(idx);
+                                  e.dataTransfer.effectAllowed = "move";
+                                  e.dataTransfer.setData("text/plain", String(idx));
+                                }}
+                                onDragOver={(e) => {
+                                  e.preventDefault();
+                                  e.dataTransfer.dropEffect = "move";
+                                  if (dragOverComboImgIdx !== idx) {
+                                    setDragOverComboImgIdx(idx);
+                                  }
+                                }}
+                                onDragEnter={(e) => {
+                                  e.preventDefault();
+                                  setDragOverComboImgIdx(idx);
+                                }}
+                                onDragLeave={(e) => {
+                                  e.preventDefault();
+                                }}
+                                onDrop={(e) => {
+                                  e.preventDefault();
+                                  handleDropComboImage(idx);
+                                }}
+                                onDragEnd={() => {
+                                  setDraggedComboImgIdx(null);
+                                  setDragOverComboImgIdx(null);
+                                  setTimeout(() => {
+                                    isDraggingComboImgRef.current = false;
+                                  }, 120);
+                                }}
                                 onClick={() => {
-                                  const remaining = list.filter((u) => u !== imgUrl);
+                                  if (isDraggingComboImgRef.current) return;
+                                  if (idx === 0) return;
+                                  const remaining = list.filter((_, i) => i !== idx);
                                   const reordered = [imgUrl, ...remaining];
                                   setComboForm((prev) => ({
                                     ...prev,
@@ -10263,43 +10522,106 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                                     imgsText: reordered.join("\n"),
                                   }));
                                 }}
-                              />
-                              <label
-                                onClick={(e) => e.stopPropagation()}
-                                className="absolute top-1 left-1 w-5 h-5 bg-slate-900/85 hover:bg-slate-900 text-white rounded-full flex items-center justify-center opacity-80 group-hover:opacity-100 transition shadow-xs cursor-pointer"
-                                title={lang === "es" ? "Reemplazar imagen" : "Replace image"}
+                                className={`group relative rounded-xl border-2 p-1 overflow-hidden flex flex-col items-center justify-center transition-all cursor-grab active:cursor-grabbing select-none ${
+                                  isDragging
+                                    ? "opacity-30 scale-90 border-dashed border-purple-500 bg-purple-50 ring-2 ring-purple-300"
+                                    : isOver
+                                    ? "border-purple-600 ring-4 ring-purple-400/80 ring-offset-2 scale-105 bg-purple-50 shadow-lg z-20"
+                                    : isPrimary
+                                    ? "border-purple-600 ring-2 ring-purple-500/20 shadow-xs bg-white"
+                                    : "border-slate-200 hover:border-slate-300 bg-white"
+                                }`}
+                                title={lang === "es" ? `Arrastra para mover la imagen #${idx + 1} (${imgUrl})` : `Hold & drag to reorder image #${idx + 1} (${imgUrl})`}
                               >
-                                <Upload className="w-2.5 h-2.5" />
-                                <input
-                                  type="file"
-                                  accept="image/*"
-                                  onChange={(e) => handleMediaUpload(e, "image", idx)}
-                                  className="hidden"
-                                />
-                              </label>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const updated = list.filter((_, i) => i !== idx);
-                                  setComboForm((prev) => ({
-                                    ...prev,
-                                    imageUrl: isPrimary ? (updated[0] || "") : (updated.includes(prev.imageUrl) ? prev.imageUrl : (updated[0] || "")),
-                                    imgsText: updated.join("\n"),
-                                  }));
-                                }}
-                                className="absolute top-1 right-1 w-5 h-5 bg-red-600 hover:bg-red-700 text-white rounded-full flex items-center justify-center opacity-80 group-hover:opacity-100 transition shadow-xs"
-                                title={lang === "es" ? "Eliminar imagen" : "Delete image"}
-                              >
-                                <X className="w-3 h-3" />
-                              </button>
-                              {isPrimary && (
-                                <span className="absolute bottom-1 left-1 bg-purple-600 text-[8px] font-bold text-white px-1.5 py-0.5 rounded-full uppercase">
-                                  {lang === "es" ? "Principal" : "Primary"}
+                                {/* Sequence Number Badge */}
+                                <span className="absolute top-1 left-1 z-10 bg-slate-900/80 backdrop-blur-xs text-white text-[9px] font-mono font-bold px-1 rounded-sm leading-tight shadow-xs pointer-events-none">
+                                  #{idx + 1}
                                 </span>
-                              )}
-                            </div>
-                          );
-                        })}
+
+                                {/* Grip Indicator on Hover */}
+                                <span className="absolute top-1 left-6 z-10 bg-white/90 text-slate-600 rounded p-0.5 opacity-0 group-hover:opacity-100 transition shadow-xs pointer-events-none">
+                                  <GripVertical className="w-2.5 h-2.5" />
+                                </span>
+
+                                <img
+                                  src={imgUrl}
+                                  alt={`Combo media ${idx + 1}`}
+                                  draggable={false}
+                                  className="w-full h-16 object-contain rounded-lg pointer-events-none select-none"
+                                />
+
+                                {/* Quick Step Left / Right Buttons */}
+                                <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 flex items-center justify-between px-1 opacity-0 group-hover:opacity-100 transition z-10 pointer-events-auto">
+                                  {idx > 0 && (
+                                    <button
+                                      type="button"
+                                      onMouseDown={(e) => e.stopPropagation()}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleMoveComboImage(idx, "left");
+                                      }}
+                                      className="w-4 h-4 bg-slate-900/80 hover:bg-slate-900 text-white rounded-full flex items-center justify-center text-[10px] shadow-xs cursor-pointer"
+                                      title={lang === "es" ? "Mover a la izquierda" : "Move left"}
+                                    >
+                                      <ChevronLeft className="w-3 h-3" />
+                                    </button>
+                                  )}
+                                  {idx < list.length - 1 && (
+                                    <button
+                                      type="button"
+                                      onMouseDown={(e) => e.stopPropagation()}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleMoveComboImage(idx, "right");
+                                      }}
+                                      className="w-4 h-4 bg-slate-900/80 hover:bg-slate-900 text-white rounded-full flex items-center justify-center text-[10px] shadow-xs ml-auto cursor-pointer"
+                                      title={lang === "es" ? "Mover a la derecha" : "Move right"}
+                                    >
+                                      <ChevronRight className="w-3 h-3" />
+                                    </button>
+                                  )}
+                                </div>
+
+                                <label
+                                  onMouseDown={(e) => e.stopPropagation()}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="absolute top-1 right-7 w-5 h-5 bg-slate-900/85 hover:bg-slate-900 text-white rounded-full flex items-center justify-center opacity-80 group-hover:opacity-100 transition shadow-xs cursor-pointer z-10"
+                                  title={lang === "es" ? "Reemplazar imagen" : "Replace image"}
+                                >
+                                  <Upload className="w-2.5 h-2.5" />
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    onChange={(e) => handleMediaUpload(e, "image", idx)}
+                                    className="hidden"
+                                  />
+                                </label>
+                                <button
+                                  type="button"
+                                  onMouseDown={(e) => e.stopPropagation()}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const updated = list.filter((_, i) => i !== idx);
+                                    setComboForm((prev) => ({
+                                      ...prev,
+                                      imageUrl: isPrimary ? (updated[0] || "") : (updated.includes(prev.imageUrl) ? prev.imageUrl : (updated[0] || "")),
+                                      imgsText: updated.join("\n"),
+                                    }));
+                                  }}
+                                  className="absolute top-1 right-1 w-5 h-5 bg-red-600 hover:bg-red-700 text-white rounded-full flex items-center justify-center opacity-80 group-hover:opacity-100 transition shadow-xs z-10 cursor-pointer"
+                                  title={lang === "es" ? "Eliminar imagen" : "Delete image"}
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                                {isPrimary && (
+                                  <span className="absolute bottom-1 left-1 bg-purple-600 text-[8px] font-bold text-white px-1.5 py-0.5 rounded-full uppercase z-10 pointer-events-none">
+                                    {lang === "es" ? "Principal" : "Primary"}
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
                     )}
 
