@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getAllProducts, ProductItem, isPlatformOrVehicleMatch } from "@/lib/products";
+import {
+  getAllProducts,
+  ProductItem,
+  isPlatformOrVehicleMatch,
+  isItemVehicleSpecific,
+  isItemCompatibleWithTarget,
+  haveCompatibilityInCommon,
+} from "@/lib/products";
 
 export const dynamic = "force-dynamic";
 
@@ -43,13 +50,31 @@ export async function GET(request: NextRequest) {
       if ((targetProduct as any).sku) excludedIds.add(String((targetProduct as any).sku).toLowerCase());
     }
 
+    const targetIsVehicleSpecific = targetProduct
+      ? isItemVehicleSpecific(targetProduct, allProducts)
+      : false;
+
     // 2. Score candidates
     const scoredCandidates = allProducts
       .filter((candidate) => {
+        if (!candidate || !candidate.id) return false;
+        if ((candidate as any).isArchived) return false;
         const cId = candidate.id.toLowerCase();
         const cSlug = candidate.slug ? candidate.slug.toLowerCase() : "";
         const cSku = (candidate as any).sku ? String((candidate as any).sku).toLowerCase() : "";
-        return !excludedIds.has(cId) && !excludedIds.has(cSlug) && !excludedIds.has(cSku);
+        if (excludedIds.has(cId) || excludedIds.has(cSlug) || excludedIds.has(cSku)) {
+          return false;
+        }
+
+        // STRICT VEHICLE COMPATIBILITY RULE:
+        // If target is vehicle-specific, never recommend a product for an incompatible vehicle!
+        if (targetIsVehicleSpecific && targetProduct) {
+          if (!isItemCompatibleWithTarget(targetProduct, candidate, allProducts)) {
+            return false;
+          }
+        }
+
+        return true;
       })
       .map((candidate) => {
         let score = 0;
@@ -86,12 +111,9 @@ export async function GET(request: NextRequest) {
           if (commonCat) score += 40;
         }
 
-        // D. Vehicle compatibility match
-        if (targetProduct?.comp && candidate.comp) {
-          const sharesVehicle = targetProduct.comp.some((tComp) =>
-            candidate.comp.some((cComp) => isPlatformOrVehicleMatch(tComp, cComp))
-          );
-          if (sharesVehicle) score += 30;
+        // D. Vehicle compatibility match bonus
+        if (targetProduct && haveCompatibilityInCommon(targetProduct, candidate, allProducts)) {
+          score += 50;
         }
 
         // E. In Stock bonus
@@ -107,8 +129,9 @@ export async function GET(request: NextRequest) {
       });
 
     // 3. Sort by score descending and take top N
-    scoredCandidates.sort((a, b) => b.score - a.score);
-    const recommended = scoredCandidates.slice(0, limit).map((sc) => sc.candidate);
+    const validCandidates = scoredCandidates.filter((sc) => sc.score > 0);
+    validCandidates.sort((a, b) => b.score - a.score);
+    const recommended = validCandidates.slice(0, limit).map((sc) => sc.candidate);
 
     return NextResponse.json({
       success: true,

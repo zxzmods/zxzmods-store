@@ -10,6 +10,7 @@ import {
   BRAND_DISPLAY_PRIORITY,
   FAMILY_DISPLAY_PRIORITY,
 } from "@/lib/sxsBrands";
+import { isVehicleBrand } from "@/lib/dealerBrands";
 
 export {
   sortVehicleBrands,
@@ -970,6 +971,30 @@ export function detectVehiclePlatform(token: string): string | null {
     return "talon";
   }
 
+  // 11a. Polaris RZR XP 4 (4-seater)
+  if (
+    !t.includes("pro") &&
+    !t.includes("turbo") &&
+    (/\b4\b/i.test(t) || t.includes("-4") || t.includes(" 4") || t.includes("max") || t.includes("crew")) &&
+    (t.includes("rzr-xp") || t.includes("rzr xp") || (t.includes("rzr") && t.includes("xp")))
+  ) {
+    return "rzr-xp-4";
+  }
+
+  // 11b. Polaris RZR XP (2-seater)
+  if (
+    !t.includes("pro") &&
+    !t.includes("turbo") &&
+    !t.includes("-4") &&
+    !t.includes(" 4") &&
+    !t.includes("max") &&
+    !t.includes("crew") &&
+    !/\b4\b/i.test(t) &&
+    (t.includes("rzr-xp") || t.includes("rzr xp") || (t.includes("rzr") && t.includes("xp")))
+  ) {
+    return "rzr-xp";
+  }
+
   return null;
 }
 
@@ -984,6 +1009,13 @@ export function isPlatformOrVehicleMatch(compItem: string, targetToken: string):
   if (!c || !target) return false;
   if (c === "all" || target === "all") return true;
   if (c.includes("universal") || target.includes("universal")) return true;
+
+  // STRICT RULE: Vehicle manufacturer brand names (Can-Am, Polaris, CFMOTO, etc.)
+  // are BRANDS, NEVER individual vehicle models or platforms! They must NEVER match as platforms!
+  if (isVehicleBrand(c) || isVehicleBrand(target)) {
+    return false;
+  }
+
   if (c === target) return true;
 
   // STRICT SEPARATION: 2-Seater vs 4-Seater (MAX / Crew / -4)
@@ -1953,18 +1985,26 @@ export function detectProductVehicleBrands(product: any): string[] {
 
 /**
  * Extracts specific compatibility tokens from a product or combo.
- * Strips out generic "all" or "universal" strings so only vehicle/model-specific tokens are returned.
+ * Strips out generic "all" or "universal" strings and vehicle brand names so only
+ * vehicle/model-specific tokens are returned.
  */
 export function getProductCompatibilityTokens(item: any): string[] {
   if (!item) return [];
   const tokens = new Set<string>();
 
-  // If item is a combo, extract from title/desc and its included item tokens
-  if (item.items || item.itemsJson) {
+  // If item is a combo, extract from includedProducts, included items and title/desc
+  if (item.items || item.itemsJson || item.includedProducts) {
+    const directProds = Array.isArray(item.includedProducts) ? item.includedProducts : [];
+    for (const prod of directProds) {
+      const prodTokens = getProductCompatibilityTokens(prod);
+      prodTokens.forEach((t) => tokens.add(t));
+    }
     const comboText = `${item.titleEs || ""} ${item.titleEn || ""} ${item.descriptionEs || ""} ${item.descriptionEn || ""}`.toLowerCase();
     for (const platforms of Object.values(SXS_BRAND_PLATFORMS)) {
       for (const plat of platforms) {
         const platLower = plat.toLowerCase();
+        // NEVER add vehicle brand manufacturer names (Can-Am, CFMOTO, Polaris) as platform tokens!
+        if (isVehicleBrand(platLower)) continue;
         if (comboText.includes(platLower)) {
           tokens.add(platLower);
         }
@@ -1988,12 +2028,11 @@ export function getProductCompatibilityTokens(item: any): string[] {
   for (const m of myArr) {
     if (m?.model && typeof m.model === "string") {
       const mod = m.model.toLowerCase().trim();
-      if (mod && mod !== "all" && !mod.includes("universal")) tokens.add(mod);
+      if (mod && mod !== "all" && !mod.includes("universal") && !isVehicleBrand(mod)) {
+        tokens.add(mod);
+      }
     }
-    if (m?.make && typeof m.make === "string") {
-      const mk = m.make.toLowerCase().trim();
-      if (mk && mk !== "all" && !mk.includes("universal")) tokens.add(mk);
-    }
+    // STRICT: Do NOT add m.make (e.g. Can-Am, Polaris, CFMOTO)! Make is a vehicle manufacturer brand, NOT a vehicle platform!
   }
 
   // 2. comp array / compJson
@@ -2012,7 +2051,9 @@ export function getProductCompatibilityTokens(item: any): string[] {
   for (const c of compArr) {
     if (typeof c === "string") {
       const cl = c.toLowerCase().trim();
-      if (cl && cl !== "all" && !cl.includes("universal")) tokens.add(cl);
+      if (cl && cl !== "all" && !cl.includes("universal") && !isVehicleBrand(cl)) {
+        tokens.add(cl);
+      }
     }
   }
 
@@ -2020,11 +2061,48 @@ export function getProductCompatibilityTokens(item: any): string[] {
   if (Array.isArray(item.compatibilities)) {
     for (const rel of item.compatibilities) {
       const vm = (rel?.vehicleModel || rel?.modelSlug || "").toLowerCase().trim();
-      if (vm && vm !== "all" && !vm.includes("universal")) tokens.add(vm);
+      if (vm && vm !== "all" && !vm.includes("universal") && !isVehicleBrand(vm)) {
+        tokens.add(vm);
+      }
     }
   }
 
   return Array.from(tokens);
+}
+
+/**
+ * Resolves all recognized canonical vehicle platforms (e.g. x3, z10, maverick-r, etc.) for an item.
+ */
+export function getItemVehiclePlatforms(item: any, catalogProducts: any[] = []): string[] {
+  if (!item) return [];
+  const platforms = new Set<string>();
+
+  const tokens = (item.items || item.itemsJson || item.includedProducts)
+    ? getComboCompatibilityTokens(item, catalogProducts)
+    : getProductCompatibilityTokens(item);
+
+  for (const token of tokens) {
+    const plat = detectVehiclePlatform(token);
+    if (plat) {
+      platforms.add(plat);
+    }
+  }
+
+  return Array.from(platforms);
+}
+
+/**
+ * Determines whether an item is specific to particular vehicle(s) rather than universal/vehicle-agnostic.
+ */
+export function isItemVehicleSpecific(item: any, catalogProducts: any[] = []): boolean {
+  if (!item) return false;
+  if (isUniversalFit(item.comp)) return false;
+
+  const tokens = (item.items || item.itemsJson || item.includedProducts)
+    ? getComboCompatibilityTokens(item, catalogProducts)
+    : getProductCompatibilityTokens(item);
+
+  return tokens.length > 0;
 }
 
 /**
@@ -2037,16 +2115,28 @@ export function haveCompatibilityInCommon(itemA: any, itemB: any, catalogProduct
   const isUnivB = isUniversalFit(itemB.comp);
   if (isUnivA && isUnivB) return true;
 
-  const tokensA = (itemA.items || itemA.itemsJson)
+  const tokensA = (itemA.items || itemA.itemsJson || itemA.includedProducts)
     ? getComboCompatibilityTokens(itemA, catalogProducts)
     : getProductCompatibilityTokens(itemA);
 
-  const tokensB = (itemB.items || itemB.itemsJson)
+  const tokensB = (itemB.items || itemB.itemsJson || itemB.includedProducts)
     ? getComboCompatibilityTokens(itemB, catalogProducts)
     : getProductCompatibilityTokens(itemB);
 
   if (tokensA.length === 0 || tokensB.length === 0) return false;
 
+  // 1. Compare recognized canonical vehicle platforms first
+  const platsA = getItemVehiclePlatforms(itemA, catalogProducts);
+  const platsB = getItemVehiclePlatforms(itemB, catalogProducts);
+
+  if (platsA.length > 0 && platsB.length > 0) {
+    const sharesPlatform = platsA.some((pA) => platsB.includes(pA));
+    if (sharesPlatform) return true;
+    // Both items have recognized platforms and share NONE in common -> DEFINITELY INCOMPATIBLE!
+    return false;
+  }
+
+  // 2. Fallback token-by-token comparison
   for (const tA of tokensA) {
     for (const tB of tokensB) {
       if (isPlatformOrVehicleMatch(tA, tB)) {
@@ -2056,6 +2146,31 @@ export function haveCompatibilityInCommon(itemA: any, itemB: any, catalogProduct
   }
 
   return false;
+}
+
+/**
+ * Verifies if candidate is compatible with target vehicle.
+ * If target has a specific vehicle platform, only candidates that match that platform (or universal) are compatible.
+ */
+export function isItemCompatibleWithTarget(
+  target: any,
+  candidate: any,
+  catalogProducts: any[] = []
+): boolean {
+  if (!target || !candidate) return false;
+
+  // Universal candidate fits any vehicle
+  if (isUniversalFit(candidate.comp)) {
+    return true;
+  }
+
+  // If target has NO vehicle fitment restrictions (universal or vehicle-agnostic)
+  if (!isItemVehicleSpecific(target, catalogProducts)) {
+    return true;
+  }
+
+  // Target IS vehicle-specific: candidate MUST share compatibility with target:
+  return haveCompatibilityInCommon(target, candidate, catalogProducts);
 }
 
 /**
@@ -2166,7 +2281,14 @@ export function getComboCompatibilityTokens(combo: any, catalogProducts: any[] =
   if (!combo) return [];
   const tokens = new Set<string>();
 
-  // Included items lookup
+  // 1. Direct includedProducts lookup (if already populated on the combo object)
+  const directProds = Array.isArray(combo.includedProducts) ? combo.includedProducts : [];
+  for (const prod of directProds) {
+    const prodTokens = getProductCompatibilityTokens(prod);
+    prodTokens.forEach((t) => tokens.add(t));
+  }
+
+  // 2. Included items lookup in catalogProducts
   let itemIds: string[] = [];
   if (Array.isArray(combo.items)) {
     itemIds = combo.items.map((it: any) => typeof it === "string" ? it : (it.id || it.sku || it.slug || ""));
@@ -2179,25 +2301,28 @@ export function getComboCompatibilityTokens(combo: any, catalogProducts: any[] =
     } catch {}
   }
 
-  const idSet = new Set(itemIds.map((id) => id.toLowerCase().trim()));
-  const matchingProds = catalogProducts.filter((p) => {
-    return (
-      idSet.has((p.id || "").toLowerCase()) ||
-      (p.sku && idSet.has(p.sku.toLowerCase())) ||
-      (p.slug && idSet.has(p.slug.toLowerCase()))
-    );
-  });
+  if (itemIds.length > 0 && catalogProducts && catalogProducts.length > 0) {
+    const idSet = new Set(itemIds.map((id) => id.toLowerCase().trim()));
+    const matchingProds = catalogProducts.filter((p) => {
+      return (
+        idSet.has((p.id || "").toLowerCase()) ||
+        (p.sku && idSet.has(p.sku.toLowerCase())) ||
+        (p.slug && idSet.has(p.slug.toLowerCase()))
+      );
+    });
 
-  for (const prod of matchingProds) {
-    const prodTokens = getProductCompatibilityTokens(prod);
-    prodTokens.forEach((t) => tokens.add(t));
+    for (const prod of matchingProds) {
+      const prodTokens = getProductCompatibilityTokens(prod);
+      prodTokens.forEach((t) => tokens.add(t));
+    }
   }
 
-  // Also check title/desc for platform words
+  // 3. Also check title/desc for platform words (strictly excluding vehicle brand manufacturer names)
   const fullText = `${combo.titleEs || ""} ${combo.titleEn || ""} ${combo.descriptionEs || ""} ${combo.descriptionEn || ""}`.toLowerCase();
   for (const platforms of Object.values(SXS_BRAND_PLATFORMS)) {
     for (const plat of platforms) {
       const platLower = plat.toLowerCase();
+      if (isVehicleBrand(platLower)) continue;
       if (fullText.includes(platLower)) {
         tokens.add(platLower);
       }
@@ -2256,14 +2381,21 @@ export function getComboVehicleBrands(combo: any, catalogProducts: any[] = []): 
 }
 
 /**
- * Fill recommended / related products using the strict priority waterfall (User Requirement):
- * Tier 0: Explicit attached products (seeded first, never replaced).
- * Tier 1: Compatibility in common AND Category in common (Highest Priority).
- * Tier 2: Compatibility in common (any category).
- * Tier 3: Same Vehicle Brand AND Category in common.
- * Tier 4: Same Vehicle Brand (any category).
- * Tier 5: Related Brand (Same Dealer / Distributor Brand).
- * Tier 6: Any active catalog product (last resort).
+ * Fill recommended / related products strictly prioritizing vehicle compatibility (User Requirement):
+ * - If target is vehicle-specific:
+ *   ONLY products matching the exact same vehicle compatibility (or universal) can ever be recommended.
+ *   Products for other vehicles are strictly excluded!
+ *   Tier 0: Explicit attached products (seeded first, never replaced).
+ *   Tier 1: Same Vehicle Compatibility AND Category in common (Highest Priority).
+ *   Tier 2: Same Vehicle Compatibility (any category).
+ *   Tier 3: Universal products with same category (fit any vehicle).
+ *   Tier 4: Universal products (fit any vehicle).
+ *   NEVER fills with products designed for incompatible vehicles!
+ * - If target is universal / vehicle-agnostic:
+ *   Tier 1: Same Category AND Same Dealer Brand.
+ *   Tier 2: Same Category.
+ *   Tier 3: Same Dealer Brand.
+ *   Tier 4: Any active catalog product.
  */
 export function getRecommendedFillerProducts(
   target: any,
@@ -2277,7 +2409,7 @@ export function getRecommendedFillerProducts(
   // Identify target keys to exclude self
   const targetKeys = new Set([
     (target.id || "").toLowerCase(),
-    (target.sku || "").toLowerCase(),
+    ((target as any).sku || "").toLowerCase(),
     (target.slug || "").toLowerCase(),
   ]);
 
@@ -2308,47 +2440,80 @@ export function getRecommendedFillerProducts(
     return true;
   });
 
-  // TIER 1: Common Compatibility AND Category (Highest Priority)
+  const targetIsVehicleSpecific = isItemVehicleSpecific(target, pool);
+
+  if (targetIsVehicleSpecific) {
+    // STRICT VEHICLE COMPATIBILITY:
+    // Only candidates that match target's vehicle compatibility (or are universal) are allowed.
+    // Incompatible vehicles are NEVER included!
+    const compatiblePool = pool.filter((cand) => isItemCompatibleWithTarget(target, cand, pool));
+
+    // TIER 1: SAME Vehicle Compatibility AND Category in common (Highest Priority)
+    for (const cand of compatiblePool) {
+      if (result.length >= maxCount) break;
+      if (seenIds.has(cand.id.toLowerCase())) continue;
+      if (haveCompatibilityInCommon(target, cand, pool) && haveCategoriesInCommon(target, cand)) {
+        seenIds.add(cand.id.toLowerCase());
+        result.push(cand);
+      }
+    }
+
+    // TIER 2: SAME Vehicle Compatibility (any category)
+    for (const cand of compatiblePool) {
+      if (result.length >= maxCount) break;
+      if (seenIds.has(cand.id.toLowerCase())) continue;
+      if (haveCompatibilityInCommon(target, cand, pool)) {
+        seenIds.add(cand.id.toLowerCase());
+        result.push(cand);
+      }
+    }
+
+    // TIER 3: Universal products with same category (fit any vehicle)
+    for (const cand of compatiblePool) {
+      if (result.length >= maxCount) break;
+      if (seenIds.has(cand.id.toLowerCase())) continue;
+      if (isUniversalFit(cand.comp) && haveCategoriesInCommon(target, cand)) {
+        seenIds.add(cand.id.toLowerCase());
+        result.push(cand);
+      }
+    }
+
+    // TIER 4: Any remaining universal products (fit any vehicle)
+    for (const cand of compatiblePool) {
+      if (result.length >= maxCount) break;
+      if (seenIds.has(cand.id.toLowerCase())) continue;
+      if (isUniversalFit(cand.comp)) {
+        seenIds.add(cand.id.toLowerCase());
+        result.push(cand);
+      }
+    }
+
+    // Never fill with products from an incompatible vehicle!
+    return result.slice(0, maxCount);
+  }
+
+  // TARGET IS UNIVERSAL / VEHICLE-AGNOSTIC:
+  // TIER 1: Same Category AND Same Dealer Brand
   for (const cand of pool) {
     if (result.length >= maxCount) break;
     if (seenIds.has(cand.id.toLowerCase())) continue;
-    if (haveCompatibilityInCommon(target, cand, pool) && haveCategoriesInCommon(target, cand)) {
+    if (haveCategoriesInCommon(target, cand) && haveDealerBrandInCommon(target, cand)) {
       seenIds.add(cand.id.toLowerCase());
       result.push(cand);
     }
   }
 
-  // TIER 2: Common Compatibility (any category)
+  // TIER 2: Same Category
   for (const cand of pool) {
     if (result.length >= maxCount) break;
     if (seenIds.has(cand.id.toLowerCase())) continue;
-    if (haveCompatibilityInCommon(target, cand, pool)) {
+    if (haveCategoriesInCommon(target, cand)) {
       seenIds.add(cand.id.toLowerCase());
       result.push(cand);
     }
   }
 
-  // TIER 3: Same Vehicle Brand AND Category
-  for (const cand of pool) {
-    if (result.length >= maxCount) break;
-    if (seenIds.has(cand.id.toLowerCase())) continue;
-    if (haveVehicleBrandInCommon(target, cand, pool) && haveCategoriesInCommon(target, cand)) {
-      seenIds.add(cand.id.toLowerCase());
-      result.push(cand);
-    }
-  }
-
-  // TIER 4: Same Vehicle Brand (any category)
-  for (const cand of pool) {
-    if (result.length >= maxCount) break;
-    if (seenIds.has(cand.id.toLowerCase())) continue;
-    if (haveVehicleBrandInCommon(target, cand, pool)) {
-      seenIds.add(cand.id.toLowerCase());
-      result.push(cand);
-    }
-  }
-
-  // TIER 5: Related Brand (Same Dealer / Distributor Brand)
+  // TIER 3: Same Dealer Brand
   for (const cand of pool) {
     if (result.length >= maxCount) break;
     if (seenIds.has(cand.id.toLowerCase())) continue;
@@ -2358,7 +2523,7 @@ export function getRecommendedFillerProducts(
     }
   }
 
-  // TIER 6: Any active catalog product (last resort)
+  // TIER 4: Any active catalog product (last resort for universal items)
   for (const cand of pool) {
     if (result.length >= maxCount) break;
     if (seenIds.has(cand.id.toLowerCase())) continue;
@@ -2370,7 +2535,18 @@ export function getRecommendedFillerProducts(
 }
 
 /**
- * Fill recommended / suggested combos using the strict compatibility-first priority waterfall.
+ * Fill recommended / suggested combos strictly prioritizing vehicle compatibility (User Requirement):
+ * - If target is vehicle-specific:
+ *   ONLY combos matching the exact same vehicle compatibility (or containing this product, or universal) can ever be recommended.
+ *   Combos for other vehicles are strictly excluded!
+ *   Tier 0: Explicit attached combos (seeded first, never replaced).
+ *   Tier 1: Combos containing this product, OR combos with SAME Compatibility AND Category in common.
+ *   Tier 2: Combos with SAME Compatibility (any category).
+ *   Tier 3: Universal combos.
+ *   NEVER fills with combos designed for incompatible vehicles!
+ * - If target is universal / vehicle-agnostic:
+ *   Tier 1: Combos containing this product, or matching Category.
+ *   Tier 2: Remaining active combos.
  */
 export function getRecommendedFillerCombos(
   target: any,
@@ -2408,16 +2584,10 @@ export function getRecommendedFillerCombos(
     return idLower !== targetId && slugLower !== targetSlug;
   });
 
-  const isTargetCombo = Boolean(target.items || target.itemsJson);
-  const targetTokens = isTargetCombo
-    ? getComboCompatibilityTokens(target, catalogProducts)
-    : getProductCompatibilityTokens(target);
+  const isTargetCombo = Boolean(target.items || target.itemsJson || target.includedProducts);
   const targetCategories = getItemCategories(target);
-  const targetVehicleBrands = isTargetCombo
-    ? getComboVehicleBrands(target, catalogProducts)
-    : detectProductVehicleBrands(target);
+  const targetIsVehicleSpecific = isItemVehicleSpecific(target, catalogProducts);
 
-  // Helper matching functions for a combo candidate
   const comboContainsTargetProduct = (combo: any) => {
     if (isTargetCombo) return false;
     let items: any[] = [];
@@ -2431,63 +2601,65 @@ export function getRecommendedFillerCombos(
     });
   };
 
-  const comboMatchesCompatibility = (combo: any) => {
-    const cTokens = getComboCompatibilityTokens(combo, catalogProducts);
-    if (targetTokens.length === 0 || cTokens.length === 0) return false;
-    return targetTokens.some((tT) => cTokens.some((cT) => isPlatformOrVehicleMatch(tT, cT)));
-  };
-
   const comboMatchesCategory = (combo: any) => {
     const cCategories = getItemCategories(combo);
     return haveCategoriesInCommon(targetCategories, cCategories);
   };
 
-  const comboMatchesVehicleBrand = (combo: any) => {
-    const cVBrands = getComboVehicleBrands(combo, catalogProducts);
-    return targetVehicleBrands.some((vb) => cVBrands.includes(vb));
-  };
+  if (targetIsVehicleSpecific) {
+    // STRICT VEHICLE COMPATIBILITY:
+    // Only combos that match target's vehicle compatibility (or contain this product, or are universal) are allowed.
+    // Combos for incompatible vehicles are NEVER included!
+    const compatibleCombos = pool.filter((c) =>
+      comboContainsTargetProduct(c) || isItemCompatibleWithTarget(target, c, catalogProducts)
+    );
 
-  // TIER 1: Combos containing this product, or matching Compatibility AND Category
+    // TIER 1: Combos containing this product, or matching Compatibility AND Category
+    for (const combo of compatibleCombos) {
+      if (result.length >= maxCount) break;
+      if (seenIds.has(combo.id.toLowerCase())) continue;
+      if (comboContainsTargetProduct(combo) || (haveCompatibilityInCommon(target, combo, catalogProducts) && comboMatchesCategory(combo))) {
+        seenIds.add(combo.id.toLowerCase());
+        result.push(combo);
+      }
+    }
+
+    // TIER 2: Combos matching Compatibility (any category)
+    for (const combo of compatibleCombos) {
+      if (result.length >= maxCount) break;
+      if (seenIds.has(combo.id.toLowerCase())) continue;
+      if (haveCompatibilityInCommon(target, combo, catalogProducts)) {
+        seenIds.add(combo.id.toLowerCase());
+        result.push(combo);
+      }
+    }
+
+    // TIER 3: Universal combos (if any)
+    for (const combo of compatibleCombos) {
+      if (result.length >= maxCount) break;
+      if (seenIds.has(combo.id.toLowerCase())) continue;
+      if (isUniversalFit(combo.comp)) {
+        seenIds.add(combo.id.toLowerCase());
+        result.push(combo);
+      }
+    }
+
+    // Never fill with combos of a different vehicle!
+    return result.slice(0, maxCount);
+  }
+
+  // TARGET IS UNIVERSAL / VEHICLE-AGNOSTIC:
+  // TIER 1: Combos containing this product, or matching Category
   for (const combo of pool) {
     if (result.length >= maxCount) break;
     if (seenIds.has(combo.id.toLowerCase())) continue;
-    if (comboContainsTargetProduct(combo) || (comboMatchesCompatibility(combo) && comboMatchesCategory(combo))) {
+    if (comboContainsTargetProduct(combo) || comboMatchesCategory(combo)) {
       seenIds.add(combo.id.toLowerCase());
       result.push(combo);
     }
   }
 
-  // TIER 2: Combos matching Compatibility (any category)
-  for (const combo of pool) {
-    if (result.length >= maxCount) break;
-    if (seenIds.has(combo.id.toLowerCase())) continue;
-    if (comboMatchesCompatibility(combo)) {
-      seenIds.add(combo.id.toLowerCase());
-      result.push(combo);
-    }
-  }
-
-  // TIER 3: Combos matching Vehicle Brand
-  for (const combo of pool) {
-    if (result.length >= maxCount) break;
-    if (seenIds.has(combo.id.toLowerCase())) continue;
-    if (comboMatchesVehicleBrand(combo)) {
-      seenIds.add(combo.id.toLowerCase());
-      result.push(combo);
-    }
-  }
-
-  // TIER 4: Combos matching Category
-  for (const combo of pool) {
-    if (result.length >= maxCount) break;
-    if (seenIds.has(combo.id.toLowerCase())) continue;
-    if (comboMatchesCategory(combo)) {
-      seenIds.add(combo.id.toLowerCase());
-      result.push(combo);
-    }
-  }
-
-  // TIER 5: Remaining combos
+  // TIER 2: Any remaining active combos
   for (const combo of pool) {
     if (result.length >= maxCount) break;
     if (seenIds.has(combo.id.toLowerCase())) continue;
