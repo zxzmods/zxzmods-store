@@ -81,7 +81,7 @@ export async function fetchLiveSupplierAvailability(
       messageEs: "Enlace de proveedor no especificado o inválido",
       messageEn: "Supplier URL not specified or invalid",
       leadDaysMin: 7,
-      leadDaysMax: 12,
+      leadDaysMax: 21,
       checkedAt: nowIso,
     };
   }
@@ -180,7 +180,7 @@ export async function fetchLiveSupplierAvailability(
             messageEs: msgEs,
             messageEn: msgEn,
             leadDaysMin: status === "PRE_ORDER" ? 14 : 7,
-            leadDaysMax: status === "PRE_ORDER" ? 28 : 12,
+            leadDaysMax: status === "PRE_ORDER" ? 28 : 21,
             checkedAt: nowIso,
             rawDetails: {
               platformIdentified: "Shopify Product API (.js)",
@@ -226,7 +226,7 @@ export async function fetchLiveSupplierAvailability(
             ? "Product not found on supplier site (404)"
             : "Could not verify supplier availability",
         leadDaysMin: 7,
-        leadDaysMax: 12,
+        leadDaysMax: 21,
         checkedAt: nowIso,
       };
     }
@@ -334,7 +334,7 @@ export async function fetchLiveSupplierAvailability(
       messageEs: msgEs,
       messageEn: msgEn,
       leadDaysMin: status === "PRE_ORDER" ? 14 : 7,
-      leadDaysMax: status === "PRE_ORDER" ? 28 : 12,
+      leadDaysMax: status === "PRE_ORDER" ? 28 : 21,
       checkedAt: nowIso,
       rawDetails: {
         platformIdentified: schemaAvailability ? "Schema.org / JSON-LD" : "HTML Heuristic",
@@ -354,7 +354,7 @@ export async function fetchLiveSupplierAvailability(
       messageEs: "Verificación de proveedor en curso (Stock estimado)",
       messageEn: "Supplier verification in progress (Estimated stock)",
       leadDaysMin: 7,
-      leadDaysMax: 12,
+      leadDaysMax: 21,
       checkedAt: nowIso,
     };
   }

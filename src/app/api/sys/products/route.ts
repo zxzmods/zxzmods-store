@@ -89,7 +89,7 @@ export async function POST(request: Request) {
     let supplierStockMessageEn = body.supplierStockMessageEn || null;
     let supplierStockCheckedAt = body.supplierStockCheckedAt ? new Date(body.supplierStockCheckedAt) : null;
     let supplierLeadDaysMin = Number(body.supplierLeadDaysMin) || 7;
-    let supplierLeadDaysMax = Number(body.supplierLeadDaysMax) || 12;
+    let supplierLeadDaysMax = Number(body.supplierLeadDaysMax) || 21;
     let supplierLastPriceUSD = body.supplierLastPriceUSD !== undefined && body.supplierLastPriceUSD !== null ? Number(body.supplierLastPriceUSD) : null;
 
     if (body.supplierUrl && !supplierStockCheckedAt) {

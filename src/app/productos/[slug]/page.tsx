@@ -1765,7 +1765,7 @@ export default function ProductDetailPage() {
                         <p className="text-[11px] text-gray-700 font-medium">
                           {t.supplierLeadTimeText
                             .replace("{min}", String(availability.leadDaysMin || 7))
-                            .replace("{max}", String(availability.leadDaysMax || 12))}
+                            .replace("{max}", String(availability.leadDaysMax || 21))}
                         </p>
                       )}
                     </div>

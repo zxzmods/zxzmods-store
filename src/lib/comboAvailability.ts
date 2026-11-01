@@ -162,7 +162,7 @@ export function resolveProductStockStatus(product: any): {
   }
 
   const defaultMin = status === "PRE_ORDER" ? 10 : 7;
-  const defaultMax = status === "PRE_ORDER" ? 20 : 12;
+  const defaultMax = status === "PRE_ORDER" ? 28 : 21;
 
   const leadDaysMin = Number(product?.supplierLeadDaysMin) > 0 ? Number(product.supplierLeadDaysMin) : defaultMin;
   const leadDaysMax = Number(product?.supplierLeadDaysMax) > 0 ? Number(product.supplierLeadDaysMax) : defaultMax;
@@ -233,7 +233,7 @@ export function calculateComboAvailability(
         isArchived: false,
         hasProduct: false,
         leadDaysMin: 7,
-        leadDaysMax: 12,
+        leadDaysMax: 21,
       });
     }
   }

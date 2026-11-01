@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Navbar } from "@/components/layout/Navbar";
@@ -14,6 +14,7 @@ import { GarageRegisterSkeleton } from "@/components/garage/GarageRegisterSkelet
 import { useGarage } from "@/context/GarageContext";
 import { useLanguage } from "@/context/LanguageContext";
 import { useAuth } from "@/context/AuthContext";
+import { sortVehicleModels, getModelFamilyName } from "@/lib/sxsBrands";
 import {
   ArrowLeft,
   AlertCircle,
@@ -100,9 +101,29 @@ export default function RegisterVehiclePage() {
 
   // Filter models strictly by the selected year.
   // For example: Z10 only exists in 2026/2027, so for 2025 and below, it will NOT appear.
-  const availableModels = currentBrand?.models.filter((m) =>
-    selectedYear ? m.years.includes(Number(selectedYear)) : true
-  );
+  // Filter models strictly by the selected year, sorted canonically
+  const availableModels = useMemo(() => {
+    if (!currentBrand?.models) return [];
+    const filtered = currentBrand.models.filter((m) =>
+      selectedYear ? m.years.includes(Number(selectedYear)) : true
+    );
+    return sortVehicleModels(filtered);
+  }, [currentBrand, selectedYear]);
+
+  // Group models by family for organized dropdown presentation
+  const groupedModels = useMemo(() => {
+    if (!availableModels || availableModels.length === 0) return [];
+    const map = new Map<string, typeof availableModels>();
+    availableModels.forEach((m) => {
+      const fam = getModelFamilyName(m);
+      if (!map.has(fam)) map.set(fam, []);
+      map.get(fam)!.push(m);
+    });
+    return Array.from(map.entries()).map(([family, fModels]) => ({
+      family,
+      models: sortVehicleModels(fModels),
+    }));
+  }, [availableModels]);
 
   const currentModel = availableModels?.find((m) => m.slug === selectedModelSlug);
 
@@ -344,11 +365,23 @@ export default function RegisterVehiclePage() {
                     className="w-full bg-gray-50 border border-gray-300 focus:border-[#C02030] disabled:opacity-40 rounded-xl px-4 py-3 text-sm text-gray-900 focus:outline-none transition-colors shadow-sm"
                   >
                     <option value="">{t.garageSelectPlaceholder}</option>
-                    {availableModels?.map((m) => (
-                      <option key={m.slug} value={m.slug}>
-                        {m.name} ({m.category})
-                      </option>
-                    ))}
+                    {groupedModels.length > 0 ? (
+                      groupedModels.map((grp) => (
+                        <optgroup key={grp.family} label={`Familia ${grp.family}`}>
+                          {grp.models.map((m) => (
+                            <option key={m.slug} value={m.slug}>
+                              {m.name} ({m.category})
+                            </option>
+                          ))}
+                        </optgroup>
+                      ))
+                    ) : (
+                      availableModels?.map((m) => (
+                        <option key={m.slug} value={m.slug}>
+                          {m.name} ({m.category})
+                        </option>
+                      ))
+                    )}
                   </select>
                 </div>
               </div>

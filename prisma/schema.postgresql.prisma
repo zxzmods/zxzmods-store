@@ -108,7 +108,7 @@ model Product {
   supplierStockMessageEn     String?
   supplierStockCheckedAt     DateTime?
   supplierLeadDaysMin        Int       @default(7)
-  supplierLeadDaysMax        Int       @default(12)
+  supplierLeadDaysMax        Int       @default(21)
   supplierLastPriceUSD       Float?
   installLabourCostCRC       Int                    @default(0)
   installProfitCRC           Int                    @default(0)

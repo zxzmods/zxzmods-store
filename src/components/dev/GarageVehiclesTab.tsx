@@ -28,6 +28,7 @@ import {
   ImageIcon,
 } from "lucide-react";
 import { uploadMediaDirect } from "@/lib/clientDirectUpload";
+import { sortVehicleModels, sortVehicleBrands, getModelFamilyName } from "@/lib/sxsBrands";
 
 interface BrandItem {
   id: string;
@@ -584,9 +585,9 @@ export function GarageVehiclesTab({ userRole }: GarageVehiclesTabProps) {
     }
   };
 
-  // Filtered Models
+  // Filtered Models (Organized canonically by Brand -> Family -> 2-Seater -> 4-Seater)
   const filteredModels = useMemo(() => {
-    return models.filter((model) => {
+    const list = models.filter((model) => {
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase().trim();
         const matchesName = model.name.toLowerCase().includes(query);
@@ -615,6 +616,8 @@ export function GarageVehiclesTab({ userRole }: GarageVehiclesTabProps) {
 
       return true;
     });
+
+    return sortVehicleModels(list);
   }, [models, searchQuery, selectedBrandFilter, selectedCategoryFilter, selectedModelCategoryFilter]);
 
   const availableModelCategories = useMemo(() => {
@@ -640,9 +643,9 @@ export function GarageVehiclesTab({ userRole }: GarageVehiclesTabProps) {
     return Array.from(set).sort();
   }, [formBrandId, brands, models]);
 
-  // Filtered Brands
+  // Filtered Brands (Organized with CFMOTO first, Can-Am, Polaris...)
   const filteredBrands = useMemo(() => {
-    return brands.filter((brand) => {
+    const list = brands.filter((brand) => {
       if (searchBrandQuery.trim()) {
         const q = searchBrandQuery.toLowerCase().trim();
         const matchesName = brand.name.toLowerCase().includes(q);
@@ -661,6 +664,8 @@ export function GarageVehiclesTab({ userRole }: GarageVehiclesTabProps) {
 
       return true;
     });
+
+    return sortVehicleBrands(list);
   }, [brands, searchBrandQuery, selectedBrandFeaturedFilter]);
 
   return (

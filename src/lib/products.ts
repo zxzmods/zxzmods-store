@@ -1,5 +1,24 @@
 import rawProductsData from "@/data/products.json";
-import { SXS_BRANDS, SXS_BRAND_PLATFORMS, getBrandLogo } from "@/lib/sxsBrands";
+import {
+  SXS_BRANDS,
+  SXS_BRAND_PLATFORMS,
+  getBrandLogo,
+  sortVehicleBrands,
+  sortVehicleModels,
+  getModelFamilyName,
+  groupVehicleModelsByBrandAndFamily,
+  BRAND_DISPLAY_PRIORITY,
+  FAMILY_DISPLAY_PRIORITY,
+} from "@/lib/sxsBrands";
+
+export {
+  sortVehicleBrands,
+  sortVehicleModels,
+  getModelFamilyName,
+  groupVehicleModelsByBrandAndFamily,
+  BRAND_DISPLAY_PRIORITY,
+  FAMILY_DISPLAY_PRIORITY,
+};
 import { evaluateProductSearch } from "@/lib/search";
 
 export interface ProductPrice {

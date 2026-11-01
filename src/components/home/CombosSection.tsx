@@ -103,7 +103,7 @@ export function CombosSection({ combos }: CombosSectionProps) {
       supplierStockStatus: combo.stockStatus || combo.availability?.status || "IN_STOCK",
       supplierStockMessage: lang === "es" ? combo.availability?.summaryEs : combo.availability?.summaryEn,
       supplierLeadDaysMin: combo.leadDaysMin || combo.availability?.leadDaysMin || 7,
-      supplierLeadDaysMax: combo.leadDaysMax || combo.availability?.leadDaysMax || 12,
+      supplierLeadDaysMax: combo.leadDaysMax || combo.availability?.leadDaysMax || 21,
     });
   };
 

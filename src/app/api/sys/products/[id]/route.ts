@@ -262,7 +262,7 @@ export async function PATCH(
     if (body.supplierStockMessageEs !== undefined) updateData.supplierStockMessageEs = body.supplierStockMessageEs;
     if (body.supplierStockMessageEn !== undefined) updateData.supplierStockMessageEn = body.supplierStockMessageEn;
     if (body.supplierLeadDaysMin !== undefined) updateData.supplierLeadDaysMin = Number(body.supplierLeadDaysMin) || 7;
-    if (body.supplierLeadDaysMax !== undefined) updateData.supplierLeadDaysMax = Number(body.supplierLeadDaysMax) || 12;
+    if (body.supplierLeadDaysMax !== undefined) updateData.supplierLeadDaysMax = Number(body.supplierLeadDaysMax) || 21;
     if (body.supplierLastPriceUSD !== undefined) updateData.supplierLastPriceUSD = body.supplierLastPriceUSD !== null ? Number(body.supplierLastPriceUSD) : null;
     if (body.supplierStockCheckedAt !== undefined) updateData.supplierStockCheckedAt = body.supplierStockCheckedAt ? new Date(body.supplierStockCheckedAt) : null;
 

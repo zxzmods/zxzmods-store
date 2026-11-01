@@ -9,6 +9,8 @@ import {
   is2SeaterToken,
   getRecommendedFillerProducts,
   getRecommendedFillerCombos,
+  sortVehicleBrands,
+  sortVehicleModels,
 } from "@/lib/products";
 import { SXS_BRAND_PLATFORMS, SXS_BRANDS, getBrandLogo } from "@/lib/sxsBrands";
 import { evaluateComboSearch, buildDealerBrandSearchRefs } from "@/lib/search";
@@ -406,16 +408,20 @@ export async function GET(request: NextRequest) {
         imageUrl?: string | null;
       }>
     > = {};
-    for (const b of dbBrands) {
-      sxsBrandModels[b.slug.toLowerCase()] = b.models.map((m) => ({
-        id: m.id,
-        name: m.name,
-        code: m.code,
-        slug: m.slug,
-        category: m.category,
-        modelCategory: m.modelCategory || null,
-        imageUrl: m.imageUrl && m.imageUrl !== "null" && m.imageUrl !== "undefined" ? m.imageUrl.trim() : null,
-      }));
+    for (const b of sortVehicleBrands(dbBrands)) {
+      sxsBrandModels[b.slug.toLowerCase()] = sortVehicleModels(
+        b.models.map((m) => ({
+          id: m.id,
+          name: m.name,
+          code: m.code,
+          slug: m.slug,
+          category: m.category,
+          modelCategory: m.modelCategory || null,
+          imageUrl: m.imageUrl && m.imageUrl !== "null" && m.imageUrl !== "undefined" ? m.imageUrl.trim() : null,
+          brandSlug: b.slug,
+          brandName: b.name,
+        }))
+      );
     }
 
     const formattedAllCombos = allCombos.map((c) => {

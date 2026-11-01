@@ -2,46 +2,51 @@ import { NextResponse } from "next/server";
 import { requireStealthSession } from "@/lib/stealthAuth";
 import { prisma } from "@/lib/prisma";
 import { ensureDealerBrandRegistered } from "@/lib/dealerBrands";
+import { sortVehicleBrands, sortVehicleModels } from "@/lib/sxsBrands";
 
 export async function GET() {
   const auth = await requireStealthSession();
   if (!auth.authorized) return auth.response;
 
   try {
-    const brands = await prisma.brand.findMany({
+    const rawBrands = await prisma.brand.findMany({
       include: {
-        models: {
-          orderBy: { name: "asc" },
-        },
+        models: true,
       },
-      orderBy: { name: "asc" },
     });
 
-    const flatModels = brands.flatMap((b) =>
-      b.models.map((m) => {
-        let years: number[] = [];
-        try {
-          years = (JSON.parse(m.yearsJson || "[]") as number[]).sort((x, y) => x - y);
-        } catch {
-          years = [];
-        }
-        return {
-          id: m.id,
-          brandId: m.brandId,
-          brandName: b.name,
-          brandSlug: b.slug,
-          slug: m.slug,
-          code: m.code,
-          name: m.name,
-          category: m.category,
-          modelCategory: m.modelCategory || null,
-          years,
-          yearsJson: m.yearsJson,
-          imageUrl: m.imageUrl,
-          pickupServiceAvailable: m.pickupServiceAvailable ?? true,
-          createdAt: m.createdAt,
-        };
-      })
+    const brands = sortVehicleBrands(rawBrands).map((b) => ({
+      ...b,
+      models: sortVehicleModels(b.models.map((m) => ({ ...m, brandSlug: b.slug, brandName: b.name }))),
+    }));
+
+    const flatModels = sortVehicleModels(
+      brands.flatMap((b) =>
+        b.models.map((m) => {
+          let years: number[] = [];
+          try {
+            years = (JSON.parse(m.yearsJson || "[]") as number[]).sort((x, y) => x - y);
+          } catch {
+            years = [];
+          }
+          return {
+            id: m.id,
+            brandId: m.brandId,
+            brandName: b.name,
+            brandSlug: b.slug,
+            slug: m.slug,
+            code: m.code,
+            name: m.name,
+            category: m.category,
+            modelCategory: m.modelCategory || null,
+            years,
+            yearsJson: m.yearsJson,
+            imageUrl: m.imageUrl,
+            pickupServiceAvailable: m.pickupServiceAvailable ?? true,
+            createdAt: m.createdAt,
+          };
+        })
+      )
     );
 
     return NextResponse.json({
@@ -56,6 +61,7 @@ export async function GET() {
         descriptionEn: b.descriptionEn,
         featured: b.featured,
         modelsCount: b.models.length,
+        models: b.models.map((m) => ({ id: m.id, name: m.name, slug: m.slug, modelCategory: m.modelCategory, code: m.code })),
         createdAt: b.createdAt,
       })),
       models: flatModels,

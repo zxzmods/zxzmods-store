@@ -66,7 +66,13 @@ import {
 } from "@/lib/products";
 import { uploadMediaDirect } from "@/lib/clientDirectUpload";
 import { isVehicleBrand, computeAutoProductSku } from "@/lib/dealerBrands";
-import { SXS_BRANDS } from "@/lib/sxsBrands";
+import {
+  SXS_BRANDS,
+  sortVehicleBrands,
+  sortVehicleModels,
+  getModelFamilyName,
+  groupVehicleModelsByBrandAndFamily,
+} from "@/lib/sxsBrands";
 
 import {
   calculateComboAvailability,
@@ -3247,7 +3253,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
     supplierStockStatus: "IN_STOCK",
     supplierStockCount: "" as number | string,
     supplierLeadDaysMin: 7 as number | string,
-    supplierLeadDaysMax: 12 as number | string,
+    supplierLeadDaysMax: 21 as number | string,
     supplierLastPriceUSD: "" as number | string,
     supplierStockCheckedAt: "",
     parameters: [] as ConfigurableParameter[],
@@ -3415,16 +3421,30 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
 
   const registeredBrandSuggestions = registeredDealerBrands;
 
-  // Only vehicle brands that have registered models in the database/backdoor
+  // Only vehicle brands that have registered models in the database/backdoor, sorted canonically
   const registeredVehicleBrands = useMemo(() => {
-    return (brands || [])
+    const validBrands = (brands || [])
       .filter((b: any) => Array.isArray(b.models) && b.models.length > 0)
       .map((b: any) => ({
         ...b,
-        models: b.models.filter((m: any) => Boolean(m && m.slug)),
+        models: sortVehicleModels(
+          b.models
+            .filter((m: any) => Boolean(m && m.slug))
+            .map((m: any) => ({ ...m, brandSlug: b.slug, brandName: b.name }))
+        ),
       }))
       .filter((b: any) => b.models.length > 0);
+
+    return sortVehicleBrands(validBrands);
   }, [brands]);
+
+  // Group vehicle models by Brand and Family for quick family toggles
+  const vehicleFamilyGroups = useMemo(() => {
+    const allModels = registeredVehicleBrands.flatMap((b: any) =>
+      b.models.map((m: any) => ({ ...m, brandSlug: b.slug, brandName: b.name }))
+    );
+    return groupVehicleModelsByBrandAndFamily(allModels);
+  }, [registeredVehicleBrands]);
 
   // Compatible Vehicles Multi-Selector State (User Requirement)
   const [selectedVehicles, setSelectedVehicles] = useState<string[]>([]);
@@ -3460,6 +3480,35 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       }));
     }
   }, [editingProduct, isSkuManuallyEdited, productForm.brandName, selectedVehicles, products, dealerBrands, brands]);
+
+  // Toggle a vehicle family in/out of selectedVehicles (User Requirement)
+  const handleToggleVehicleFamily = useCallback((familySlugs: string[]) => {
+    if (!familySlugs || familySlugs.length === 0) return;
+
+    const allSelected = familySlugs.every((slug) => selectedVehicles.includes(slug));
+
+    let updated: string[];
+    if (allSelected) {
+      // Toggle OFF: remove all models in this family
+      updated = selectedVehicles.filter((s) => !familySlugs.includes(s));
+    } else {
+      // Toggle ON: add missing models in this family
+      const toAdd = familySlugs.filter((slug) => !selectedVehicles.includes(slug));
+      const cleanCurrent = selectedVehicles.filter((s) => s && s !== "all");
+      updated = [...cleanCurrent, ...toAdd];
+    }
+
+    setSelectedVehicles(updated);
+    updateAutoSkuIfApplicable(undefined, updated);
+  }, [selectedVehicles, updateAutoSkuIfApplicable]);
+
+  // Toggle universal fitment
+  const handleToggleUniversal = useCallback(() => {
+    const isUniversal = selectedVehicles.includes("all");
+    const updated = isUniversal ? [] : ["all"];
+    setSelectedVehicles(updated);
+    updateAutoSkuIfApplicable(undefined, updated);
+  }, [selectedVehicles, updateAutoSkuIfApplicable]);
 
   const handleForceGenerateSku = useCallback(() => {
     if (!productForm.brandName.trim()) {
@@ -3932,7 +3981,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       supplierStockStatus: prod.supplierStockStatus || "IN_STOCK",
       supplierStockCount: prod.supplierStockCount !== null && prod.supplierStockCount !== undefined ? prod.supplierStockCount : "",
       supplierLeadDaysMin: prod.supplierLeadDaysMin || 7,
-      supplierLeadDaysMax: prod.supplierLeadDaysMax || 12,
+      supplierLeadDaysMax: prod.supplierLeadDaysMax || 21,
       supplierLastPriceUSD: prod.supplierLastPriceUSD !== null && prod.supplierLastPriceUSD !== undefined ? prod.supplierLastPriceUSD : "",
       supplierStockCheckedAt: prod.supplierStockCheckedAt ? new Date(prod.supplierStockCheckedAt).toISOString() : "",
       parameters: (() => {
@@ -4026,7 +4075,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       supplierStockStatus: "IN_STOCK",
       supplierStockCount: "",
       supplierLeadDaysMin: 7,
-      supplierLeadDaysMax: 12,
+      supplierLeadDaysMax: 21,
       supplierLastPriceUSD: "",
       supplierStockCheckedAt: "",
       parameters: [] as ConfigurableParameter[],
@@ -4565,7 +4614,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       supplierStockStatus: productForm.supplierStockStatus || "IN_STOCK",
       supplierStockCount: productForm.supplierStockCount !== "" ? Number(productForm.supplierStockCount) : null,
       supplierLeadDaysMin: Number(productForm.supplierLeadDaysMin) || 7,
-      supplierLeadDaysMax: Number(productForm.supplierLeadDaysMax) || 12,
+      supplierLeadDaysMax: Number(productForm.supplierLeadDaysMax) || 21,
       supplierLastPriceUSD: productForm.supplierLastPriceUSD !== "" ? Number(productForm.supplierLastPriceUSD) : null,
       supplierStockCheckedAt: productForm.supplierStockCheckedAt ? new Date(productForm.supplierStockCheckedAt).toISOString() : null,
       parameters: productForm.parameters,
@@ -7594,6 +7643,89 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                       </span>
                     </div>
 
+                    {/* Family Quick-Select / Toggle Toolbar (User Requirement) */}
+                    <div className="mb-3.5 p-3 bg-gradient-to-r from-slate-50 via-red-50/25 to-slate-50 border border-red-200/90 rounded-2xl space-y-2.5">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <span className="text-[11px] font-bold text-slate-800 flex items-center gap-1.5">
+                          <Sparkles className="w-3.5 h-3.5 text-[#C02030]" />
+                          <span>
+                            {lang === "es"
+                              ? "Selección rápida por Familia (Click para Alternar / Toggle):"
+                              : "Quick Family Selection (Click to Toggle):"}
+                          </span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleToggleUniversal}
+                          className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition flex items-center gap-1.5 cursor-pointer border ${
+                            selectedVehicles.includes("all")
+                              ? "bg-[#C02030] text-white border-[#C02030] shadow-2xs"
+                              : "bg-white text-slate-700 border-slate-200 hover:border-slate-300 hover:bg-slate-50"
+                          }`}
+                          title={lang === "es" ? "Ajuste universal para todos los vehículos" : "Universal fitment for all vehicles"}
+                        >
+                          <Globe className="w-3 h-3" />
+                          <span>{lang === "es" ? "🌐 Ajuste Universal" : "🌐 Universal"}</span>
+                          {selectedVehicles.includes("all") && <Check className="w-3 h-3 stroke-[3]" />}
+                        </button>
+                      </div>
+
+                      {/* Family Toggle Pills grouped by Brand */}
+                      <div className="space-y-2">
+                        {vehicleFamilyGroups.map((bGrp) => (
+                          <div key={bGrp.brandSlug} className="space-y-1">
+                            <div className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">
+                              {bGrp.brandName}
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {bGrp.families.map((fam) => {
+                                const totalCount = fam.slugs.length;
+                                const selectedCount = fam.slugs.filter((s) => selectedVehicles.includes(s)).length;
+                                const isAll = selectedCount === totalCount && totalCount > 0;
+                                const isPartial = selectedCount > 0 && !isAll;
+
+                                return (
+                                  <button
+                                    key={fam.family}
+                                    type="button"
+                                    onClick={() => handleToggleVehicleFamily(fam.slugs)}
+                                    className={`px-2.5 py-1 rounded-xl text-xs transition flex items-center gap-1.5 cursor-pointer border ${
+                                      isAll
+                                        ? "bg-[#C02030] text-white border-[#C02030] shadow-2xs font-bold"
+                                        : isPartial
+                                        ? "bg-red-50 text-[#C02030] border-red-300 font-semibold hover:bg-red-100"
+                                        : "bg-white text-slate-700 border-slate-200 hover:border-slate-300 hover:bg-slate-50 font-medium"
+                                    }`}
+                                    title={
+                                      lang === "es"
+                                        ? `Alternar familia ${fam.family}: ${fam.models.map((m: any) => m.name).join(", ")}`
+                                        : `Toggle family ${fam.family}: ${fam.models.map((m: any) => m.name).join(", ")}`
+                                    }
+                                  >
+                                    <span>
+                                      {fam.family}
+                                      {fam.code ? ` [${fam.code}]` : ""}
+                                    </span>
+                                    <span
+                                      className={`text-[10px] px-1.5 py-0.2 rounded-md font-mono ${
+                                        isAll
+                                          ? "bg-white/20 text-white"
+                                          : isPartial
+                                          ? "bg-red-200 text-[#C02030]"
+                                          : "bg-slate-100 text-slate-500"
+                                      }`}
+                                    >
+                                      {isAll ? "✓" : `${selectedCount}/${totalCount}`}
+                                    </span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
                     <div className="space-y-2">
                       {selectedVehicles.map((vehicleSlug, index) => (
                         <div key={index} className="flex items-center gap-2 min-w-0">
@@ -7613,15 +7745,24 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                             <option value="all">
                               🌐 {t.devUniversalFitment}
                             </option>
-                            {registeredVehicleBrands.map((brand: any) => (
-                              <optgroup key={brand.id || brand.slug} label={brand.name}>
-                                {brand.models.map((model: any) => (
-                                  <option key={model.id || model.slug} value={model.slug}>
-                                    {brand.name} - {model.name} {model.code ? `[SKU: ${model.code}]` : ""}
-                                  </option>
-                                ))}
-                              </optgroup>
-                            ))}
+                            {registeredVehicleBrands.map((brand: any) => {
+                              const familyMap = new Map<string, any[]>();
+                              brand.models.forEach((m: any) => {
+                                const fam = getModelFamilyName(m);
+                                if (!familyMap.has(fam)) familyMap.set(fam, []);
+                                familyMap.get(fam)!.push(m);
+                              });
+
+                              return Array.from(familyMap.entries()).map(([fam, fModels]) => (
+                                <optgroup key={`${brand.slug}-${fam}`} label={`${brand.name} - ${fam}`}>
+                                  {fModels.map((model: any) => (
+                                    <option key={model.id || model.slug} value={model.slug}>
+                                      {model.name} {model.code ? `[SKU: ${model.code}]` : ""}
+                                    </option>
+                                  ))}
+                                </optgroup>
+                              ));
+                            })}
                             {/* Fallback for active legacy or uncatalogued vehicle tag if currently selected */}
                             {vehicleSlug &&
                               vehicleSlug !== "all" &&

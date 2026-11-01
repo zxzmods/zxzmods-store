@@ -11,6 +11,8 @@ import {
   detectProductVehicleBrands,
   getRecommendedFillerProducts,
   getRecommendedFillerCombos,
+  sortVehicleModels,
+  sortVehicleBrands,
 } from "@/lib/products";
 import { prisma } from "@/lib/prisma";
 import { SXS_BRAND_PLATFORMS, SXS_BRANDS, getBrandLogo } from "@/lib/sxsBrands";
@@ -200,7 +202,7 @@ function dbProductToProductItem(dbProd: any, jsonProd?: ProductItem | null, isSt
     supplierStockMessageEn: dbProd.supplierStockMessageEn || null,
     supplierStockCheckedAt: dbProd.supplierStockCheckedAt ? new Date(dbProd.supplierStockCheckedAt).toISOString() : null,
     supplierLeadDaysMin: dbProd.supplierLeadDaysMin ?? 7,
-    supplierLeadDaysMax: dbProd.supplierLeadDaysMax ?? 12,
+    supplierLeadDaysMax: dbProd.supplierLeadDaysMax ?? 21,
     supplierLastPriceUSD: dbProd.supplierLastPriceUSD ?? null,
     parameters: (() => {
       if (dbProd.parametersJson) {
@@ -639,16 +641,20 @@ export async function GET(request: Request) {
         imageUrl?: string | null;
       }>
     > = {};
-    for (const b of dbBrands) {
-      sxsBrandModels[b.slug.toLowerCase()] = b.models.map((m) => ({
-        id: m.id,
-        name: m.name,
-        code: m.code,
-        slug: m.slug,
-        category: m.category,
-        modelCategory: m.modelCategory || null,
-        imageUrl: m.imageUrl && m.imageUrl !== "null" && m.imageUrl !== "undefined" ? m.imageUrl.trim() : null,
-      }));
+    for (const b of sortVehicleBrands(dbBrands)) {
+      sxsBrandModels[b.slug.toLowerCase()] = sortVehicleModels(
+        b.models.map((m) => ({
+          id: m.id,
+          name: m.name,
+          code: m.code,
+          slug: m.slug,
+          category: m.category,
+          modelCategory: m.modelCategory || null,
+          imageUrl: m.imageUrl && m.imageUrl !== "null" && m.imageUrl !== "undefined" ? m.imageUrl.trim() : null,
+          brandSlug: b.slug,
+          brandName: b.name,
+        }))
+      );
     }
 
     const unifiedProducts: ProductItem[] = activeDbProducts.map((dbProd) =>

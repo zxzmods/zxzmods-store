@@ -1,11 +1,12 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useGarage, ActiveVehicle } from "@/context/GarageContext";
 import { useLanguage } from "@/context/LanguageContext";
 import { useAuth } from "@/context/AuthContext";
 import { X, CheckCircle2, Car, ShieldCheck, ArrowRight, Loader2 } from "lucide-react";
+import { sortVehicleModels, getModelFamilyName } from "@/lib/sxsBrands";
 
 interface YMMData {
   years: number[];
@@ -62,10 +63,29 @@ export function GarageModal() {
   if (!isModalOpen) return null;
 
   const currentBrand = ymmData?.brands.find((b) => b.slug === selectedBrandSlug);
-  // Filter models that support the selected year
-  const availableModels = currentBrand?.models.filter((m) =>
-    selectedYear ? m.years.includes(Number(selectedYear)) : true
-  );
+  // Filter models that support the selected year, sorted canonically
+  const availableModels = useMemo(() => {
+    if (!currentBrand?.models) return [];
+    const filtered = currentBrand.models.filter((m) =>
+      selectedYear ? m.years.includes(Number(selectedYear)) : true
+    );
+    return sortVehicleModels(filtered);
+  }, [currentBrand, selectedYear]);
+
+  // Group available models by family for organized presentation
+  const groupedModels = useMemo(() => {
+    if (!availableModels || availableModels.length === 0) return [];
+    const map = new Map<string, typeof availableModels>();
+    availableModels.forEach((m) => {
+      const fam = getModelFamilyName(m);
+      if (!map.has(fam)) map.set(fam, []);
+      map.get(fam)!.push(m);
+    });
+    return Array.from(map.entries()).map(([family, fModels]) => ({
+      family,
+      models: sortVehicleModels(fModels),
+    }));
+  }, [availableModels]);
 
   const handleSave = () => {
     if (!selectedYear || !selectedBrandSlug || !selectedModelSlug || !ymmData) return;
@@ -192,11 +212,23 @@ export function GarageModal() {
                 className="w-full bg-gray-50 border border-gray-300 focus:border-[#C02030] disabled:opacity-40 rounded-xl px-4 py-3 text-sm text-gray-900 focus:outline-none transition-colors"
               >
                 <option value="">-- Seleccionar Modelo / Model --</option>
-                {availableModels?.map((m) => (
-                  <option key={m.slug} value={m.slug}>
-                    {m.name} ({m.category})
-                  </option>
-                ))}
+                {groupedModels.length > 0 ? (
+                  groupedModels.map((grp) => (
+                    <optgroup key={grp.family} label={`Familia ${grp.family}`}>
+                      {grp.models.map((m) => (
+                        <option key={m.slug} value={m.slug}>
+                          {m.name} ({m.category})
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))
+                ) : (
+                  availableModels?.map((m) => (
+                    <option key={m.slug} value={m.slug}>
+                      {m.name} ({m.category})
+                    </option>
+                  ))
+                )}
               </select>
             </div>
 

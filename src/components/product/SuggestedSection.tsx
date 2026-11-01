@@ -71,7 +71,7 @@ export function SuggestedSection({
       imageUrl: imgUrl,
       supplierStockStatus: p.supplierStockStatus || "IN_STOCK",
       supplierLeadDaysMin: p.supplierLeadDaysMin || 7,
-      supplierLeadDaysMax: p.supplierLeadDaysMax || 12,
+      supplierLeadDaysMax: p.supplierLeadDaysMax || 21,
     });
     setJustAddedId(p.id);
     setTimeout(() => setJustAddedId(null), 3000);
@@ -92,7 +92,7 @@ export function SuggestedSection({
       imageUrl: c.imageUrl || (Array.isArray(c.images) ? c.images[0] : "/images/combos/placeholder.webp"),
       supplierStockStatus: c.stockStatus || "IN_STOCK",
       supplierLeadDaysMin: c.leadDaysMin || 7,
-      supplierLeadDaysMax: c.leadDaysMax || 12,
+      supplierLeadDaysMax: c.leadDaysMax || 21,
     });
     setJustAddedId(`combo-${c.id}`);
     setTimeout(() => setJustAddedId(null), 3000);

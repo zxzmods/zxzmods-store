@@ -254,7 +254,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
               const freshSupplierStatus = matched.supplierStockStatus || "IN_STOCK";
               const freshSupplierMsg = matched.supplierStockMessageEs || null;
               const freshLeadMin = matched.supplierLeadDaysMin ?? 7;
-              const freshLeadMax = matched.supplierLeadDaysMax ?? 12;
+              const freshLeadMax = matched.supplierLeadDaysMax ?? 21;
               const freshComp = matched.comp || cartItem.comp;
               const compChanged = Boolean(matched.comp && JSON.stringify(cartItem.comp || []) !== JSON.stringify(matched.comp));
 
@@ -310,7 +310,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
               const freshStockStatus = matched.stockStatus || matched.availability?.status || "IN_STOCK";
               const freshStockMsg = matched.availability?.summaryEs || null;
               const freshLeadMin = matched.leadDaysMin || matched.availability?.leadDaysMin || 7;
-              const freshLeadMax = matched.leadDaysMax || matched.availability?.leadDaysMax || 12;
+              const freshLeadMax = matched.leadDaysMax || matched.availability?.leadDaysMax || 21;
 
               if (
                 cartItem.homeInstallation !== freshHomeInstall ||

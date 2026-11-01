@@ -468,7 +468,7 @@ export default function CartPage() {
                                       <span>
                                         {t.supplierCartInStockChip
                                           .replace("{min}", String(item.supplierLeadDaysMin || 7))
-                                          .replace("{max}", String(item.supplierLeadDaysMax || 12))}
+                                          .replace("{max}", String(item.supplierLeadDaysMax || 21))}
                                       </span>
                                     </span>
                                   )}
