@@ -19,6 +19,14 @@ export interface ProviderDiagnostic {
   error?: string;
 }
 
+export interface ShippingRatesConfig {
+  ratePerLbUSD: number;
+  ratePerCubicFootUSD: number;
+  ratePerLbCRC: number;
+  ratePerCubicFootCRC: number;
+  updatedAt?: string | null;
+}
+
 export interface ExchangeRateData {
   rate: number;
   buyRate: number;
@@ -32,6 +40,7 @@ export interface ExchangeRateData {
   notes?: string;
   lastSyncAt?: string;
   diagnostics?: ProviderDiagnostic[];
+  shippingRates?: ShippingRatesConfig;
 }
 
 interface MemoryCache {
@@ -71,6 +80,13 @@ async function readPersistentCache(): Promise<ExchangeRateData | null> {
           !isNaN(parsedBuy) && parsedBuy > 300 && parsedBuy < 1500
             ? Number(parsedBuy.toFixed(2))
             : Number((activeRate - 3.75).toFixed(2));
+        const effectiveLbUSD = typeof dbConfig.shippingRatePerLbUSD === "number" && dbConfig.shippingRatePerLbUSD > 0
+          ? Number(dbConfig.shippingRatePerLbUSD.toFixed(2))
+          : 4.50;
+        const effectiveCuFtUSD = typeof dbConfig.shippingRatePerCubicFootUSD === "number" && dbConfig.shippingRatePerCubicFootUSD > 0
+          ? Number(dbConfig.shippingRatePerCubicFootUSD.toFixed(2))
+          : 15.00;
+
         return {
           rate: Number(activeRate.toFixed(2)),
           buyRate: effectiveBuyRate,
@@ -84,6 +100,13 @@ async function readPersistentCache(): Promise<ExchangeRateData | null> {
           override: Boolean(dbConfig.useManualExchangeRate),
           updatedAt: (dbConfig.exchangeRateUpdatedAt || dbConfig.updatedAt).toISOString(),
           ...(parsedNotes ? { notes: parsedNotes } : {}),
+          shippingRates: {
+            ratePerLbUSD: effectiveLbUSD,
+            ratePerCubicFootUSD: effectiveCuFtUSD,
+            ratePerLbCRC: Math.round(effectiveLbUSD * activeRate),
+            ratePerCubicFootCRC: Math.round(effectiveCuFtUSD * activeRate),
+            updatedAt: dbConfig.shippingRatesUpdatedAt ? dbConfig.shippingRatesUpdatedAt.toISOString() : null,
+          },
         };
       }
     }
@@ -96,9 +119,17 @@ async function readPersistentCache(): Promise<ExchangeRateData | null> {
       const raw = fs.readFileSync(PERSISTENT_CACHE_PATH, "utf-8");
       const parsed = JSON.parse(raw);
       if (typeof parsed?.rate === "number" && parsed.rate > 300 && parsed.rate < 1500) {
+        const rate = parsed.rate;
         return {
           ...parsed,
           override: Boolean(parsed.override),
+          shippingRates: parsed.shippingRates || {
+            ratePerLbUSD: 4.50,
+            ratePerCubicFootUSD: 15.00,
+            ratePerLbCRC: Math.round(4.50 * rate),
+            ratePerCubicFootCRC: Math.round(15.00 * rate),
+            updatedAt: null,
+          },
         };
       }
     }
@@ -505,6 +536,64 @@ export async function POST(request: Request) {
     const { action, rate, buyRate, override, notes } = body || {};
 
     const current = await readPersistentCache();
+
+    // Action 0: Master updates Freight & Import Rates (lb & cubic feet in USD or CRC)
+    if (action === "update_shipping_rates") {
+      const activeRate = current?.rate ?? 515;
+      let newLbUSD: number | undefined = undefined;
+      let newCuFtUSD: number | undefined = undefined;
+
+      if (typeof body.ratePerLbUSD === "number" && body.ratePerLbUSD > 0) {
+        newLbUSD = Number(body.ratePerLbUSD.toFixed(2));
+      } else if (typeof body.ratePerLbCRC === "number" && body.ratePerLbCRC > 0) {
+        newLbUSD = Number((body.ratePerLbCRC / activeRate).toFixed(2));
+      }
+
+      if (typeof body.ratePerCubicFootUSD === "number" && body.ratePerCubicFootUSD > 0) {
+        newCuFtUSD = Number(body.ratePerCubicFootUSD.toFixed(2));
+      } else if (typeof body.ratePerCubicFootCRC === "number" && body.ratePerCubicFootCRC > 0) {
+        newCuFtUSD = Number((body.ratePerCubicFootCRC / activeRate).toFixed(2));
+      }
+
+      const finalLbUSD = newLbUSD ?? current?.shippingRates?.ratePerLbUSD ?? 4.50;
+      const finalCuFtUSD = newCuFtUSD ?? current?.shippingRates?.ratePerCubicFootUSD ?? 15.00;
+
+      await prisma.logisticsRateConfig.upsert({
+        where: { id: "rates-config" },
+        update: {
+          shippingRatePerLbUSD: finalLbUSD,
+          shippingRatePerCubicFootUSD: finalCuFtUSD,
+          shippingRatesUpdatedAt: new Date(),
+        },
+        create: {
+          id: "rates-config",
+          cachedExchangeRateCRC: activeRate,
+          shippingRatePerLbUSD: finalLbUSD,
+          shippingRatePerCubicFootUSD: finalCuFtUSD,
+          shippingRatesUpdatedAt: new Date(),
+        },
+      });
+
+      memoryCache = null;
+      const updated = await readPersistentCache();
+
+      await recordAuditLog({
+        actorId: auth.session.userId,
+        actorEmail: auth.session.email,
+        actorRole: auth.session.role,
+        action: "UPDATE_PRODUCT_PRICE" as any,
+        entityType: "SYSTEM" as any,
+        entityId: "shipping-rates-config",
+        newData: { shippingRatePerLbUSD: finalLbUSD, shippingRatePerCubicFootUSD: finalCuFtUSD },
+        details: `Actualización de tarifas de flete internacional por Master: $${finalLbUSD}/lb, $${finalCuFtUSD}/ft³`,
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: "Tarifas de flete (libras y pies cúbicos) actualizadas exitosamente.",
+        data: updated,
+      });
+    }
 
     // Action 1: Force live sync with BCCR and disable manual override
     if (action === "sync_live") {

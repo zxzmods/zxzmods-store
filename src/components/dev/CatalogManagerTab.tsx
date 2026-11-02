@@ -49,6 +49,9 @@ import {
   GripVertical,
   ChevronLeft,
   ChevronRight,
+  Scale,
+  Box,
+  Truck,
 } from "lucide-react";
 import {
   ConfigurableParameter,
@@ -3217,6 +3220,13 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
     // price hierarchy:
     P_price_D: 0,
     S_price_D: 0,
+    shippingCalcMode: "LB" as "LB" | "CUBIC_FEET" | "MANUAL",
+    shippingWeightLb: "" as number | string,
+    shippingVolumeCuFt: "" as number | string,
+    hasDistributorShipping: false,
+    distributorShippingUSD: "" as number | string,
+    hasDistributorTax: false,
+    distributorTaxUSD: "" as number | string,
     P_price: 0,
     S_price: 0,
     I_price_includes: true,
@@ -3553,6 +3563,13 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
   }, [productForm.brandName, selectedVehicles, products, dealerBrands, brands, editingProduct?.id, lang]);
 
   const [liveExchangeRate, setLiveExchangeRate] = useState<number>(455.21);
+  const [shippingRates, setShippingRates] = useState<{
+    ratePerLbUSD: number;
+    ratePerCubicFootUSD: number;
+  }>({
+    ratePerLbUSD: 4.5,
+    ratePerCubicFootUSD: 15.0,
+  });
   const [adjustingProductId, setAdjustingProductId] = useState<string | null>(null);
 
   const refreshLiveExchangeRate = useCallback(async (): Promise<number> => {
@@ -3563,6 +3580,14 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
         const extractedRate = Number(rateData?.data?.rate || rateData?.rate || 0);
         if (extractedRate > 300) {
           setLiveExchangeRate(extractedRate);
+        }
+        if (rateData?.data?.shippingRates) {
+          setShippingRates({
+            ratePerLbUSD: Number(rateData.data.shippingRates.ratePerLbUSD) || 4.5,
+            ratePerCubicFootUSD: Number(rateData.data.shippingRates.ratePerCubicFootUSD) || 15.0,
+          });
+        }
+        if (extractedRate > 300) {
           return extractedRate;
         }
       }
@@ -3593,6 +3618,12 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
         const extractedRate = Number(rateData?.data?.rate || rateData?.rate || 0);
         if (extractedRate > 300) {
           setLiveExchangeRate(extractedRate);
+        }
+        if (rateData?.data?.shippingRates) {
+          setShippingRates({
+            ratePerLbUSD: Number(rateData.data.shippingRates.ratePerLbUSD) || 4.5,
+            ratePerCubicFootUSD: Number(rateData.data.shippingRates.ratePerCubicFootUSD) || 15.0,
+          });
         }
       }
     } catch (err) {
@@ -3969,6 +4000,13 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       reviews: typeof prod.reviews === "string" ? prod.reviews : JSON.stringify(prod.reviews || ""),
       P_price_D,
       S_price_D,
+      shippingCalcMode: ((prod as any).shippingCalcMode as "LB" | "CUBIC_FEET" | "MANUAL") || "MANUAL",
+      shippingWeightLb: (prod as any).shippingWeightLb !== null && (prod as any).shippingWeightLb !== undefined ? (prod as any).shippingWeightLb : "",
+      shippingVolumeCuFt: (prod as any).shippingVolumeCuFt !== null && (prod as any).shippingVolumeCuFt !== undefined ? (prod as any).shippingVolumeCuFt : "",
+      hasDistributorShipping: Boolean((prod as any).distributorShippingUSD && Number((prod as any).distributorShippingUSD) > 0),
+      distributorShippingUSD: (prod as any).distributorShippingUSD !== null && (prod as any).distributorShippingUSD !== undefined ? (prod as any).distributorShippingUSD : "",
+      hasDistributorTax: Boolean((prod as any).distributorTaxUSD && Number((prod as any).distributorTaxUSD) > 0),
+      distributorTaxUSD: (prod as any).distributorTaxUSD !== null && (prod as any).distributorTaxUSD !== undefined ? (prod as any).distributorTaxUSD : "",
       P_price,
       S_price,
       I_price_includes,
@@ -4063,6 +4101,13 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       reviews: "",
       P_price_D: 0,
       S_price_D: 0,
+      shippingCalcMode: "LB" as "LB" | "CUBIC_FEET" | "MANUAL",
+      shippingWeightLb: "",
+      shippingVolumeCuFt: "",
+      hasDistributorShipping: false,
+      distributorShippingUSD: "",
+      hasDistributorTax: false,
+      distributorTaxUSD: "",
       P_price: 0,
       S_price: 0,
       I_price_includes: false,
@@ -4315,6 +4360,42 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
     );
     setProductForm((prev) => ({ ...prev, T_price: total, priceCRC: total, ivaCRC: ivaAmount }));
   };
+
+  // Automatically calculate S_price_D when using "LB" or "CUBIC_FEET" calculation mode
+  useEffect(() => {
+    if (productForm.shippingCalcMode === "MANUAL") return;
+
+    let baseUSD = 0;
+    if (productForm.shippingCalcMode === "LB") {
+      const weight = parseFloat(String(productForm.shippingWeightLb)) || 0;
+      baseUSD = weight * (shippingRates.ratePerLbUSD || 4.5);
+    } else if (productForm.shippingCalcMode === "CUBIC_FEET") {
+      const volume = parseFloat(String(productForm.shippingVolumeCuFt)) || 0;
+      baseUSD = volume * (shippingRates.ratePerCubicFootUSD || 15.0);
+    }
+
+    const distShipping = productForm.hasDistributorShipping ? (parseFloat(String(productForm.distributorShippingUSD)) || 0) : 0;
+    const distTax = productForm.hasDistributorTax ? (parseFloat(String(productForm.distributorTaxUSD)) || 0) : 0;
+    const calculatedSPriceUSD = Number((baseUSD + distShipping + distTax).toFixed(2));
+
+    if (Number(productForm.S_price_D) !== calculatedSPriceUSD) {
+      setProductForm((prev) => ({
+        ...prev,
+        S_price_D: calculatedSPriceUSD,
+      }));
+    }
+  }, [
+    productForm.shippingCalcMode,
+    productForm.shippingWeightLb,
+    productForm.shippingVolumeCuFt,
+    productForm.hasDistributorShipping,
+    productForm.distributorShippingUSD,
+    productForm.hasDistributorTax,
+    productForm.distributorTaxUSD,
+    productForm.S_price_D,
+    shippingRates.ratePerLbUSD,
+    shippingRates.ratePerCubicFootUSD,
+  ]);
 
   // Automatically sync productForm.P_price, productForm.S_price, productForm.T_price, productForm.priceCRC, and productForm.ivaCRC
   // whenever USD prices (P_price_D, S_price_D), liveExchangeRate, profit, installation, or IVA rate change
@@ -4623,6 +4704,11 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       processingPriceCRC: Math.round(Number(productForm.P_price) || 0),
       shippingPriceD: Number(productForm.S_price_D) || 0,
       shippingPriceCRC: Math.round(Number(productForm.S_price) || 0),
+      shippingCalcMode: productForm.shippingCalcMode || "MANUAL",
+      shippingWeightLb: productForm.shippingWeightLb !== "" && productForm.shippingWeightLb !== null ? Number(productForm.shippingWeightLb) : null,
+      shippingVolumeCuFt: productForm.shippingVolumeCuFt !== "" && productForm.shippingVolumeCuFt !== null ? Number(productForm.shippingVolumeCuFt) : null,
+      distributorShippingUSD: productForm.hasDistributorShipping && productForm.distributorShippingUSD !== "" && productForm.distributorShippingUSD !== null ? Number(productForm.distributorShippingUSD) : 0,
+      distributorTaxUSD: productForm.hasDistributorTax && productForm.distributorTaxUSD !== "" && productForm.distributorTaxUSD !== null ? Number(productForm.distributorTaxUSD) : 0,
       lockedExchangeRate: liveExchangeRate,
       profitCRC: Math.round(Number(productForm.profit) || 0),
       ivaPercent: finalIvaRate,
@@ -8516,48 +8602,318 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                     </p>
                   </div>
 
-                  {/* S_price / S_price_D (Shipping in USD -> translates to S_price in CRC) */}
-                  <div className="p-3.5 bg-slate-50 rounded-2xl border border-red-200/80 space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <label className="text-[11px] font-bold text-slate-800 flex items-center gap-1">
-                        <span>{lang === "es" ? "Precio de Envío en Dólares (S_price USD)" : "Shipping Price in USD (S_price USD)"}</span>
+                  {/* S_price / S_price_D (Shipping & Freight System) */}
+                  <div className="p-4 bg-slate-50 rounded-2xl border border-red-200/80 space-y-3">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <label className="text-[11px] font-bold text-slate-800 flex items-center gap-1.5">
+                        <Truck className="w-3.5 h-3.5 text-[#C02030]" />
+                        <span>{lang === "es" ? "Cálculo de Envío y Flete (S_price)" : "Shipping & Freight Cost (S_price)"}</span>
                       </label>
-                      <span className="text-xs font-extrabold font-mono text-[#C02030] bg-red-50 px-2 py-0.5 rounded-lg border border-red-200">
+                      <span className="text-xs font-extrabold font-mono text-[#C02030] bg-red-50 px-2.5 py-0.5 rounded-lg border border-red-200 shadow-2xs">
                         ${Number(productForm.S_price_D || 0).toFixed(2)} USD → {formatCRC(productForm.S_price)}
                       </span>
                     </div>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold font-mono text-slate-500">$</span>
-                      <input
-                        type="number"
-                        min="0"
-                        step="any"
-                        value={productForm.S_price_D}
-                        onChange={(e) => {
-                          const usdVal = parseFloat(e.target.value) || 0;
-                          const rate = liveExchangeRate > 300 ? liveExchangeRate : 455.21;
-                          const translatedCRC = Math.round(usdVal * rate);
-                          setProductForm((prev) => {
-                            const ivaRate = prev.ivaPercent ?? 13;
-                            return {
+
+                    {/* MODE 1: MANUAL S_PRICE (Existing Products or Manual Override) */}
+                    {productForm.shippingCalcMode === "MANUAL" ? (
+                      <div className="space-y-3 pt-1">
+                        <div className="relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold font-mono text-slate-500">$</span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="any"
+                            value={productForm.S_price_D}
+                            onChange={(e) => {
+                              const usdVal = parseFloat(e.target.value) || 0;
+                              const rate = liveExchangeRate > 300 ? liveExchangeRate : 455.21;
+                              const translatedCRC = Math.round(usdVal * rate);
+                              setProductForm((prev) => {
+                                const ivaRate = prev.ivaPercent ?? 13;
+                                return {
+                                  ...prev,
+                                  S_price_D: usdVal,
+                                  S_price: translatedCRC,
+                                  ivaCRC: calculateIvaAmount(prev.P_price, translatedCRC, prev.profit, prev.I_price, prev.I_price_includes, prev.discountPercent, ivaRate),
+                                  priceCRC: recalculateTPrice(prev.P_price, translatedCRC, prev.profit, prev.I_price, prev.I_price_includes, prev.discountPercent, ivaRate),
+                                  T_price: recalculateTPrice(prev.P_price, translatedCRC, prev.profit, prev.I_price, prev.I_price_includes, prev.discountPercent, ivaRate),
+                                };
+                              });
+                            }}
+                            className="w-full bg-white border border-red-200 rounded-xl pl-7 pr-14 py-2 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-red-500"
+                          />
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold font-mono text-slate-400">USD</span>
+                        </div>
+                        <p className="text-[9px] text-slate-500">
+                          {lang === "es"
+                            ? `Modo Manual activo · Flete ingresado directamente en USD (traducción: ${formatCRC(productForm.S_price)})`
+                            : `Manual mode active · Shipping entered directly in USD (translated: ${formatCRC(productForm.S_price)})`}
+                        </p>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setProductForm((prev) => ({
                               ...prev,
-                              S_price_D: usdVal,
-                              S_price: translatedCRC,
-                              ivaCRC: calculateIvaAmount(prev.P_price, translatedCRC, prev.profit, prev.I_price, prev.I_price_includes, prev.discountPercent, ivaRate),
-                              priceCRC: recalculateTPrice(prev.P_price, translatedCRC, prev.profit, prev.I_price, prev.I_price_includes, prev.discountPercent, ivaRate),
-                              T_price: recalculateTPrice(prev.P_price, translatedCRC, prev.profit, prev.I_price, prev.I_price_includes, prev.discountPercent, ivaRate),
-                            };
-                          });
-                        }}
-                        className="w-full bg-white border border-red-200 rounded-xl pl-7 pr-14 py-2 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-red-500"
-                      />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold font-mono text-slate-400">USD</span>
-                    </div>
-                    <p className="text-[9px] text-slate-500">
-                      {lang === "es"
-                        ? `Flete e impuestos en $ USD · Se traduce a S_price (${formatCRC(productForm.S_price)}) a ₡${liveExchangeRate.toFixed(2)}/$1`
-                        : `Shipping & customs in $ USD · Auto-translates to S_price (${formatCRC(productForm.S_price)}) at ₡${liveExchangeRate.toFixed(2)}/$1`}
-                    </p>
+                              shippingCalcMode: "LB",
+                            }));
+                          }}
+                          className="w-full py-2 px-3 rounded-xl bg-purple-900 hover:bg-purple-800 text-white text-xs font-bold transition flex items-center justify-center gap-2 shadow-xs cursor-pointer"
+                        >
+                          <Scale className="w-3.5 h-3.5" />
+                          <span>{t.backdoorProductShippingActivateCalcBtn}</span>
+                        </button>
+                      </div>
+                    ) : (
+                      /* MODE 2: AUTOMATIC CALCULATION BY WEIGHT (LB) OR VOLUME (CUBIC FEET) + DISTRIBUTOR COSTS */
+                      <div className="space-y-3.5 pt-1">
+                        {/* Unit Switcher (Libras vs Pies Cúbicos) */}
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                          <div className="flex items-center p-1 rounded-xl bg-slate-200/80 border border-slate-300/80 shadow-inner">
+                            <button
+                              type="button"
+                              onClick={() => setProductForm((p) => ({ ...p, shippingCalcMode: "LB" }))}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                                productForm.shippingCalcMode === "LB"
+                                  ? "bg-purple-900 text-white shadow-xs"
+                                  : "text-slate-600 hover:text-slate-900"
+                              }`}
+                            >
+                              <Scale className="w-3.5 h-3.5" />
+                              <span>{t.backdoorProductShippingModeLb}</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setProductForm((p) => ({ ...p, shippingCalcMode: "CUBIC_FEET" }))}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                                productForm.shippingCalcMode === "CUBIC_FEET"
+                                  ? "bg-purple-900 text-white shadow-xs"
+                                  : "text-slate-600 hover:text-slate-900"
+                              }`}
+                            >
+                              <Box className="w-3.5 h-3.5" />
+                              <span>{t.backdoorProductShippingModeCuFt}</span>
+                            </button>
+                          </div>
+
+                          <div className="text-[10px] font-bold text-purple-900 bg-purple-100/90 border border-purple-200 px-2.5 py-1 rounded-lg">
+                            {productForm.shippingCalcMode === "CUBIC_FEET"
+                              ? `$${shippingRates.ratePerCubicFootUSD.toFixed(2)} USD / ft³`
+                              : `$${shippingRates.ratePerLbUSD.toFixed(2)} USD / lb`}
+                          </div>
+                        </div>
+
+                        {/* Input for Active Unit (Weight or Volume) */}
+                        {productForm.shippingCalcMode === "LB" ? (
+                          <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-1.5 shadow-2xs">
+                            <div className="flex items-center justify-between">
+                              <label className="text-[11px] font-bold text-slate-800 flex items-center gap-1">
+                                <Scale className="w-3 h-3 text-purple-900" />
+                                <span>{t.backdoorProductShippingWeightInput}</span>
+                              </label>
+                              <span className="text-[10px] font-mono font-bold text-purple-900">
+                                ${( (parseFloat(String(productForm.shippingWeightLb)) || 0) * shippingRates.ratePerLbUSD ).toFixed(2)} USD
+                              </span>
+                            </div>
+                            <div className="relative">
+                              <input
+                                type="number"
+                                min="0"
+                                step="any"
+                                value={productForm.shippingWeightLb}
+                                onChange={(e) => setProductForm((p) => ({ ...p, shippingWeightLb: e.target.value }))}
+                                placeholder="0.0"
+                                className="w-full bg-slate-50 border border-slate-300 rounded-lg pl-3 pr-10 py-1.5 text-xs font-mono font-bold text-slate-900 focus:bg-white focus:outline-none focus:border-purple-600"
+                              />
+                              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold font-mono text-slate-400">lb</span>
+                            </div>
+                            <p className="text-[9px] text-slate-500">
+                              {(parseFloat(String(productForm.shippingWeightLb)) || 0)} lb × ${shippingRates.ratePerLbUSD.toFixed(2)}/lb = ${( (parseFloat(String(productForm.shippingWeightLb)) || 0) * shippingRates.ratePerLbUSD ).toFixed(2)} USD
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-1.5 shadow-2xs">
+                            <div className="flex items-center justify-between">
+                              <label className="text-[11px] font-bold text-slate-800 flex items-center gap-1">
+                                <Box className="w-3 h-3 text-purple-900" />
+                                <span>{t.backdoorProductShippingVolumeInput}</span>
+                              </label>
+                              <span className="text-[10px] font-mono font-bold text-purple-900">
+                                ${( (parseFloat(String(productForm.shippingVolumeCuFt)) || 0) * shippingRates.ratePerCubicFootUSD ).toFixed(2)} USD
+                              </span>
+                            </div>
+                            <div className="relative">
+                              <input
+                                type="number"
+                                min="0"
+                                step="any"
+                                value={productForm.shippingVolumeCuFt}
+                                onChange={(e) => setProductForm((p) => ({ ...p, shippingVolumeCuFt: e.target.value }))}
+                                placeholder="0.00"
+                                className="w-full bg-slate-50 border border-slate-300 rounded-lg pl-3 pr-10 py-1.5 text-xs font-mono font-bold text-slate-900 focus:bg-white focus:outline-none focus:border-purple-600"
+                              />
+                              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold font-mono text-slate-400">ft³</span>
+                            </div>
+                            <p className="text-[9px] text-slate-500">
+                              {(parseFloat(String(productForm.shippingVolumeCuFt)) || 0)} ft³ × ${shippingRates.ratePerCubicFootUSD.toFixed(2)}/ft³ = ${( (parseFloat(String(productForm.shippingVolumeCuFt)) || 0) * shippingRates.ratePerCubicFootUSD ).toFixed(2)} USD
+                            </p>
+                          </div>
+                        )}
+
+                        {/* Distributor Extra Costs: Pre-made Buttons & Expandable Inputs */}
+                        <div className="space-y-2 pt-1">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
+                            {lang === "es" ? "Costos Adicionales del Distribuidor" : "Distributor Extra Costs"}
+                          </span>
+
+                          <div className="flex flex-wrap items-center gap-2">
+                            {!productForm.hasDistributorShipping && (
+                              <button
+                                type="button"
+                                onClick={() => setProductForm((p) => ({ ...p, hasDistributorShipping: true, distributorShippingUSD: p.distributorShippingUSD || "" }))}
+                                className="py-1.5 px-3 rounded-lg border border-dashed border-purple-400 bg-purple-50 hover:bg-purple-100 text-purple-900 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                              >
+                                <Plus className="w-3 h-3 text-purple-700" />
+                                <span>{t.backdoorProductShippingDistributorShippingBtn}</span>
+                              </button>
+                            )}
+
+                            {!productForm.hasDistributorTax && (
+                              <button
+                                type="button"
+                                onClick={() => setProductForm((p) => ({ ...p, hasDistributorTax: true, distributorTaxUSD: p.distributorTaxUSD || "" }))}
+                                className="py-1.5 px-3 rounded-lg border border-dashed border-purple-400 bg-purple-50 hover:bg-purple-100 text-purple-900 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                              >
+                                <Plus className="w-3 h-3 text-purple-700" />
+                                <span>{t.backdoorProductShippingDistributorTaxesBtn}</span>
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Distributor Domestic Shipping Input */}
+                          {productForm.hasDistributorShipping && (
+                            <div className="p-3 bg-white rounded-xl border border-purple-200 space-y-1.5 shadow-2xs">
+                              <div className="flex items-center justify-between">
+                                <label className="text-[11px] font-bold text-slate-800 flex items-center gap-1">
+                                  <span>{t.backdoorProductShippingDistributorShippingLabel}</span>
+                                </label>
+                                <button
+                                  type="button"
+                                  onClick={() => setProductForm((p) => ({ ...p, hasDistributorShipping: false, distributorShippingUSD: "" }))}
+                                  className="text-slate-400 hover:text-red-600 text-xs font-bold p-1 rounded-md cursor-pointer"
+                                  title="Quitar costo"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                              <div className="relative">
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold font-mono text-slate-500">$</span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="any"
+                                  value={productForm.distributorShippingUSD}
+                                  onChange={(e) => setProductForm((p) => ({ ...p, distributorShippingUSD: e.target.value }))}
+                                  placeholder="0.00"
+                                  className="w-full bg-slate-50 border border-purple-200 rounded-lg pl-7 pr-12 py-1.5 text-xs font-mono font-bold text-slate-900 focus:bg-white focus:outline-none focus:border-purple-600"
+                                />
+                                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold font-mono text-slate-400">USD</span>
+                              </div>
+                              <p className="text-[9px] text-slate-500 font-mono">
+                                ≈ {formatCRC(Math.round((parseFloat(String(productForm.distributorShippingUSD)) || 0) * (liveExchangeRate > 300 ? liveExchangeRate : 455.21)))}
+                              </p>
+                            </div>
+                          )}
+
+                          {/* Distributor Taxes Input */}
+                          {productForm.hasDistributorTax && (
+                            <div className="p-3 bg-white rounded-xl border border-purple-200 space-y-1.5 shadow-2xs">
+                              <div className="flex items-center justify-between">
+                                <label className="text-[11px] font-bold text-slate-800 flex items-center gap-1">
+                                  <span>{t.backdoorProductShippingDistributorTaxesLabel}</span>
+                                </label>
+                                <button
+                                  type="button"
+                                  onClick={() => setProductForm((p) => ({ ...p, hasDistributorTax: false, distributorTaxUSD: "" }))}
+                                  className="text-slate-400 hover:text-red-600 text-xs font-bold p-1 rounded-md cursor-pointer"
+                                  title="Quitar impuesto"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                              <div className="relative">
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold font-mono text-slate-500">$</span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="any"
+                                  value={productForm.distributorTaxUSD}
+                                  onChange={(e) => setProductForm((p) => ({ ...p, distributorTaxUSD: e.target.value }))}
+                                  placeholder="0.00"
+                                  className="w-full bg-slate-50 border border-purple-200 rounded-lg pl-7 pr-12 py-1.5 text-xs font-mono font-bold text-slate-900 focus:bg-white focus:outline-none focus:border-purple-600"
+                                />
+                                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold font-mono text-slate-400">USD</span>
+                              </div>
+                              <p className="text-[9px] text-slate-500 font-mono">
+                                ≈ {formatCRC(Math.round((parseFloat(String(productForm.distributorTaxUSD)) || 0) * (liveExchangeRate > 300 ? liveExchangeRate : 455.21)))}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Breakdown Summary Box */}
+                        <div className="p-3 bg-purple-950 text-white rounded-xl space-y-1.5 shadow-sm">
+                          <div className="text-[10px] font-bold uppercase tracking-wider text-purple-300">
+                            {t.backdoorProductShippingBreakdownTitle}
+                          </div>
+                          <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                            <div className="bg-white/10 rounded-lg p-1.5">
+                              <span className="text-[9px] text-purple-200 block">
+                                {productForm.shippingCalcMode === "CUBIC_FEET" ? "Base Volumen" : "Base Peso"}
+                              </span>
+                              <span className="font-mono font-bold text-white text-[11px]">
+                                ${(
+                                  productForm.shippingCalcMode === "CUBIC_FEET"
+                                    ? (parseFloat(String(productForm.shippingVolumeCuFt)) || 0) * shippingRates.ratePerCubicFootUSD
+                                    : (parseFloat(String(productForm.shippingWeightLb)) || 0) * shippingRates.ratePerLbUSD
+                                ).toFixed(2)}
+                              </span>
+                            </div>
+                            <div className="bg-white/10 rounded-lg p-1.5">
+                              <span className="text-[9px] text-purple-200 block">Envío Dist.</span>
+                              <span className="font-mono font-bold text-white text-[11px]">
+                                ${(parseFloat(String(productForm.distributorShippingUSD)) || 0).toFixed(2)}
+                              </span>
+                            </div>
+                            <div className="bg-white/10 rounded-lg p-1.5">
+                              <span className="text-[9px] text-purple-200 block">Impuestos Dist.</span>
+                              <span className="font-mono font-bold text-white text-[11px]">
+                                ${(parseFloat(String(productForm.distributorTaxUSD)) || 0).toFixed(2)}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between pt-1 border-t border-purple-800/80 text-xs">
+                            <span className="text-purple-300 font-semibold text-[10px]">
+                              Total S_price = ${Number(productForm.S_price_D || 0).toFixed(2)} USD
+                            </span>
+                            <span className="font-mono font-extrabold text-emerald-300">
+                              {formatCRC(productForm.S_price)}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Manual Switcher Option */}
+                        <div className="pt-1 flex justify-end">
+                          <button
+                            type="button"
+                            onClick={() => setProductForm((p) => ({ ...p, shippingCalcMode: "MANUAL" }))}
+                            className="text-[10px] font-bold text-slate-500 hover:text-purple-900 underline transition cursor-pointer"
+                          >
+                            {t.backdoorProductShippingManualModeBtn}
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Translated Colones Summary / Direct CRC Reference (P_price & S_price in CRC) */}

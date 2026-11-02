@@ -139,6 +139,13 @@ export async function PATCH(
     const prof = body.profitCRC !== undefined ? body.profitCRC : body.price?.profit;
     if (prof !== undefined) updateData.profitCRC = Math.round(Number(prof) || 0);
 
+    // Freight & Shipping weight/volume mode fields
+    if (body.shippingCalcMode !== undefined) updateData.shippingCalcMode = body.shippingCalcMode;
+    if (body.shippingWeightLb !== undefined) updateData.shippingWeightLb = body.shippingWeightLb !== null && body.shippingWeightLb !== "" ? Number(body.shippingWeightLb) : null;
+    if (body.shippingVolumeCuFt !== undefined) updateData.shippingVolumeCuFt = body.shippingVolumeCuFt !== null && body.shippingVolumeCuFt !== "" ? Number(body.shippingVolumeCuFt) : null;
+    if (body.distributorShippingUSD !== undefined) updateData.distributorShippingUSD = body.distributorShippingUSD !== null && body.distributorShippingUSD !== "" ? Number(body.distributorShippingUSD) : 0;
+    if (body.distributorTaxUSD !== undefined) updateData.distributorTaxUSD = body.distributorTaxUSD !== null && body.distributorTaxUSD !== "" ? Number(body.distributorTaxUSD) : 0;
+
     const hasPricingPayload =
       pD !== undefined ||
       pCRC !== undefined ||
@@ -536,6 +543,7 @@ export async function PATCH(
         if (!target.price) target.price = {};
         target.price.P_price_D = updatedProduct.processingPriceD ?? target.price.P_price_D ?? 0;
         target.price.P_price = updatedProduct.processingPriceCRC ?? target.price.P_price ?? 0;
+        target.price.S_price_D = (updatedProduct as any).shippingPriceD ?? target.price.S_price_D ?? 0;
         target.price.S_price = updatedProduct.shippingPriceCRC ?? target.price.S_price ?? 0;
         target.price.I_price = {
           includes: Boolean(updatedProduct.isInstallationIncluded),
@@ -547,6 +555,13 @@ export async function PATCH(
         target.price.T_price_D = updatedProduct.totalPriceD || "calculate in checkout with the selling value of dolar to colones";
         target.discountPercent = updatedProduct.discountPercent || 0;
         target.originalPriceCRC = updatedProduct.originalPriceCRC || updatedProduct.priceCRC;
+
+        // Freight calculation attributes
+        target.shippingCalcMode = (updatedProduct as any).shippingCalcMode || target.shippingCalcMode || "MANUAL";
+        target.shippingWeightLb = (updatedProduct as any).shippingWeightLb ?? target.shippingWeightLb ?? null;
+        target.shippingVolumeCuFt = (updatedProduct as any).shippingVolumeCuFt ?? target.shippingVolumeCuFt ?? null;
+        target.distributorShippingUSD = (updatedProduct as any).distributorShippingUSD ?? target.distributorShippingUSD ?? 0;
+        target.distributorTaxUSD = (updatedProduct as any).distributorTaxUSD ?? target.distributorTaxUSD ?? 0;
 
         // 5. imgs
         if (body.imgs !== undefined) {

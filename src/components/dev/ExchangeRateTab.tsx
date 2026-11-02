@@ -18,6 +18,10 @@ import {
   Settings2,
   Info,
   Check,
+  Scale,
+  Box,
+  Truck,
+  Calculator,
 } from "lucide-react";
 
 interface ProviderDiagnostic {
@@ -29,6 +33,14 @@ interface ProviderDiagnostic {
   date?: string;
   latencyMs: number;
   error?: string;
+}
+
+export interface ShippingRatesConfig {
+  ratePerLbUSD: number;
+  ratePerCubicFootUSD: number;
+  ratePerLbCRC: number;
+  ratePerCubicFootCRC: number;
+  updatedAt?: string | null;
 }
 
 interface ExchangeRateData {
@@ -44,6 +56,7 @@ interface ExchangeRateData {
   notes?: string;
   lastSyncAt?: string;
   diagnostics?: ProviderDiagnostic[];
+  shippingRates?: ShippingRatesConfig;
 }
 
 interface ExchangeRateTabProps {
@@ -58,11 +71,24 @@ export function ExchangeRateTab({ userRole = "MASTER" }: ExchangeRateTabProps) {
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
-  // Form states
+  // Sub-tab state: Exchange Rate USD vs Freight Rates (lb & cu ft)
+  const [activeSubTab, setActiveSubTab] = useState<"EXCHANGE_USD" | "SHIPPING_RATES">("EXCHANGE_USD");
+
+  // USD Exchange Rate Form states
   const [mode, setMode] = useState<"AUTO" | "MANUAL">("AUTO");
   const [formRate, setFormRate] = useState<string>("");
   const [formBuyRate, setFormBuyRate] = useState<string>("");
   const [formNotes, setFormNotes] = useState<string>("");
+
+  // Shipping Rates Form states
+  const [shippingCurrency, setShippingCurrency] = useState<"USD" | "CRC">("USD");
+  const [formLbRate, setFormLbRate] = useState<string>("4.50");
+  const [formCuFtRate, setFormCuFtRate] = useState<string>("15.00");
+  const [savingShipping, setSavingShipping] = useState<boolean>(false);
+
+  // Simulator state for freight rates
+  const [simWeight, setSimWeight] = useState<string>("10");
+  const [simVolume, setSimVolume] = useState<string>("2");
 
   const fetchData = useCallback(async (withDiagnostics = true, forceFresh = false) => {
     try {
@@ -75,6 +101,11 @@ export function ExchangeRateTab({ userRole = "MASTER" }: ExchangeRateTabProps) {
         setFormRate(json.data.rate.toString());
         setFormBuyRate(json.data.buyRate.toString());
         setFormNotes(json.data.notes || "");
+
+        if (json.data.shippingRates) {
+          setFormLbRate(json.data.shippingRates.ratePerLbUSD.toString());
+          setFormCuFtRate(json.data.shippingRates.ratePerCubicFootUSD.toString());
+        }
       }
     } catch (err) {
       console.error("Error fetching exchange rate data:", err);
@@ -219,6 +250,90 @@ export function ExchangeRateTab({ userRole = "MASTER" }: ExchangeRateTabProps) {
     }
   };
 
+  // Toggle shipping rate currency input between USD and CRC
+  const handleToggleShippingCurrency = (newCurrency: "USD" | "CRC") => {
+    if (newCurrency === shippingCurrency) return;
+    const activeRate = data?.rate || 515;
+    const currentLb = parseFloat(formLbRate) || 0;
+    const currentCuFt = parseFloat(formCuFtRate) || 0;
+
+    if (newCurrency === "CRC") {
+      setFormLbRate(Math.round(currentLb * activeRate).toString());
+      setFormCuFtRate(Math.round(currentCuFt * activeRate).toString());
+    } else {
+      setFormLbRate(Number((currentLb / activeRate).toFixed(2)).toString());
+      setFormCuFtRate(Number((currentCuFt / activeRate).toFixed(2)).toString());
+    }
+    setShippingCurrency(newCurrency);
+  };
+
+  // Save Freight Rates (Master Only)
+  const handleSaveShippingRates = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (userRole !== "MASTER") {
+      setFeedback({
+        type: "error",
+        message: lang === "es" ? "Solo cuentas Master pueden modificar las tarifas de flete." : "Only Master accounts can modify freight rates.",
+      });
+      return;
+    }
+
+    const valLb = parseFloat(formLbRate);
+    const valCuFt = parseFloat(formCuFtRate);
+    if (isNaN(valLb) || valLb <= 0 || isNaN(valCuFt) || valCuFt <= 0) {
+      setFeedback({
+        type: "error",
+        message: lang === "es" ? "Por favor ingresa valores válidos mayores a cero para libra y pie cúbico." : "Please enter valid values greater than zero for pound and cubic foot.",
+      });
+      return;
+    }
+
+    setSavingShipping(true);
+    setFeedback(null);
+    try {
+      const activeRate = data?.rate || 515;
+      const payload =
+        shippingCurrency === "USD"
+          ? { action: "update_shipping_rates", ratePerLbUSD: valLb, ratePerCubicFootUSD: valCuFt }
+          : { action: "update_shipping_rates", ratePerLbCRC: valLb, ratePerCubicFootCRC: valCuFt };
+
+      const res = await fetch("/api/exchange-rate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json();
+      if (res.ok && json.success && json.data) {
+        setData(json.data);
+        if (json.data.shippingRates) {
+          if (shippingCurrency === "USD") {
+            setFormLbRate(json.data.shippingRates.ratePerLbUSD.toString());
+            setFormCuFtRate(json.data.shippingRates.ratePerCubicFootUSD.toString());
+          } else {
+            setFormLbRate(json.data.shippingRates.ratePerLbCRC.toString());
+            setFormCuFtRate(json.data.shippingRates.ratePerCubicFootCRC.toString());
+          }
+        }
+        setFeedback({
+          type: "success",
+          message: t.backdoorShippingRatesSaveSuccess,
+        });
+      } else {
+        setFeedback({
+          type: "error",
+          message: json.error || (lang === "es" ? "Error al guardar tarifas de flete." : "Failed to save freight rates."),
+        });
+      }
+    } catch (err: any) {
+      setFeedback({
+        type: "error",
+        message: err?.message || (lang === "es" ? "Error de conexión." : "Connection error."),
+      });
+    } finally {
+      setSavingShipping(false);
+    }
+  };
+
   // Rule 7: Animated Skeleton Screen on the exact same layout
   if (loading) {
     return (
@@ -229,6 +344,12 @@ export function ExchangeRateTab({ userRole = "MASTER" }: ExchangeRateTabProps) {
             <Skeleton className="h-4 w-96 rounded-md" />
           </div>
           <Skeleton className="h-10 w-44 rounded-xl" />
+        </div>
+
+        {/* Sub-tab switcher skeleton */}
+        <div className="flex items-center gap-2 p-1.5 rounded-2xl bg-slate-100 max-w-md">
+          <Skeleton className="h-9 flex-1 rounded-xl" />
+          <Skeleton className="h-9 flex-1 rounded-xl" />
         </div>
 
         {/* KPI Grid Skeleton */}
@@ -257,6 +378,19 @@ export function ExchangeRateTab({ userRole = "MASTER" }: ExchangeRateTabProps) {
 
   const isManual = data?.override === true;
 
+  // Active rate helper for conversions
+  const activeRate = data?.rate || 515;
+
+  // Parsed shipping values for simulator
+  const activeLbUSD = data?.shippingRates?.ratePerLbUSD ?? 4.5;
+  const activeCuFtUSD = data?.shippingRates?.ratePerCubicFootUSD ?? 15.0;
+  const simWeightNum = Math.max(0, parseFloat(simWeight) || 0);
+  const simVolumeNum = Math.max(0, parseFloat(simVolume) || 0);
+  const simWeightCostUSD = Number((simWeightNum * activeLbUSD).toFixed(2));
+  const simWeightCostCRC = Math.round(simWeightCostUSD * activeRate);
+  const simVolumeCostUSD = Number((simVolumeNum * activeCuFtUSD).toFixed(2));
+  const simVolumeCostCRC = Math.round(simVolumeCostUSD * activeRate);
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -264,21 +398,63 @@ export function ExchangeRateTab({ userRole = "MASTER" }: ExchangeRateTabProps) {
         <div>
           <div className="flex items-center gap-2">
             <div className="p-2 rounded-xl bg-purple-100 text-purple-900">
-              <DollarSign className="w-5 h-5" />
+              {activeSubTab === "EXCHANGE_USD" ? (
+                <DollarSign className="w-5 h-5" />
+              ) : (
+                <Truck className="w-5 h-5" />
+              )}
             </div>
-            <h2 className="text-xl font-bold text-slate-900">{t.backdoorExchangeRateTitle}</h2>
+            <h2 className="text-xl font-bold text-slate-900">
+              {activeSubTab === "EXCHANGE_USD"
+                ? t.backdoorExchangeRateTitle
+                : t.backdoorShippingRatesTitle}
+            </h2>
           </div>
-          <p className="text-xs text-slate-500 mt-1 max-w-2xl">{t.backdoorExchangeRateSubtitle}</p>
+          <p className="text-xs text-slate-500 mt-1 max-w-2xl">
+            {activeSubTab === "EXCHANGE_USD"
+              ? t.backdoorExchangeRateSubtitle
+              : t.backdoorShippingRatesSubtitle}
+          </p>
         </div>
 
+        {activeSubTab === "EXCHANGE_USD" && (
+          <button
+            type="button"
+            onClick={handleSyncLive}
+            disabled={syncing || saving}
+            className="px-4 py-2.5 rounded-xl bg-purple-900 hover:bg-purple-800 text-white text-xs font-bold transition flex items-center gap-2 shadow-sm disabled:opacity-50 cursor-pointer"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${syncing ? "animate-spin" : ""}`} />
+            <span>{syncing ? (lang === "es" ? "Sincronizando..." : "Syncing...") : t.backdoorExchangeRateSyncNowBtn}</span>
+          </button>
+        )}
+      </div>
+
+      {/* Sub-tab Switcher: USD Exchange Rate vs Freight Rates */}
+      <div className="flex items-center p-1.5 rounded-2xl bg-slate-100/90 border border-slate-200 max-w-lg shadow-inner">
         <button
           type="button"
-          onClick={handleSyncLive}
-          disabled={syncing || saving}
-          className="px-4 py-2.5 rounded-xl bg-purple-900 hover:bg-purple-800 text-white text-xs font-bold transition flex items-center gap-2 shadow-sm disabled:opacity-50 cursor-pointer"
+          onClick={() => setActiveSubTab("EXCHANGE_USD")}
+          className={`flex-1 py-2 px-3.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer ${
+            activeSubTab === "EXCHANGE_USD"
+              ? "bg-purple-900 text-white shadow-sm"
+              : "text-slate-600 hover:text-slate-900"
+          }`}
         >
-          <RefreshCw className={`w-3.5 h-3.5 ${syncing ? "animate-spin" : ""}`} />
-          <span>{syncing ? (lang === "es" ? "Sincronizando..." : "Syncing...") : t.backdoorExchangeRateSyncNowBtn}</span>
+          <DollarSign className="w-4 h-4" />
+          <span>{t.backdoorExchangeRateSubTabUSD}</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveSubTab("SHIPPING_RATES")}
+          className={`flex-1 py-2 px-3.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer ${
+            activeSubTab === "SHIPPING_RATES"
+              ? "bg-purple-900 text-white shadow-sm"
+              : "text-slate-600 hover:text-slate-900"
+          }`}
+        >
+          <Truck className="w-4 h-4" />
+          <span>{t.backdoorExchangeRateSubTabShipping}</span>
         </button>
       </div>
 
@@ -302,14 +478,17 @@ export function ExchangeRateTab({ userRole = "MASTER" }: ExchangeRateTabProps) {
           <button
             type="button"
             onClick={() => setFeedback(null)}
-            className="text-slate-400 hover:text-slate-700 text-sm font-bold"
+            className="text-slate-400 hover:text-slate-700 text-sm font-bold cursor-pointer"
           >
             ×
           </button>
         </div>
       )}
 
-      {/* KPI Cards Grid */}
+      {/* TAB 1: EXCHANGE RATE USD (BCCR) */}
+      {activeSubTab === "EXCHANGE_USD" && (
+        <>
+          {/* KPI Cards Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* KPI 1: Active Sell Rate */}
         <div className="p-5 rounded-3xl bg-white border border-slate-200 shadow-sm relative overflow-hidden">
@@ -650,6 +829,350 @@ export function ExchangeRateTab({ userRole = "MASTER" }: ExchangeRateTabProps) {
           </table>
         </div>
       </div>
+        </>
+      )}
+
+      {/* TAB 2: FREIGHT RATES (LB & CUBIC FEET) */}
+      {activeSubTab === "SHIPPING_RATES" && (
+        <div className="space-y-6">
+          {/* Freight KPI Cards Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* KPI 1: Rate per Lb */}
+            <div className="p-5 rounded-3xl bg-white border border-slate-200 shadow-sm relative overflow-hidden">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  {t.backdoorShippingRateLbLabel}
+                </span>
+                <div className="p-2 rounded-xl bg-purple-50 text-purple-900">
+                  <Scale className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="mt-3 flex items-baseline gap-1.5">
+                <span className="text-2xl font-black text-slate-900">
+                  ${activeLbUSD.toFixed(2)}
+                </span>
+                <span className="text-xs font-bold text-slate-400">USD / lb</span>
+              </div>
+              <div className="mt-2 text-[11px] font-semibold text-purple-800">
+                ≈ ₡{Math.round(activeLbUSD * activeRate).toLocaleString("es-CR")} CRC / lb
+              </div>
+            </div>
+
+            {/* KPI 2: Rate per Cubic Foot */}
+            <div className="p-5 rounded-3xl bg-white border border-slate-200 shadow-sm relative overflow-hidden">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  {t.backdoorShippingRateCuFtLabel}
+                </span>
+                <div className="p-2 rounded-xl bg-purple-50 text-purple-900">
+                  <Box className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="mt-3 flex items-baseline gap-1.5">
+                <span className="text-2xl font-black text-slate-900">
+                  ${activeCuFtUSD.toFixed(2)}
+                </span>
+                <span className="text-xs font-bold text-slate-400">USD / ft³</span>
+              </div>
+              <div className="mt-2 text-[11px] font-semibold text-purple-800">
+                ≈ ₡{Math.round(activeCuFtUSD * activeRate).toLocaleString("es-CR")} CRC / ft³
+              </div>
+            </div>
+
+            {/* KPI 3: Active Exchange Rate applied */}
+            <div className="p-5 rounded-3xl bg-white border border-slate-200 shadow-sm relative overflow-hidden">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  {lang === "es" ? "Tipo de Cambio de Flete" : "Freight Conversion Rate"}
+                </span>
+                <div className="p-2 rounded-xl bg-emerald-50 text-emerald-700">
+                  <DollarSign className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="mt-3 flex items-baseline gap-1.5">
+                <span className="text-2xl font-black text-slate-900">
+                  ₡{activeRate.toFixed(2)}
+                </span>
+                <span className="text-xs font-bold text-slate-400">CRC</span>
+              </div>
+              <div className="mt-2 text-[11px] text-slate-500 truncate">
+                {lang === "es" ? "Calculado en tiempo real" : "Real-time conversion"}
+              </div>
+            </div>
+
+            {/* KPI 4: Last Updated */}
+            <div className="p-5 rounded-3xl bg-white border border-slate-200 shadow-sm relative overflow-hidden">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  {t.backdoorExchangeRateLastSync}
+                </span>
+                <div className="p-2 rounded-xl bg-blue-50 text-blue-700">
+                  <Clock className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="mt-3 text-base font-bold text-slate-900 truncate">
+                {data?.shippingRates?.updatedAt
+                  ? new Date(data.shippingRates.updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                  : lang === "es"
+                  ? "Tarifa Base"
+                  : "Base Rate"}
+              </div>
+              <div className="mt-2 text-[11px] text-slate-500">
+                {data?.shippingRates?.updatedAt
+                  ? new Date(data.shippingRates.updatedAt).toLocaleDateString()
+                  : lang === "es"
+                  ? "Inicializado"
+                  : "Initialized"}
+              </div>
+            </div>
+          </div>
+
+          {/* Master Form Card: Configure Rates */}
+          <div className="p-6 rounded-3xl bg-white border border-slate-200 shadow-sm space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <Settings2 className="w-4 h-4 text-purple-900" />
+                  <span>
+                    {lang === "es"
+                      ? "Ajuste de Tarifas Base de Flete (Master)"
+                      : "Base Freight Rates Settings (Master)"}
+                  </span>
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {lang === "es"
+                    ? "Elige la moneda en la que prefieres ingresar las tarifas. El sistema las convertirá automáticamente."
+                    : "Choose the currency to enter the rates. The system will convert them automatically."}
+                </p>
+              </div>
+
+              {/* Currency Toggle Switcher (USD vs CRC) */}
+              <div className="flex items-center p-1 rounded-xl bg-slate-100 border border-slate-200 shadow-inner">
+                <button
+                  type="button"
+                  onClick={() => handleToggleShippingCurrency("USD")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                    shippingCurrency === "USD"
+                      ? "bg-purple-900 text-white shadow-xs"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  {t.backdoorShippingRatesCurrencyToggleUSD}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleToggleShippingCurrency("CRC")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                    shippingCurrency === "CRC"
+                      ? "bg-purple-900 text-white shadow-xs"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  {t.backdoorShippingRatesCurrencyToggleCRC}
+                </button>
+              </div>
+            </div>
+
+            {/* Inputs Form */}
+            <form onSubmit={handleSaveShippingRates} className="space-y-5">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                {/* Field 1: Rate per Lb */}
+                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                      <Scale className="w-3.5 h-3.5 text-purple-900" />
+                      <span>{t.backdoorShippingRateLbLabel}</span>
+                    </label>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-900">
+                      {shippingCurrency} / lb
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500">{t.backdoorShippingRateLbDesc}</p>
+                  <div className="relative pt-1">
+                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">
+                      {shippingCurrency === "USD" ? "$" : "₡"}
+                    </span>
+                    <input
+                      type="number"
+                      step={shippingCurrency === "USD" ? "0.01" : "1"}
+                      min="0.01"
+                      value={formLbRate}
+                      onChange={(e) => setFormLbRate(e.target.value)}
+                      required
+                      disabled={userRole !== "MASTER" || savingShipping}
+                      className="w-full pl-8 pr-4 py-2.5 rounded-xl border border-slate-300 text-xs font-mono font-bold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-purple-600 shadow-2xs disabled:bg-slate-100"
+                    />
+                  </div>
+                  <div className="text-[11px] text-slate-500 font-medium">
+                    {shippingCurrency === "USD" ? (
+                      <span>
+                        ≈ ₡{Math.round((parseFloat(formLbRate) || 0) * activeRate).toLocaleString("es-CR")} CRC
+                      </span>
+                    ) : (
+                      <span>
+                        ≈ ${((parseFloat(formLbRate) || 0) / activeRate).toFixed(2)} USD
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Field 2: Rate per Cubic Foot */}
+                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                      <Box className="w-3.5 h-3.5 text-purple-900" />
+                      <span>{t.backdoorShippingRateCuFtLabel}</span>
+                    </label>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-900">
+                      {shippingCurrency} / ft³
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500">{t.backdoorShippingRateCuFtDesc}</p>
+                  <div className="relative pt-1">
+                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">
+                      {shippingCurrency === "USD" ? "$" : "₡"}
+                    </span>
+                    <input
+                      type="number"
+                      step={shippingCurrency === "USD" ? "0.01" : "1"}
+                      min="0.01"
+                      value={formCuFtRate}
+                      onChange={(e) => setFormCuFtRate(e.target.value)}
+                      required
+                      disabled={userRole !== "MASTER" || savingShipping}
+                      className="w-full pl-8 pr-4 py-2.5 rounded-xl border border-slate-300 text-xs font-mono font-bold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-purple-600 shadow-2xs disabled:bg-slate-100"
+                    />
+                  </div>
+                  <div className="text-[11px] text-slate-500 font-medium">
+                    {shippingCurrency === "USD" ? (
+                      <span>
+                        ≈ ₡{Math.round((parseFloat(formCuFtRate) || 0) * activeRate).toLocaleString("es-CR")} CRC
+                      </span>
+                    ) : (
+                      <span>
+                        ≈ ${((parseFloat(formCuFtRate) || 0) / activeRate).toFixed(2)} USD
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center justify-between gap-4 pt-2">
+                <div>
+                  {userRole !== "MASTER" && (
+                    <span className="text-xs font-semibold text-rose-600">
+                      {lang === "es"
+                        ? "Solo cuentas con rol MASTER pueden editar las tarifas de flete."
+                        : "Only MASTER accounts can modify freight rates."}
+                    </span>
+                  )}
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={userRole !== "MASTER" || savingShipping}
+                  className="px-5 py-2.5 rounded-xl bg-purple-900 hover:bg-purple-800 text-white text-xs font-bold transition flex items-center gap-2 shadow-sm disabled:opacity-50 cursor-pointer"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>
+                    {savingShipping
+                      ? lang === "es"
+                        ? "Guardando tarifas..."
+                        : "Saving rates..."
+                      : t.backdoorShippingRatesSaveBtn}
+                  </span>
+                </button>
+              </div>
+            </form>
+          </div>
+
+          {/* Interactive Live Simulator */}
+          <div className="p-6 rounded-3xl bg-white border border-slate-200 shadow-sm space-y-4">
+            <div className="flex items-center gap-2">
+              <div className="p-2 rounded-xl bg-purple-100 text-purple-900">
+                <Calculator className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">
+                  {lang === "es" ? "Simulador en Vivo de Costos de Flete (S_price)" : "Live Freight Cost Simulator (S_price)"}
+                </h3>
+                <p className="text-xs text-slate-500">
+                  {lang === "es"
+                    ? "Comprueba cómo calculará el sistema el costo de envío para cualquier peso o volumen."
+                    : "Check how the system will compute the shipping price for any weight or volume."}
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+              {/* Weight Sim Card */}
+              <div className="p-4 rounded-2xl bg-slate-50/70 border border-slate-200 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    <Scale className="w-3.5 h-3.5 text-purple-900" />
+                    <span>{lang === "es" ? "Prueba por Peso (Libras)" : "Weight Test (Pounds)"}</span>
+                  </span>
+                  <span className="text-[10px] font-bold text-purple-900 bg-purple-100 px-2 py-0.5 rounded-full">
+                    ${activeLbUSD.toFixed(2)} / lb
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    value={simWeight}
+                    onChange={(e) => setSimWeight(e.target.value)}
+                    placeholder="10"
+                    className="w-28 px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-mono font-bold bg-white"
+                  />
+                  <span className="text-xs font-bold text-slate-600">lb</span>
+                  <ArrowRight className="w-3.5 h-3.5 text-slate-400 mx-1" />
+                  <div className="font-mono text-xs font-bold text-slate-900">
+                    ${simWeightCostUSD.toFixed(2)} USD
+                    <span className="block text-[11px] text-purple-800 font-semibold">
+                      ₡{simWeightCostCRC.toLocaleString("es-CR")} CRC
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Volume Sim Card */}
+              <div className="p-4 rounded-2xl bg-slate-50/70 border border-slate-200 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    <Box className="w-3.5 h-3.5 text-purple-900" />
+                    <span>{lang === "es" ? "Prueba por Volumen (Pies Cúbicos)" : "Volume Test (Cubic Feet)"}</span>
+                  </span>
+                  <span className="text-[10px] font-bold text-purple-900 bg-purple-100 px-2 py-0.5 rounded-full">
+                    ${activeCuFtUSD.toFixed(2)} / ft³
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    value={simVolume}
+                    onChange={(e) => setSimVolume(e.target.value)}
+                    placeholder="2"
+                    className="w-28 px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-mono font-bold bg-white"
+                  />
+                  <span className="text-xs font-bold text-slate-600">ft³</span>
+                  <ArrowRight className="w-3.5 h-3.5 text-slate-400 mx-1" />
+                  <div className="font-mono text-xs font-bold text-slate-900">
+                    ${simVolumeCostUSD.toFixed(2)} USD
+                    <span className="block text-[11px] text-purple-800 font-semibold">
+                      ₡{simVolumeCostCRC.toLocaleString("es-CR")} CRC
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1372,6 +1372,29 @@ export interface Translations {
   backdoorBankAccountsSubTabAccounts: string;
   backdoorBankAccountsSubTabDiscounts: string;
   backdoorExchangeRateTab: string;
+  backdoorExchangeRateSubTabUSD: string;
+  backdoorExchangeRateSubTabShipping: string;
+  backdoorShippingRatesTitle: string;
+  backdoorShippingRatesSubtitle: string;
+  backdoorShippingRateLbLabel: string;
+  backdoorShippingRateCuFtLabel: string;
+  backdoorShippingRateLbDesc: string;
+  backdoorShippingRateCuFtDesc: string;
+  backdoorShippingRatesSaveBtn: string;
+  backdoorShippingRatesSaveSuccess: string;
+  backdoorShippingRatesCurrencyToggleUSD: string;
+  backdoorShippingRatesCurrencyToggleCRC: string;
+  backdoorProductShippingModeLb: string;
+  backdoorProductShippingModeCuFt: string;
+  backdoorProductShippingWeightInput: string;
+  backdoorProductShippingVolumeInput: string;
+  backdoorProductShippingDistributorShippingBtn: string;
+  backdoorProductShippingDistributorTaxesBtn: string;
+  backdoorProductShippingDistributorShippingLabel: string;
+  backdoorProductShippingDistributorTaxesLabel: string;
+  backdoorProductShippingActivateCalcBtn: string;
+  backdoorProductShippingManualModeBtn: string;
+  backdoorProductShippingBreakdownTitle: string;
   backdoorExchangeRateTitle: string;
   backdoorExchangeRateSubtitle: string;
   backdoorExchangeRateLiveLabel: string;
@@ -3366,6 +3389,29 @@ export const translations: Record<Language, Translations> = {
     backdoorBankAccountsSubTabAccounts: "Cuentas Bancarias",
     backdoorBankAccountsSubTabDiscounts: "Códigos de Descuento (Master)",
     backdoorExchangeRateTab: "Tipo de Cambio (Dólar)",
+    backdoorExchangeRateSubTabUSD: "Tipo de Cambio Dólar (BCCR)",
+    backdoorExchangeRateSubTabShipping: "Tarifas de Flete (Libras y Pies Cúbicos)",
+    backdoorShippingRatesTitle: "Tarifas de Flete e Importación (Cálculo de S_price)",
+    backdoorShippingRatesSubtitle: "Define los valores por libra (lb) y pie cúbico (ft³) para el cálculo automático del precio de flete (S_price) al registrar productos en el catálogo.",
+    backdoorShippingRateLbLabel: "Tarifa por Libra (lb)",
+    backdoorShippingRateCuFtLabel: "Tarifa por Pie Cúbico (ft³)",
+    backdoorShippingRateLbDesc: "Costo unitario por peso en libras para transporte aéreo/marítimo.",
+    backdoorShippingRateCuFtDesc: "Costo unitario por volumen en pies cúbicos para cargas sobredimensionadas.",
+    backdoorShippingRatesSaveBtn: "Guardar Tarifas de Flete",
+    backdoorShippingRatesSaveSuccess: "Tarifas de flete (libras y pies cúbicos) guardadas exitosamente.",
+    backdoorShippingRatesCurrencyToggleUSD: "Configurar en Dólares ($ USD)",
+    backdoorShippingRatesCurrencyToggleCRC: "Configurar en Colones (₡ CRC)",
+    backdoorProductShippingModeLb: "Libras (lb)",
+    backdoorProductShippingModeCuFt: "Pies Cúbicos (ft³)",
+    backdoorProductShippingWeightInput: "Peso del Producto en Libras (lb)",
+    backdoorProductShippingVolumeInput: "Volumen del Producto en Pies Cúbicos (ft³)",
+    backdoorProductShippingDistributorShippingBtn: "+ Envío del Distribuidor",
+    backdoorProductShippingDistributorTaxesBtn: "+ Impuestos del Distribuidor",
+    backdoorProductShippingDistributorShippingLabel: "Costo de Envío del Distribuidor ($ USD)",
+    backdoorProductShippingDistributorTaxesLabel: "Impuestos / Tax del Distribuidor ($ USD)",
+    backdoorProductShippingActivateCalcBtn: "Activar cálculo automático por peso / volumen",
+    backdoorProductShippingManualModeBtn: "Ingresar S_price manual",
+    backdoorProductShippingBreakdownTitle: "Desglose de Envío (S_price Automático)",
     backdoorExchangeRateTitle: "Tipo de Cambio y Valor de Venta del Dólar (BCCR)",
     backdoorExchangeRateSubtitle: "Gestiona el valor del dólar utilizado para cotizaciones, carrito de compra y checkout. Sincroniza en tiempo real con el BCCR o establece un valor manual personalizado.",
     backdoorExchangeRateLiveLabel: "Valor de Venta Oficial / Activo (USD)",
@@ -5356,6 +5402,29 @@ export const translations: Record<Language, Translations> = {
     backdoorBankAccountsSubTabAccounts: "Bank Accounts",
     backdoorBankAccountsSubTabDiscounts: "Discount Codes (Master)",
     backdoorExchangeRateTab: "Exchange Rate (USD)",
+    backdoorExchangeRateSubTabUSD: "USD Exchange Rate (BCCR)",
+    backdoorExchangeRateSubTabShipping: "Freight Rates (Pounds & Cubic Feet)",
+    backdoorShippingRatesTitle: "Freight & Import Rates (S_price Calculation)",
+    backdoorShippingRatesSubtitle: "Set rates per pound (lb) and cubic foot (ft³) for automatic shipping (S_price) calculation when creating or editing catalog products.",
+    backdoorShippingRateLbLabel: "Rate per Pound (lb)",
+    backdoorShippingRateCuFtLabel: "Rate per Cubic Foot (ft³)",
+    backdoorShippingRateLbDesc: "Unit cost per pound for air or ocean transport from supplier warehouse.",
+    backdoorShippingRateCuFtDesc: "Unit cost per cubic foot for oversized, bulky cargo.",
+    backdoorShippingRatesSaveBtn: "Save Freight Rates",
+    backdoorShippingRatesSaveSuccess: "Freight rates (pounds and cubic feet) successfully saved.",
+    backdoorShippingRatesCurrencyToggleUSD: "Configure in USD ($)",
+    backdoorShippingRatesCurrencyToggleCRC: "Configure in Colones (₡ CRC)",
+    backdoorProductShippingModeLb: "Pounds (lb)",
+    backdoorProductShippingModeCuFt: "Cubic Feet (ft³)",
+    backdoorProductShippingWeightInput: "Product Weight in Pounds (lb)",
+    backdoorProductShippingVolumeInput: "Product Volume in Cubic Feet (ft³)",
+    backdoorProductShippingDistributorShippingBtn: "+ Distributor Shipping",
+    backdoorProductShippingDistributorTaxesBtn: "+ Distributor Taxes",
+    backdoorProductShippingDistributorShippingLabel: "Distributor Domestic Shipping ($ USD)",
+    backdoorProductShippingDistributorTaxesLabel: "Distributor State Taxes ($ USD)",
+    backdoorProductShippingActivateCalcBtn: "Activate automatic weight / volume calculator",
+    backdoorProductShippingManualModeBtn: "Enter manual S_price",
+    backdoorProductShippingBreakdownTitle: "Shipping Breakdown (Automatic S_price)",
     backdoorExchangeRateTitle: "USD Sell Exchange Rate & BCCR API",
     backdoorExchangeRateSubtitle: "Manage the USD exchange rate used for quotes, cart, and checkout. Sync live with the Central Bank of Costa Rica (BCCR) or set a custom manual rate.",
     backdoorExchangeRateLiveLabel: "Active / Official Sell Rate (USD)",
