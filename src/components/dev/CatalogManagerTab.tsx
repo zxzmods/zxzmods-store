@@ -3682,14 +3682,19 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
             const ivaRate = prev.ivaPercent ?? 13;
             const nextIva = calculateIvaAmount(nextPPriceCRC, nextSPriceCRC, prev.profit, prev.I_price, prev.I_price_includes, prev.discountPercent, ivaRate);
             const nextTotal = recalculateTPrice(nextPPriceCRC, nextSPriceCRC, prev.profit, prev.I_price, prev.I_price_includes, prev.discountPercent, ivaRate);
+
+            // Auto-fill title if form title is empty and scraper extracted a title
+            const autoTitle = data.result.title?.trim();
+            const shouldFillTitle = Boolean(autoTitle && !prev.p_title.trim() && !prev.nameEs.trim());
+
             return {
               ...prev,
               supplierUrl: trimmed,
               supplierPlatform: data.result.platform || prev.supplierPlatform,
-              supplierStockStatus: data.result.status || prev.supplierStockStatus,
+              supplierStockStatus: data.result.status || prev.supplierStockStatus || "IN_STOCK",
               supplierStockCount: data.result.stockCount ?? prev.supplierStockCount,
-              supplierLeadDaysMin: data.result.leadDaysMin || prev.supplierLeadDaysMin,
-              supplierLeadDaysMax: data.result.leadDaysMax || prev.supplierLeadDaysMax,
+              supplierLeadDaysMin: data.result.leadDaysMin || prev.supplierLeadDaysMin || 7,
+              supplierLeadDaysMax: data.result.leadDaysMax || prev.supplierLeadDaysMax || 21,
               supplierLastPriceUSD: hasValidUSD ? nextPPriceD : (data.result.supplierPriceUSD ?? prev.supplierLastPriceUSD),
               P_price_D: nextPPriceD,
               P_price: nextPPriceCRC,
@@ -3698,6 +3703,13 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
               priceCRC: nextTotal,
               T_price: nextTotal,
               supplierStockCheckedAt: data.result.checkedAt || new Date().toISOString(),
+              ...(shouldFillTitle
+                ? {
+                    p_title: autoTitle,
+                    nameEs: autoTitle,
+                    nameEn: prev.nameEn.trim() || autoTitle,
+                  }
+                : {}),
             };
           });
           if (!silent) {
@@ -3705,16 +3717,14 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
               Number.isFinite(fetchedPriceUSD) && fetchedPriceUSD > 0
                 ? ` — P_price_D actualizado a $${fetchedPriceUSD.toFixed(2)} USD (₡${Math.round(fetchedPriceUSD * activeRate).toLocaleString()} @ ₡${activeRate.toFixed(2)})`
                 : "";
+            const customMsg = lang === "es" ? data.result.messageEs : data.result.messageEn;
             setFeedback({
               type: "success",
               msg:
-                lang === "es"
+                customMsg ||
+                (lang === "es"
                   ? `Enlace verificado con éxito: Estado [${data.result.status}] - Plataforma [${data.result.platform}]${priceLabel}.`
-                  : `Supplier link verified: Status [${data.result.status}] - Platform [${data.result.platform}]${
-                      Number.isFinite(fetchedPriceUSD) && fetchedPriceUSD > 0
-                        ? ` — P_price_D auto-updated to $${fetchedPriceUSD.toFixed(2)} USD (₡${Math.round(fetchedPriceUSD * activeRate).toLocaleString()} @ ₡${activeRate.toFixed(2)})`
-                        : ""
-                    }.`,
+                  : `Supplier link verified: Status [${data.result.status}] - Platform [${data.result.platform}]${priceLabel}.`),
             });
           }
         } else if (!silent) {
@@ -4373,6 +4383,29 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
     setFeedback(null);
     setValidationErrors([]);
 
+    // Auto-calculate prices if USD processing price was entered but T_price is still 0
+    let effectivePPrice = Number(productForm.P_price) || 0;
+    let effectiveTPrice = Number(productForm.T_price) || 0;
+    const effPD = Number(productForm.P_price_D) || 0;
+    if (effPD > 0 && (effectivePPrice <= 0 || effectiveTPrice <= 0)) {
+      const activeRate = liveExchangeRate > 300 ? liveExchangeRate : 455.21;
+      effectivePPrice = Math.round(effPD * activeRate);
+      const effSD = Number(productForm.S_price_D) || 0;
+      const effectiveSPrice = effSD > 0 ? Math.round(effSD * activeRate) : Number(productForm.S_price) || 0;
+      const ivaRate = productForm.ivaPercent ?? 13;
+      effectiveTPrice = recalculateTPrice(
+        effectivePPrice,
+        effectiveSPrice,
+        productForm.profit,
+        productForm.I_price,
+        productForm.I_price_includes,
+        productForm.discountPercent,
+        ivaRate
+      );
+      productForm.P_price = effectivePPrice;
+      productForm.T_price = effectiveTPrice;
+    }
+
     // Check critical spots required for product upload (User Requirement)
     const missing: string[] = [];
     if (!productForm.sku.trim()) missing.push("SKU");
@@ -4383,7 +4416,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       ? productForm.selectedCategories
       : (productForm.category ? [productForm.category] : []);
     if (effectiveCategories.length === 0) missing.push("Categorías (category)");
-    if (productForm.T_price <= 0) missing.push("Precio Total (T_price > 0)");
+    if (effectiveTPrice <= 0 && productForm.T_price <= 0) missing.push("Precio Total (T_price > 0)");
     const effectiveStockStatus = productForm.stockStatus?.trim() || "IN_STOCK_US";
     const effectiveWarranty = productForm.warrantyCategory?.trim() || "BOLT_ON_ELECTRICAL";
     if (!productForm.imgsText.trim() && !productForm.imageUrl.trim()) missing.push("Imágenes (imgs)");

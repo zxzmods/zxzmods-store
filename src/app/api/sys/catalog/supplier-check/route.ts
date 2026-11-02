@@ -86,25 +86,27 @@ export async function POST(request: Request) {
     const result = await fetchLiveSupplierAvailability(url);
 
     // Optionally save to product (and auto-sync processingPriceD when supplierPriceUSD is found)
-    if ((save || Boolean(saveToProductId)) && targetProductId && result.success) {
+    if ((save || Boolean(saveToProductId)) && targetProductId) {
+      const updateData: any = {
+        supplierUrl: result.url,
+        supplierPlatform: result.platform,
+        supplierStockStatus: result.status || "IN_STOCK",
+        supplierStockCount: result.stockCount,
+        supplierStockMessageEs: result.messageEs,
+        supplierStockMessageEn: result.messageEn,
+        supplierStockCheckedAt: new Date(),
+        supplierLeadDaysMin: result.leadDaysMin || 7,
+        supplierLeadDaysMax: result.leadDaysMax || 21,
+        updatedAt: new Date(),
+      };
+      if (result.supplierPriceUSD && result.supplierPriceUSD > 0) {
+        updateData.supplierLastPriceUSD = result.supplierPriceUSD;
+        updateData.processingPriceD = result.supplierPriceUSD;
+      }
+
       const updated = await prisma.product.update({
         where: { id: targetProductId },
-        data: {
-          supplierUrl: result.url,
-          supplierPlatform: result.platform,
-          supplierStockStatus: result.status,
-          supplierStockCount: result.stockCount,
-          supplierStockMessageEs: result.messageEs,
-          supplierStockMessageEn: result.messageEn,
-          supplierStockCheckedAt: new Date(),
-          supplierLeadDaysMin: result.leadDaysMin,
-          supplierLeadDaysMax: result.leadDaysMax,
-          supplierLastPriceUSD: result.supplierPriceUSD,
-          ...(result.supplierPriceUSD && result.supplierPriceUSD > 0
-            ? { processingPriceD: result.supplierPriceUSD }
-            : {}),
-          updatedAt: new Date(),
-        },
+        data: updateData,
       });
 
       return NextResponse.json({
