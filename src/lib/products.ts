@@ -850,7 +850,7 @@ export function detectVehiclePlatform(token: string): string | null {
       t === "pro r 4" ||
       t.includes("pro-r-4") ||
       t.includes("pro r 4") ||
-      /\bpro\s*r\s*4\b/i.test(t)
+      /\bpro[-_\s]*r[-_\s]*4\b/i.test(t)
     )
   ) {
     return "pror-4";
@@ -864,11 +864,46 @@ export function detectVehiclePlatform(token: string): string | null {
       t === "rzr-pro-r" ||
       t === "pro-r" ||
       t === "pro r" ||
+      t.includes("pro-r") ||
       t.includes("pro r") ||
-      /\bpro\s*r\b/i.test(t)
-    )
+      /\bpro[-_\s]*r\b/i.test(t)
+    ) &&
+    !t.includes("4")
   ) {
     return "pror";
+  }
+
+  // 6c. Polaris RZR Pro S 4 (4-seater)
+  if (
+    !t.includes("maverick") &&
+    !t.includes("can-am") &&
+    (
+      t === "rzr-pro-s-4" ||
+      t === "pro-s-4" ||
+      t === "pro s 4" ||
+      t.includes("pro-s-4") ||
+      t.includes("pro s 4") ||
+      /\bpro[-_\s]*s[-_\s]*4\b/i.test(t)
+    )
+  ) {
+    return "pro-s-4";
+  }
+
+  // 6d. Polaris RZR Pro S (2-seater)
+  if (
+    !t.includes("maverick") &&
+    !t.includes("can-am") &&
+    (
+      t === "rzr-pro-s" ||
+      t === "pro-s" ||
+      t === "pro s" ||
+      t.includes("pro-s") ||
+      t.includes("pro s") ||
+      /\bpro[-_\s]*s\b/i.test(t)
+    ) &&
+    !t.includes("4")
+  ) {
+    return "pro-s";
   }
 
   // 7a. Polaris RZR Pro XP 4 (4-seater)
@@ -881,7 +916,7 @@ export function detectVehiclePlatform(token: string): string | null {
       t === "pro xp 4" ||
       t.includes("pro-xp-4") ||
       t.includes("pro xp 4") ||
-      /\bpro\s*xp\s*4\b/i.test(t)
+      /\bpro[-_\s]*xp[-_\s]*4\b/i.test(t)
     )
   ) {
     return "proxp-4";
@@ -895,14 +930,16 @@ export function detectVehiclePlatform(token: string): string | null {
       t === "rzr-pro-xp" ||
       t === "pro-xp" ||
       t === "pro xp" ||
+      t.includes("pro-xp") ||
       t.includes("pro xp") ||
-      /\bpro\s*xp\b/i.test(t)
-    )
+      /\bpro[-_\s]*xp\b/i.test(t)
+    ) &&
+    !t.includes("4")
   ) {
     return "proxp";
   }
 
-  // 8a. Polaris Turbo R 4 (4-seater)
+  // 8a. Polaris Turbo R 4 / Pro Turbo R 4 (4-seater)
   if (
     !t.includes("maverick") &&
     !t.includes("can-am") &&
@@ -914,13 +951,13 @@ export function detectVehiclePlatform(token: string): string | null {
       t === "turbo r 4" ||
       t.includes("turbo r 4") ||
       t.includes("turbo-r-4") ||
-      /\brzr(\s*turbo\s*r\s*4)\b/i.test(t)
+      /\b(rzr[-_\s]*)?turbo[-_\s]*r[-_\s]*4\b/i.test(t)
     )
   ) {
     return "turbor-4";
   }
 
-  // 8b. Polaris Turbo R (2-seater)
+  // 8b. Polaris Turbo R / Pro Turbo R (2-seater)
   if (
     !t.includes("maverick") &&
     !t.includes("can-am") &&
@@ -932,8 +969,9 @@ export function detectVehiclePlatform(token: string): string | null {
       t === "turbo r" ||
       t.includes("rzr turbo r") ||
       t.includes("polaris turbo r") ||
-      /\brzr(\s*turbo\s*r)?\b/i.test(t)
-    )
+      /\b(rzr[-_\s]*)?turbo[-_\s]*r\b/i.test(t)
+    ) &&
+    !t.includes("4")
   ) {
     return "turbor";
   }
@@ -974,7 +1012,8 @@ export function detectVehiclePlatform(token: string): string | null {
   // 11a. Polaris RZR XP 4 (4-seater)
   if (
     !t.includes("pro") &&
-    !t.includes("turbo") &&
+    !t.includes("turbo-r") &&
+    !t.includes("turbo r") &&
     (/\b4\b/i.test(t) || t.includes("-4") || t.includes(" 4") || t.includes("max") || t.includes("crew")) &&
     (t.includes("rzr-xp") || t.includes("rzr xp") || (t.includes("rzr") && t.includes("xp")))
   ) {
@@ -984,7 +1023,8 @@ export function detectVehiclePlatform(token: string): string | null {
   // 11b. Polaris RZR XP (2-seater)
   if (
     !t.includes("pro") &&
-    !t.includes("turbo") &&
+    !t.includes("turbo-r") &&
+    !t.includes("turbo r") &&
     !t.includes("-4") &&
     !t.includes(" 4") &&
     !t.includes("max") &&
@@ -993,6 +1033,162 @@ export function detectVehiclePlatform(token: string): string | null {
     (t.includes("rzr-xp") || t.includes("rzr xp") || (t.includes("rzr") && t.includes("xp")))
   ) {
     return "rzr-xp";
+  }
+
+  return null;
+}
+
+export type VehicleFamily =
+  | "rzr-pro"
+  | "rzr-xp"
+  | "maverick-x3"
+  | "maverick-r"
+  | "canam-defender"
+  | "canam-commander"
+  | "cfmoto-z10"
+  | "cfmoto-z950"
+  | "cfmoto-z1000"
+  | "kawasaki-krx"
+  | "honda-talon"
+  | "segway-villain";
+
+/**
+ * Detects the macro vehicle family for strict cross-family isolation.
+ * Prevents non-compatible families (e.g. Polaris RZR PRO vs RZR XP, Can-Am Maverick R vs X3)
+ * from ever cross-matching or polluting filtered views.
+ */
+export function getVehicleFamily(token: string): VehicleFamily | null {
+  const t = token.toLowerCase().trim();
+  if (!t || t === "all" || t.includes("universal")) return null;
+
+  // 1. Polaris RZR PRO Family (Pro XP, Pro R, Pro S, Turbo R)
+  if (
+    !t.includes("maverick") &&
+    !t.includes("can-am") &&
+    (
+      t === "rzr pro" ||
+      t === "rzr-pro" ||
+      t === "rzr pro 2025+" ||
+      t === "rzr-pro-2025+" ||
+      t.includes("rzr-pro") ||
+      t.includes("rzr pro") ||
+      t.includes("pro-xp") ||
+      t.includes("pro xp") ||
+      t.includes("proxp") ||
+      t.includes("pro-r") ||
+      t.includes("pro r") ||
+      t.includes("pror") ||
+      t.includes("pro-s") ||
+      t.includes("pro s") ||
+      t.includes("turbo-r") ||
+      t.includes("turbo r") ||
+      t.includes("turbor") ||
+      /\bpro[-_\s]*(xp|r|s)\b/i.test(t) ||
+      /\bturbo[-_\s]*r\b/i.test(t)
+    )
+  ) {
+    return "rzr-pro";
+  }
+
+  // 2. Polaris RZR XP Family (Standard XP 1000, XP 4 1000, XP Turbo standard)
+  if (
+    !t.includes("pro") &&
+    !t.includes("turbo-r") &&
+    !t.includes("turbo r") &&
+    (
+      t === "rzr xp" ||
+      t === "rzr-xp" ||
+      t.includes("rzr-xp") ||
+      t.includes("rzr xp") ||
+      t.includes("xp-1000") ||
+      t.includes("xp 1000") ||
+      t.includes("xp1000") ||
+      t.startsWith("rzr-xp") ||
+      /\brzr[-_\s]*xp\b/i.test(t) ||
+      /\bxp[-_\s]*1000\b/i.test(t)
+    )
+  ) {
+    return "rzr-xp";
+  }
+
+  // 3. Can-Am Maverick R
+  if (
+    t === "maverick-r" ||
+    t === "maverick r" ||
+    t.includes("maverick-r") ||
+    t.includes("maverick r") ||
+    /\bmaverick[-_\s]?r\b/i.test(t)
+  ) {
+    return "maverick-r";
+  }
+
+  // 4. Can-Am Maverick X3
+  if (
+    !t.includes("maverick-r") &&
+    !t.includes("maverick r") &&
+    (
+      t === "x3" ||
+      t === "can-amx3" ||
+      t === "maverick-x3" ||
+      t === "maverick x3" ||
+      t.includes("x3") ||
+      t.includes("maverick-x3") ||
+      t.includes("maverick x3") ||
+      /\b(can-am\s+)?(maverick[-_\s]?)?x3\b/i.test(t)
+    )
+  ) {
+    return "maverick-x3";
+  }
+
+  // 5. Can-Am Defender
+  if (t === "defender" || t.includes("defender") || t.includes("traxter") || /\bdefender\b/i.test(t)) {
+    return "canam-defender";
+  }
+
+  // 6. Can-Am Commander
+  if ((t === "commander" || t.includes("commander")) && !t.includes("power commander")) {
+    return "canam-commander";
+  }
+
+  // 7. CFMOTO Z10
+  if (
+    !t.includes("1000") &&
+    !t.includes("950") &&
+    (
+      t === "z10" ||
+      t === "z10-4" ||
+      t.includes("zforce-z10") ||
+      t.includes("zforce z10") ||
+      t.includes("cfmoto z10") ||
+      /\b(zforce\s+)?z10\b/i.test(t)
+    )
+  ) {
+    return "cfmoto-z10";
+  }
+
+  // 8. CFMOTO Z950
+  if (t.includes("950") || t.includes("z950") || /\bz950\b/i.test(t)) {
+    return "cfmoto-z950";
+  }
+
+  // 9. CFMOTO Z1000
+  if (t.includes("1000") && (t.includes("zforce") || t.includes("z1000") || /\bz1000\b/i.test(t))) {
+    return "cfmoto-z1000";
+  }
+
+  // 10. Kawasaki KRX
+  if (t.includes("krx") || /\bkrx\b/i.test(t)) {
+    return "kawasaki-krx";
+  }
+
+  // 11. Honda Talon
+  if (t.includes("talon") || /\btalon\b/i.test(t)) {
+    return "honda-talon";
+  }
+
+  // 12. Segway Villain
+  if (t.includes("villain") || t.includes("sx10") || /\bvillain\b/i.test(t)) {
+    return "segway-villain";
   }
 
   return null;
@@ -1025,6 +1221,28 @@ export function isPlatformOrVehicleMatch(compItem: string, targetToken: string):
     (is2SeaterToken(c) && is4SeaterToken(target))
   ) {
     return false;
+  }
+
+  // STRICT SEPARATION: Macro Vehicle Families (RZR PRO vs RZR XP, Maverick R vs X3, Z10 vs Z950 vs Z1000, etc.)
+  const famC = getVehicleFamily(c);
+  const famTarget = getVehicleFamily(target);
+  if (famC && famTarget && famC !== famTarget) {
+    return false;
+  }
+
+  // Cross-family negative guards when one token has a recognized family:
+  if (famC && !famTarget) {
+    if (famC === "rzr-pro" && (target.includes("rzr-xp") || target.includes("rzr xp") || /\brzr[-_\s]*xp\b/i.test(target))) return false;
+    if (famC === "rzr-xp" && (target.includes("pro") || target.includes("turbo-r") || target.includes("turbo r"))) return false;
+    if (famC === "maverick-r" && (target.includes("x3") || /\bx3\b/i.test(target))) return false;
+    if (famC === "maverick-x3" && (target.includes("maverick-r") || target.includes("maverick r") || /\bmaverick[-_\s]?r\b/i.test(target))) return false;
+  }
+
+  if (famTarget && !famC) {
+    if (famTarget === "rzr-pro" && (c.includes("rzr-xp") || c.includes("rzr xp") || /\brzr[-_\s]*xp\b/i.test(c))) return false;
+    if (famTarget === "rzr-xp" && (c.includes("pro") || c.includes("turbo-r") || c.includes("turbo r"))) return false;
+    if (famTarget === "maverick-r" && (c.includes("x3") || /\bx3\b/i.test(c))) return false;
+    if (famTarget === "maverick-x3" && (c.includes("maverick-r") || c.includes("maverick r") || /\bmaverick[-_\s]?r\b/i.test(c))) return false;
   }
 
   // STRICT SEPARATION: Can-Am Maverick R vs Can-Am Maverick X3
@@ -1105,6 +1323,12 @@ export function isPlatformOrVehicleMatch(compItem: string, targetToken: string):
     if (platC === "z950" && (target.includes("1000") || target.includes("z1000") || /\bz10(-4)?\b/i.test(target) || target.includes("x3"))) {
       return false;
     }
+    if ((platC.startsWith("pro") || platC.startsWith("turbo")) && (target.includes("rzr-xp") || target.includes("rzr xp") || /\brzr[-_\s]*xp\b/i.test(target))) {
+      return false;
+    }
+    if (platC.startsWith("rzr-xp") && (target.includes("pro") || target.includes("turbo-r") || target.includes("turbo r"))) {
+      return false;
+    }
   }
 
   if (platTarget && !platC) {
@@ -1124,6 +1348,12 @@ export function isPlatformOrVehicleMatch(compItem: string, targetToken: string):
       return false;
     }
     if (platTarget === "z950" && (c.includes("1000") || c.includes("z1000") || /\bz10(-4)?\b/i.test(c) || c.includes("x3"))) {
+      return false;
+    }
+    if ((platTarget.startsWith("pro") || platTarget.startsWith("turbo")) && (c.includes("rzr-xp") || c.includes("rzr xp") || /\brzr[-_\s]*xp\b/i.test(c))) {
+      return false;
+    }
+    if (platTarget.startsWith("rzr-xp") && (c.includes("pro") || c.includes("turbo-r") || c.includes("turbo r"))) {
       return false;
     }
   }

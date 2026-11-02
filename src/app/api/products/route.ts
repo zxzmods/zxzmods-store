@@ -5,6 +5,7 @@ import {
   extractDescriptionText,
   isPlatformOrVehicleMatch,
   detectVehiclePlatform,
+  getVehicleFamily,
   isUniversalFit,
   normalizeAudioUrl,
   normalizeVideoUrl,
@@ -826,6 +827,29 @@ export async function GET(request: Request) {
         const isUniversal = isUniversalFit(product.comp);
 
         if (!isUniversal) {
+          const targetFam = getVehicleFamily(targetCategoryNorm);
+
+          // Strict family guard: if product has compatibilities, ensure it doesn't only belong to an incompatible family
+          if (targetFam) {
+            const productFamilies = new Set<string>();
+            if (product.comp && product.comp.length > 0) {
+              for (const c of product.comp) {
+                const fam = getVehicleFamily(c);
+                if (fam) productFamilies.add(fam);
+              }
+            }
+            if (product.modelYearCompatibility && product.modelYearCompatibility.length > 0) {
+              for (const myc of product.modelYearCompatibility) {
+                const fam = getVehicleFamily(myc.model);
+                if (fam) productFamilies.add(fam);
+              }
+            }
+            // If product has detected families and NONE match targetFam, reject it immediately
+            if (productFamilies.size > 0 && !productFamilies.has(targetFam)) {
+              return false;
+            }
+          }
+
           // Gather models under this category
           const tokensToMatch = new Set<string>();
           tokensToMatch.add(targetCategoryNorm);

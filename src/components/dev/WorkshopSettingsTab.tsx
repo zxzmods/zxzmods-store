@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useLanguage } from "@/context/LanguageContext";
 import {
   GLOBAL_MASTER_PHONE,
@@ -25,7 +25,18 @@ import {
   ShieldCheck,
   Mail,
   Send,
+  Truck,
+  Wrench,
+  Search,
+  Eye,
+  Printer,
+  Scale,
+  Zap,
+  Lock as LockIcon,
+  ClipboardCheck,
 } from "lucide-react";
+import { ServiceDocumentModal } from "./ServiceDocumentModal";
+import { DocumentViewerModal } from "@/components/documents/DocumentViewerModal";
 
 interface WorkshopData {
   id: string;
@@ -45,6 +56,257 @@ interface WorkshopData {
   latitude: number;
   longitude: number;
 }
+
+
+interface BlankDocumentCatalogItem {
+  id: string;
+  type: "operational" | "legal";
+  group: "workshop" | "logistics" | "legal";
+  titleEs: string;
+  titleEn: string;
+  badgeEs: string;
+  badgeEn: string;
+  descEs: string;
+  descEn: string;
+  formatTagEs: string;
+  formatTagEn: string;
+  iconName: "Truck" | "Wrench" | "ShieldCheck" | "FileText" | "Lock" | "AlertCircle" | "Scale" | "Zap" | "ClipboardCheck" | "MapPin";
+  operationalCategory?: "delivery" | "only_installation" | "home_installation" | "pickup" | "quality_certificate";
+  operationalSubDoc?: "reception" | "handover" | "transport_auth" | "transport_return";
+  legalSlug?: string;
+}
+
+const BLANK_DOCUMENTS_CATALOG: BlankDocumentCatalogItem[] = [
+  {
+    id: "doc-delivery",
+    type: "operational",
+    group: "logistics",
+    titleEs: "Acta de Entrega de Repuestos & Mercadería (Delivery)",
+    titleEn: "Parts & Merchandise Delivery Receipt",
+    badgeEs: "Logística & Entrega",
+    badgeEn: "Logistics & Delivery",
+    descEs: "Comprobante formal para entrega física de productos o paquetes al cliente. Incluye desglose de bultos, inspección exterior, cédula y firma de recepción.",
+    descEn: "Official merchandise delivery sheet with physical package inspection, itemized contents, ID, and receiver signature.",
+    formatTagEs: "Formato Físico A4",
+    formatTagEn: "Physical A4 Sheet",
+    iconName: "Truck",
+    operationalCategory: "delivery",
+  },
+  {
+    id: "doc-workshop-reception",
+    type: "operational",
+    group: "workshop",
+    titleEs: "Hoja de Entrada a Taller & Inspección de Daños Previos",
+    titleEn: "Shop Reception & Pre-existing Damage Sheet",
+    badgeEs: "Taller ZxZ",
+    badgeEn: "ZxZ Workshop",
+    descEs: "Inventario de ingreso de vehículo UTV/SXS: llaves recibidas, nivel de gasolina, pertenencias, estado de batería, neumáticos y diagrama de daños.",
+    descEn: "UTV intake sheet: keys received, fuel level, personal belongings, battery, tires, and pre-existing vehicle damage diagram.",
+    formatTagEs: "Formato Físico A4",
+    formatTagEn: "Physical A4 Sheet",
+    iconName: "Wrench",
+    operationalCategory: "only_installation",
+    operationalSubDoc: "reception",
+  },
+  {
+    id: "doc-workshop-checklist",
+    type: "operational",
+    group: "workshop",
+    titleEs: "Checklist Técnico de Instalación & Salida de Taller",
+    titleEn: "Shop Technical Checklist & Final Handover",
+    badgeEs: "Control de Calidad",
+    badgeEn: "Quality Control",
+    descEs: "Control técnico del mecánico: torque de tornillería, cableado sellado, prueba de encendido y rodaje, limpieza y devolución de piezas originales.",
+    descEn: "Technical sign-off: bolt torque specs, electrical wiring, test drive, clean work area, and return of OEM replaced parts.",
+    formatTagEs: "Formato Físico A4",
+    formatTagEn: "Physical A4 Sheet",
+    iconName: "ClipboardCheck",
+    operationalCategory: "only_installation",
+    operationalSubDoc: "handover",
+  },
+  {
+    id: "doc-home-install",
+    type: "operational",
+    group: "workshop",
+    titleEs: "Hoja de Servicio e Instalación a Domicilio",
+    titleEn: "Home / Mobile Installation Work Order",
+    badgeEs: "Taller Móvil",
+    badgeEn: "Mobile Service",
+    descEs: "Orden de trabajo en sitio del cliente: dirección de visita, horas de labor técnica, condiciones de seguridad de terreno y conformidad de entrega.",
+    descEn: "On-site installation order: destination address, technician work hours, terrain safety check, and customer satisfaction sign-off.",
+    formatTagEs: "Formato Físico A4",
+    formatTagEn: "Physical A4 Sheet",
+    iconName: "MapPin",
+    operationalCategory: "home_installation",
+  },
+  {
+    id: "doc-pickup-auth",
+    type: "operational",
+    group: "logistics",
+    titleEs: "Autorización de Retiro & Traslado en Grúa / Pick-up",
+    titleEn: "Vehicle Pickup & Towing Authorization",
+    badgeEs: "Remolque & Grúa",
+    badgeEn: "Flatbed & Towing",
+    descEs: "Autorización formal para retiro y traslado en plataforma: chofer asignado, inspección previa al embarque y descargo de custodia en tránsito.",
+    descEn: "Official flatbed pickup authorization: assigned driver, pre-boarding inspection, and transit liability custody coverage.",
+    formatTagEs: "Formato Físico A4",
+    formatTagEn: "Physical A4 Sheet",
+    iconName: "Truck",
+    operationalCategory: "pickup",
+    operationalSubDoc: "transport_auth",
+  },
+  {
+    id: "doc-pickup-return",
+    type: "operational",
+    group: "logistics",
+    titleEs: "Acta de Devolución de Vehículo Trasladado",
+    titleEn: "Towed Vehicle Return & Handover Receipt",
+    badgeEs: "Remolque & Grúa",
+    badgeEn: "Flatbed & Towing",
+    descEs: "Constancia de retorno seguro del vehículo al cliente tras labores de taller: chequeo de odómetro, devolución de llaves y firma del propietario.",
+    descEn: "Vehicle return receipt following shop service: odometer check, key return, and client satisfaction signature.",
+    formatTagEs: "Formato Físico A4",
+    formatTagEn: "Physical A4 Sheet",
+    iconName: "Truck",
+    operationalCategory: "pickup",
+    operationalSubDoc: "transport_return",
+  },
+  {
+    id: "doc-quality-cert",
+    type: "operational",
+    group: "workshop",
+    titleEs: "Certificado Oficial de Calidad e Inspección ZxZ",
+    titleEn: "Official Quality & Inspection Certificate",
+    badgeEs: "Bodega & Calidad",
+    badgeEn: "Warehouse & QA",
+    descEs: "Constancia técnica de arribo en estado perfecto desde EE.UU., verificación de sellos de fábrica intactos y ausencia de averías de traslado.",
+    descEn: "Technical certification of brand-new condition from USA imports, factory seal inspection, and zero transit damage verification.",
+    formatTagEs: "Certificación A4",
+    formatTagEn: "A4 Certificate",
+    iconName: "ShieldCheck",
+    operationalCategory: "quality_certificate",
+  },
+  {
+    id: "legal-poliza-garantia",
+    type: "legal",
+    group: "legal",
+    titleEs: "Póliza Oficial de Garantía y Defectos de Fábrica",
+    titleEn: "Official Warranty Policy & Factory Defects",
+    badgeEs: "Legal • Garantía",
+    badgeEn: "Legal • Warranty",
+    descEs: "Términos oficiales de cobertura contra fallas de manufactura, exclusión de abuso en carreras, período de reclamo y trámite RMA.",
+    descEn: "Factory warranty terms, racing wear exclusions, inspection period, and official RMA replacement procedure.",
+    formatTagEs: "Contrato Legal",
+    formatTagEn: "Legal Contract",
+    iconName: "ShieldCheck",
+    legalSlug: "poliza-garantia",
+  },
+  {
+    id: "legal-descargo-responsabilidad",
+    type: "legal",
+    group: "legal",
+    titleEs: "Descargo de Responsabilidad Off-Road & Garantía de Agencia",
+    titleEn: "Off-Road Liability & Dealer Warranty Waiver",
+    badgeEs: "Legal • Descargo",
+    badgeEn: "Legal • Liability",
+    descEs: "Protección legal para modificaciones deportivas, uso fuera de carretera, advertencias de garantía de agencia y carreras.",
+    descEn: "Legal protections for high-performance modifications, off-road usage, and manufacturer warranty warnings.",
+    formatTagEs: "Contrato Legal",
+    formatTagEn: "Legal Contract",
+    iconName: "AlertCircle",
+    legalSlug: "descargo-responsabilidad",
+  },
+  {
+    id: "legal-taller-domicilio-remolque",
+    type: "legal",
+    group: "legal",
+    titleEs: "Términos de Taller Móvil a Domicilio y Remolque",
+    titleEn: "Mobile Service & Towing Contractual Terms",
+    badgeEs: "Legal • Taller",
+    badgeEn: "Legal • Workshop",
+    descEs: "Contrato de servicios presenciales: terreno plano obligatorio, condiciones climáticas y responsabilidades de custodia en carretera.",
+    descEn: "Field service legal terms: mandatory flat working ground, weather conditions, and highway towing custody terms.",
+    formatTagEs: "Contrato Legal",
+    formatTagEn: "Legal Contract",
+    iconName: "Wrench",
+    legalSlug: "taller-domicilio-remolque",
+  },
+  {
+    id: "legal-reprogramacion-ecu",
+    type: "legal",
+    group: "legal",
+    titleEs: "Política de Reprogramación ECU & Tuning de Software",
+    titleEn: "ECU Tuning & Software Calibration Policy",
+    badgeEs: "Legal • Tuning",
+    badgeEn: "Legal • Tuning",
+    descEs: "Garantía de por vida en re-flashes de software, combustible de alto octanaje y exclusión de componentes mecánicos de motor.",
+    descEn: "Lifetime software re-flash warranty, 95+ octane fuel mandate, and mechanical engine components exclusion.",
+    formatTagEs: "Contrato Legal",
+    formatTagEn: "Legal Contract",
+    iconName: "Zap",
+    legalSlug: "reprogramacion-ecu",
+  },
+  {
+    id: "legal-terminos-condiciones",
+    type: "legal",
+    group: "legal",
+    titleEs: "Términos y Condiciones Generales de Compra y Venta",
+    titleEn: "General Terms & Conditions of Sale",
+    badgeEs: "Legal • Comercio",
+    badgeEn: "Legal • Commerce",
+    descEs: "Marco legal integral que rige transacciones comerciales, depósitos irrevocables y entrega de partes especiales en Costa Rica.",
+    descEn: "Comprehensive commercial sales terms, irrevocable deposits, and high-performance part procurement rules in Costa Rica.",
+    formatTagEs: "Contrato Legal",
+    formatTagEn: "Legal Contract",
+    iconName: "Scale",
+    legalSlug: "terminos-condiciones",
+  },
+  {
+    id: "legal-acuerdos-pago",
+    type: "legal",
+    group: "legal",
+    titleEs: "Acuerdos y Protocolos de Pago Bancario",
+    titleEn: "Bank Transfer Agreements & Protocols",
+    badgeEs: "Legal • Finanzas",
+    badgeEn: "Legal • Finance",
+    descEs: "Cuentas IBAN oficiales de ZxZ Mods S.A., política de cero SINPE y validación contra lavado de dinero.",
+    descEn: "Official Costa Rica IBAN bank accounts, anti-fraud verification, and zero third-party SINPE payment rule.",
+    formatTagEs: "Contrato Legal",
+    formatTagEn: "Legal Contract",
+    iconName: "Lock",
+    legalSlug: "acuerdos-pago",
+  },
+  {
+    id: "legal-importacion-aduanas",
+    type: "legal",
+    group: "legal",
+    titleEs: "Políticas de Importación & Logística Aduanera (7-21 Días)",
+    titleEn: "US Importation & Customs Logistics Policy (7-21 Days)",
+    badgeEs: "Legal • Aduanas",
+    badgeEn: "Legal • Customs",
+    descEs: "Plazos oficiales de desalmacenaje, tránsito internacional aéreo/marítimo y manejo de eventos de fuerza mayor.",
+    descEn: "Customs clearance timelines, air/ocean freight terms, and force majeure international logistics rules.",
+    formatTagEs: "Contrato Legal",
+    formatTagEn: "Legal Contract",
+    iconName: "Truck",
+    legalSlug: "importacion-aduanas",
+  },
+  {
+    id: "legal-privacidad-datos",
+    type: "legal",
+    group: "legal",
+    titleEs: "Política de Privacidad y Tratamiento de Datos Personales",
+    titleEn: "Privacy Policy & Personal Data Protection (Law 8968)",
+    badgeEs: "Legal • Privacidad",
+    badgeEn: "Legal • Privacy",
+    descEs: "Protocolos de confidencialidad, no cesión a terceros y derechos ARCO bajo legislación costarricense PRODHAB.",
+    descEn: "Data confidentiality protocols, zero commercial disclosure, and ARCO rights under Costa Rican data privacy laws.",
+    formatTagEs: "Contrato Legal",
+    formatTagEn: "Legal Contract",
+    iconName: "ShieldCheck",
+    legalSlug: "privacidad-datos",
+  },
+];
 
 export function WorkshopSettingsTab() {
   const { t, lang } = useLanguage();
@@ -69,6 +331,62 @@ export function WorkshopSettingsTab() {
   const [testEmailTarget, setTestEmailTarget] = useState("santi2106sandoval@gmail.com");
   const [sendingTestEmail, setSendingTestEmail] = useState(false);
   const [testEmailResult, setTestEmailResult] = useState<{ success: boolean; message: string; previewUrl?: string } | null>(null);
+
+  // Blank Documents & Templates State (Rule 1 & Rule 2: Complete Pipeline, Real Templates)
+  const BLANK_TEMPLATE_ORDER = useMemo(
+    () => ({
+      id: "blank-template",
+      orderNumber: "ORD-PLANTILLA",
+      customerName: "",
+      customerEmail: "",
+      customerPhone: "",
+      shippingAddress: "",
+      serviceType: "workshop_installation",
+      itemsJson: "[]",
+      serviceDocumentsJson: null,
+      totalCRC: 0,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }),
+    []
+  );
+
+  const [blankServiceModalOpen, setBlankServiceModalOpen] = useState(false);
+  const [blankServiceCategory, setBlankServiceCategory] = useState<any>("delivery");
+  const [blankServiceSubDoc, setBlankServiceSubDoc] = useState<string>("reception");
+  const [blankLegalSlug, setBlankLegalSlug] = useState<string | null>(null);
+  const [docFilterCategory, setDocFilterCategory] = useState<"all" | "operational" | "legal">("all");
+  const [docSearchQuery, setDocSearchQuery] = useState("");
+
+  const filteredDocs = useMemo(() => {
+    return BLANK_DOCUMENTS_CATALOG.filter((doc) => {
+      if (docFilterCategory !== "all" && doc.type !== docFilterCategory) return false;
+      if (docSearchQuery.trim()) {
+        const q = docSearchQuery.toLowerCase().trim();
+        const matchTitle = doc.titleEs.toLowerCase().includes(q) || doc.titleEn.toLowerCase().includes(q);
+        const matchDesc = doc.descEs.toLowerCase().includes(q) || doc.descEn.toLowerCase().includes(q);
+        const matchBadge = doc.badgeEs.toLowerCase().includes(q) || doc.badgeEn.toLowerCase().includes(q);
+        return matchTitle || matchDesc || matchBadge;
+      }
+      return true;
+    });
+  }, [docFilterCategory, docSearchQuery]);
+
+  const renderDocIcon = (name: string) => {
+    switch (name) {
+      case "Truck": return <Truck className="w-5 h-5 text-indigo-600" />;
+      case "Wrench": return <Wrench className="w-5 h-5 text-amber-600" />;
+      case "ClipboardCheck": return <ClipboardCheck className="w-5 h-5 text-emerald-600" />;
+      case "MapPin": return <MapPin className="w-5 h-5 text-blue-600" />;
+      case "ShieldCheck": return <ShieldCheck className="w-5 h-5 text-rose-600" />;
+      case "Scale": return <Scale className="w-5 h-5 text-slate-700" />;
+      case "Lock": return <LockIcon className="w-5 h-5 text-emerald-700" />;
+      case "Zap": return <Zap className="w-5 h-5 text-purple-600" />;
+      case "AlertCircle": return <AlertCircle className="w-5 h-5 text-amber-600" />;
+      default: return <FileText className="w-5 h-5 text-slate-600" />;
+    }
+  };
+
 
   const fetchEmailDiagnostics = useCallback(async () => {
     setCheckingEmail(true);
@@ -725,6 +1043,216 @@ export function WorkshopSettingsTab() {
           )}
         </div>
       </div>
+
+      {/* Blank Documents & Legal Templates Section (Requested: View all documents with no info like delivery, installation, etc.) */}
+      <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-slate-100">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center shadow-xs">
+              <FileText className="w-5 h-5 text-amber-400" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-bold text-slate-900">
+                  {lang === "es"
+                    ? "Documentos Operativos y Plantillas en Blanco (Sin Información)"
+                    : "Blank Operational Documents & Legal Templates (Unpopulated)"}
+                </h3>
+                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200">
+                  {lang === "es" ? "Uso Interno Staff" : "Staff Internal"}
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
+                {lang === "es"
+                  ? "Consulte e imprima todas las actas de entrega, hojas de recepción técnica en taller, certificados de calidad y contratos legales oficiales sin datos de clientes para uso operativo en campo."
+                  : "Browse and print all parts delivery receipts, technical shop sheets, quality certificates, and official legal contracts with blank fillable lines for staff and field use."}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 self-start sm:self-auto">
+            <span className="text-xs font-mono font-semibold px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 border border-slate-200">
+              {filteredDocs.length} {lang === "es" ? "Plantillas Disponibles" : "Templates Available"}
+            </span>
+          </div>
+        </div>
+
+        {/* Filter Controls & Search Bar */}
+        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+          {/* Category Filter Pills */}
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setDocFilterCategory("all")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                docFilterCategory === "all"
+                  ? "bg-slate-900 text-white shadow-xs"
+                  : "bg-slate-100 hover:bg-slate-200 text-slate-700"
+              }`}
+            >
+              {lang === "es" ? "Todos los Documentos" : "All Documents"} ({BLANK_DOCUMENTS_CATALOG.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setDocFilterCategory("operational")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                docFilterCategory === "operational"
+                  ? "bg-slate-900 text-white shadow-xs"
+                  : "bg-slate-100 hover:bg-slate-200 text-slate-700"
+              }`}
+            >
+              <Wrench className="w-3.5 h-3.5 text-amber-500" />
+              <span>{lang === "es" ? "Taller, Logística & Entrega" : "Shop, Logistics & Delivery"}</span>
+              <span className="text-[10px] opacity-70">
+                ({BLANK_DOCUMENTS_CATALOG.filter((d) => d.type === "operational").length})
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setDocFilterCategory("legal")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                docFilterCategory === "legal"
+                  ? "bg-slate-900 text-white shadow-xs"
+                  : "bg-slate-100 hover:bg-slate-200 text-slate-700"
+              }`}
+            >
+              <Scale className="w-3.5 h-3.5 text-indigo-500" />
+              <span>{lang === "es" ? "Contratos Legales & Pólizas" : "Legal Contracts & Policies"}</span>
+              <span className="text-[10px] opacity-70">
+                ({BLANK_DOCUMENTS_CATALOG.filter((d) => d.type === "legal").length})
+              </span>
+            </button>
+          </div>
+
+          {/* Search Box */}
+          <div className="relative min-w-[240px]">
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={docSearchQuery}
+              onChange={(e) => setDocSearchQuery(e.target.value)}
+              placeholder={lang === "es" ? "Buscar plantilla..." : "Search template..."}
+              className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900 transition"
+            />
+            {docSearchQuery && (
+              <button
+                type="button"
+                onClick={() => setDocSearchQuery("")}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Document Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-2">
+          {filteredDocs.map((doc: BlankDocumentCatalogItem) => (
+            <div
+              key={doc.id}
+              className="p-4 rounded-xl border border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm transition-all flex flex-col justify-between space-y-4 group"
+            >
+              <div className="space-y-3">
+                {/* Header row: badge + format pill */}
+                <div className="flex items-center justify-between gap-2">
+                  <span
+                    className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-md border ${
+                      doc.type === "operational"
+                        ? "bg-amber-50 text-amber-800 border-amber-200"
+                        : "bg-indigo-50 text-indigo-800 border-indigo-200"
+                    }`}
+                  >
+                    {lang === "es" ? doc.badgeEs : doc.badgeEn}
+                  </span>
+                  <span className="text-[10px] font-mono text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
+                    {lang === "es" ? doc.formatTagEs : doc.formatTagEn}
+                  </span>
+                </div>
+
+                {/* Title + Icon */}
+                <div className="flex items-start gap-2.5">
+                  <div className="p-2 rounded-lg bg-slate-50 border border-slate-200 shrink-0 group-hover:bg-slate-100 transition">
+                    {renderDocIcon(doc.iconName)}
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-900 leading-snug group-hover:text-red-700 transition">
+                      {lang === "es" ? doc.titleEs : doc.titleEn}
+                    </h4>
+                  </div>
+                </div>
+
+                {/* Description */}
+                <p className="text-[11px] text-slate-600 leading-relaxed">
+                  {lang === "es" ? doc.descEs : doc.descEn}
+                </p>
+              </div>
+
+              {/* Action Button */}
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (doc.type === "operational") {
+                      setBlankServiceCategory(doc.operationalCategory || "delivery");
+                      if (doc.operationalSubDoc) setBlankServiceSubDoc(doc.operationalSubDoc);
+                      setBlankServiceModalOpen(true);
+                    } else if (doc.type === "legal" && doc.legalSlug) {
+                      setBlankLegalSlug(doc.legalSlug);
+                    }
+                  }}
+                  className="w-full inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 active:bg-black text-white text-xs font-bold transition cursor-pointer shadow-2xs"
+                >
+                  <Eye className="w-3.5 h-3.5 text-amber-400" />
+                  <span>{lang === "es" ? "Ver Documento en Blanco" : "View Blank Document"}</span>
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {filteredDocs.length === 0 && (
+          <div className="p-8 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200 space-y-2">
+            <FileText className="w-8 h-8 text-slate-400 mx-auto" />
+            <p className="text-xs font-bold text-slate-700">
+              {lang === "es"
+                ? `No se encontraron documentos para "${docSearchQuery}"`
+                : `No documents found matching "${docSearchQuery}"`}
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setDocSearchQuery("");
+                setDocFilterCategory("all");
+              }}
+              className="text-xs text-blue-600 hover:underline font-semibold"
+            >
+              {lang === "es" ? "Restablecer filtros" : "Reset filters"}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Operational Blank Service Modal */}
+      {blankServiceModalOpen && (
+        <ServiceDocumentModal
+          order={BLANK_TEMPLATE_ORDER}
+          isOpen={blankServiceModalOpen}
+          onClose={() => setBlankServiceModalOpen(false)}
+          isTemplateMode={true}
+          initialCategoryProp={blankServiceCategory}
+          initialSubDocProp={blankServiceSubDoc}
+        />
+      )}
+
+      {/* Legal Blank Document Modal */}
+      {blankLegalSlug && (
+        <DocumentViewerModal
+          slug={blankLegalSlug}
+          isOpen={Boolean(blankLegalSlug)}
+          onClose={() => setBlankLegalSlug(null)}
+        />
+      )}
     </div>
   );
 }

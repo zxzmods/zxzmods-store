@@ -72,14 +72,17 @@ export interface ServiceDocumentData {
   garageVehicle?: any;
 }
 
-interface ServiceDocumentModalProps {
+export interface ServiceDocumentModalProps {
   order: any;
   isOpen: boolean;
   onClose: () => void;
   onOrderUpdated?: (updatedOrder: any) => void;
+  initialCategoryProp?: DocumentCategory;
+  initialSubDocProp?: string;
+  isTemplateMode?: boolean;
 }
 
-type DocumentCategory =
+export type DocumentCategory =
   | "only_installation"
   | "home_installation"
   | "pickup"
@@ -91,6 +94,9 @@ export function ServiceDocumentModal({
   isOpen,
   onClose,
   onOrderUpdated,
+  initialCategoryProp,
+  initialSubDocProp,
+  isTemplateMode = false,
 }: ServiceDocumentModalProps) {
   const { lang, t } = useLanguage();
 
@@ -100,27 +106,34 @@ export function ServiceDocumentModal({
 
   // Map serviceCategory to initial document category
   const initialCategory: DocumentCategory = useMemo(() => {
+    if (initialCategoryProp) return initialCategoryProp;
     if (serviceCategory === "delivery") return "delivery";
     if (serviceCategory === "home_install") return "home_installation";
     if (serviceCategory === "pickup") return "pickup";
     return "only_installation";
-  }, [serviceCategory]);
+  }, [initialCategoryProp, serviceCategory]);
 
   const [activeCategory, setActiveCategory] = useState<DocumentCategory>(initialCategory);
-  const [activeSubDoc, setActiveSubDoc] = useState<string>("reception"); // 'reception' | 'handover' | 'transport_auth' | 'transport_return'
+  const [activeSubDoc, setActiveSubDoc] = useState<string>(initialSubDocProp || "reception"); // 'reception' | 'handover' | 'transport_auth' | 'transport_return'
   const [showEditDrawer, setShowEditDrawer] = useState<boolean>(false);
   const [savingDocData, setSavingDocData] = useState<boolean>(false);
   const [saveSuccess, setSaveSuccess] = useState<boolean>(false);
 
   // Synchronize category to the exact selected service document
   useEffect(() => {
-    setActiveCategory(initialCategory);
-    if (initialCategory === "pickup") {
+    if (initialCategoryProp) {
+      setActiveCategory(initialCategoryProp);
+    } else {
+      setActiveCategory(initialCategory);
+    }
+    if (initialSubDocProp) {
+      setActiveSubDoc(initialSubDocProp);
+    } else if ((initialCategoryProp || initialCategory) === "pickup") {
       setActiveSubDoc("transport_auth");
-    } else if (initialCategory === "only_installation") {
+    } else if ((initialCategoryProp || initialCategory) === "only_installation") {
       setActiveSubDoc("reception");
     }
-  }, [initialCategory, order?.id]);
+  }, [initialCategoryProp, initialSubDocProp, initialCategory, order?.id, isOpen]);
 
   // Parse existing documents data from order
   const existingDocData: ServiceDocumentData = useMemo(() => {
@@ -309,6 +322,11 @@ export function ServiceDocumentModal({
 
   // Handle save to DB
   const handleSaveDocData = async () => {
+    if (isTemplateMode || !order?.id || order.id === "blank-template") {
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 2500);
+      return;
+    }
     setSavingDocData(true);
     setSaveSuccess(false);
     try {
@@ -374,7 +392,7 @@ export function ServiceDocumentModal({
       <!DOCTYPE html>
       <html>
         <head>
-          <title>ZxZ Mods - Documento de Servicio #${order.orderNumber}</title>
+          <title>ZxZ Mods - Documento de Servicio #${order?.orderNumber || "PLANTILLA"}</title>
           <meta charset="utf-8" />
           <meta name="viewport" content="width=device-width, initial-scale=1" />
           ${styleTags}
@@ -469,14 +487,16 @@ export function ServiceDocumentModal({
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-base font-extrabold tracking-tight">
-                  Documentos Físicos de Servicio & Taller
+                  {isTemplateMode ? (lang === "es" ? "Plantilla Oficial de Servicio (Sin Información)" : "Official Blank Service Template") : "Documentos Físicos de Servicio & Taller"}
                 </h2>
                 <span className="text-xs font-mono font-bold px-2.5 py-0.5 rounded-full bg-slate-800 text-amber-400 border border-slate-700">
-                  #{order.orderNumber}
+                  {isTemplateMode ? "PLANTILLA OFICIAL" : `#${order?.orderNumber || ""}`}
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
-                Formatos físicos para imprimir y rellenar a mano con lapicero por el personal técnico.
+                {isTemplateMode
+                  ? (lang === "es" ? "Plantilla oficial en blanco con líneas de relleno para uso físico u operativo por el personal técnico." : "Official blank template with fillable lines for technical shop and field use.")
+                  : "Formatos físicos para imprimir y rellenar a mano con lapicero por el personal técnico."}
               </p>
             </div>
           </div>
@@ -515,18 +535,22 @@ export function ServiceDocumentModal({
           </div>
         </div>
 
-        {/* PRIMARY DOCUMENT SELECTOR TABS - RESTRICTED TO ORDER SERVICE */}
+        {/* PRIMARY DOCUMENT SELECTOR TABS */}
         <div className="no-print bg-slate-100 px-4 py-3 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {/* 1. Solo Instalación */}
-            {initialCategory === "only_installation" && (
+            {(isTemplateMode || initialCategory === "only_installation") && (
               <button
                 type="button"
                 onClick={() => {
                   setActiveCategory("only_installation");
                   setActiveSubDoc("reception");
                 }}
-                className="px-3.5 py-2 rounded-xl text-xs font-extrabold transition flex items-center gap-1.5 bg-slate-900 text-white shadow-xs cursor-pointer"
+                className={`px-3.5 py-2 rounded-xl text-xs font-extrabold transition flex items-center gap-1.5 cursor-pointer ${
+                  activeCategory === "only_installation"
+                    ? "bg-slate-900 text-white shadow-xs"
+                    : "bg-white text-slate-700 border border-slate-200 hover:bg-slate-50"
+                }`}
               >
                 <Wrench className="w-3.5 h-3.5 text-amber-400" />
                 <span>Solo Instalación (Taller)</span>
@@ -534,11 +558,15 @@ export function ServiceDocumentModal({
             )}
 
             {/* 2. Instalación a Domicilio */}
-            {initialCategory === "home_installation" && (
+            {(isTemplateMode || initialCategory === "home_installation") && (
               <button
                 type="button"
                 onClick={() => setActiveCategory("home_installation")}
-                className="px-3.5 py-2 rounded-xl text-xs font-extrabold transition flex items-center gap-1.5 bg-slate-900 text-white shadow-xs cursor-pointer"
+                className={`px-3.5 py-2 rounded-xl text-xs font-extrabold transition flex items-center gap-1.5 cursor-pointer ${
+                  activeCategory === "home_installation"
+                    ? "bg-slate-900 text-white shadow-xs"
+                    : "bg-white text-slate-700 border border-slate-200 hover:bg-slate-50"
+                }`}
               >
                 <MapPin className="w-3.5 h-3.5 text-blue-400" />
                 <span>Instalación a Domicilio</span>
@@ -546,14 +574,18 @@ export function ServiceDocumentModal({
             )}
 
             {/* 3. Pick-up de Vehículo */}
-            {initialCategory === "pickup" && (
+            {(isTemplateMode || initialCategory === "pickup") && (
               <button
                 type="button"
                 onClick={() => {
                   setActiveCategory("pickup");
                   setActiveSubDoc("transport_auth");
                 }}
-                className="px-3.5 py-2 rounded-xl text-xs font-extrabold transition flex items-center gap-1.5 bg-slate-900 text-white shadow-xs cursor-pointer"
+                className={`px-3.5 py-2 rounded-xl text-xs font-extrabold transition flex items-center gap-1.5 cursor-pointer ${
+                  activeCategory === "pickup"
+                    ? "bg-slate-900 text-white shadow-xs"
+                    : "bg-white text-slate-700 border border-slate-200 hover:bg-slate-50"
+                }`}
               >
                 <Truck className="w-3.5 h-3.5 text-indigo-400" />
                 <span>Pick-up de Vehículo (Remolque)</span>
@@ -561,23 +593,45 @@ export function ServiceDocumentModal({
             )}
 
             {/* 4. Entrega de Productos / Delivery */}
-            {initialCategory === "delivery" && (
+            {(isTemplateMode || initialCategory === "delivery") && (
               <button
                 type="button"
                 onClick={() => setActiveCategory("delivery")}
-                className="px-3.5 py-2 rounded-xl text-xs font-extrabold transition flex items-center gap-1.5 bg-slate-900 text-white shadow-xs cursor-pointer"
+                className={`px-3.5 py-2 rounded-xl text-xs font-extrabold transition flex items-center gap-1.5 cursor-pointer ${
+                  activeCategory === "delivery"
+                    ? "bg-slate-900 text-white shadow-xs"
+                    : "bg-white text-slate-700 border border-slate-200 hover:bg-slate-50"
+                }`}
               >
                 <Truck className="w-3.5 h-3.5 text-emerald-500" />
                 <span>Entrega de Productos (Delivery)</span>
               </button>
             )}
+
+            {/* 5. Certificado Oficial de Calidad */}
+            {isTemplateMode && (
+              <button
+                type="button"
+                onClick={() => setActiveCategory("quality_certificate")}
+                className={`px-3.5 py-2 rounded-xl text-xs font-extrabold transition flex items-center gap-1.5 cursor-pointer ${
+                  activeCategory === "quality_certificate"
+                    ? "bg-slate-900 text-white shadow-xs"
+                    : "bg-white text-slate-700 border border-slate-200 hover:bg-slate-50"
+                }`}
+              >
+                <ShieldCheck className="w-3.5 h-3.5 text-rose-500" />
+                <span>Certificado de Calidad</span>
+              </button>
+            )}
           </div>
 
-          {/* Indicator showing document is locked to the selected service */}
+          {/* Indicator showing document mode */}
           <div className="text-[11px] text-slate-500 font-semibold flex items-center gap-1.5 bg-white px-2.5 py-1 rounded-lg border border-slate-200">
             <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block animate-pulse" />
             <span>
-              {lang === "es"
+              {isTemplateMode
+                ? (lang === "es" ? "Plantilla Oficial en Blanco (Sin Datos de Cliente)" : "Official Blank Template (Unpopulated)")
+                : lang === "es"
                 ? `Documento exclusivo para servicio: ${
                     serviceCategory === "pickup"
                       ? "Pick-up de Vehículo"
@@ -1058,7 +1112,7 @@ export function ServiceDocumentModal({
                   DOCUMENTO FÍSICO A4
                 </span>
                 <p className="text-[11px] font-mono font-bold text-slate-900 mt-0.5">
-                  ORDEN: <span className="font-black text-xs">#{order.orderNumber}</span>
+                  ORDEN: <span className="font-black text-xs">#{order?.orderNumber || (isTemplateMode ? "PLANTILLA" : "")}</span>
                 </p>
                 <p className="text-[8.5px] text-slate-600 font-mono">EMISIÓN: {docDateStr}</p>
               </div>
@@ -1092,13 +1146,13 @@ export function ServiceDocumentModal({
                   <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
                     <span className="text-[8.5px] font-bold text-slate-500 uppercase block">Orden</span>
                     <span className="font-mono font-black text-slate-900 text-[11px] truncate block">
-                      #{order.orderNumber}
+                      #{order?.orderNumber || (isTemplateMode ? "PLANTILLA" : "")}
                     </span>
                   </div>
                   <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
                     <span className="text-[8.5px] font-bold text-slate-500 uppercase block">Cliente</span>
                     <span className="font-bold text-slate-900 truncate block text-[10.5px]">
-                      {formData.ownerName || order.customerName || "Cliente Registrado"}
+                      {formData.ownerName || order?.customerName || (isTemplateMode ? "____________________" : "Cliente Registrado")}
                     </span>
                   </div>
                   <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-300">
@@ -1117,7 +1171,7 @@ export function ServiceDocumentModal({
                     <span>Declaración Oficial de Inspección y Conformidad:</span>
                   </p>
                   <p>
-                    ZxZ Mods Costa Rica S.A. certifica formalmente que la totalidad de los productos, repuestos y accesorios de la orden <strong>#{order.orderNumber}</strong> han arribado a nuestras instalaciones en <strong>ESTADO PERFECTO</strong>. Cada ítem fue desempaquetado e inspeccionado individualmente en nuestra bodega técnica en Santa Ana, constatando sellos de fábrica intactos, especificaciones correctas y ausencia absoluta de averías de traslado o defectos de manufactura.
+                    ZxZ Mods Costa Rica S.A. certifica formalmente que la totalidad de los productos, repuestos y accesorios de la orden <strong>#{order?.orderNumber || (isTemplateMode ? "PLANTILLA" : "")}</strong> han arribado a nuestras instalaciones en <strong>ESTADO PERFECTO</strong>. Cada ítem fue desempaquetado e inspeccionado individualmente en nuestra bodega técnica en Santa Ana, constatando sellos de fábrica intactos, especificaciones correctas y ausencia absoluta de averías de traslado o defectos de manufactura.
                   </p>
                 </div>
 
@@ -1300,7 +1354,7 @@ export function ServiceDocumentModal({
                       Dirección Registrada / Destino de Servicio:
                     </span>
                     <span className="font-medium text-slate-900 block truncate text-[9px]">
-                      {formData.deliveryAddress || order.shippingAddress || "________________________________________________________________________________"}
+                      {formData.deliveryAddress || order?.shippingAddress || "________________________________________________________________________________"}
                     </span>
                   </div>
                 </div>
@@ -1314,7 +1368,7 @@ export function ServiceDocumentModal({
                     <div className="flex items-center gap-2">
                       <span className="text-slate-500 text-[8.5px]">Total Contratado:</span>
                       <span className="font-black font-mono text-slate-900 text-[9.5px]">
-                        {formatCRC(order.totalCRC || 0)}
+                        {isTemplateMode ? "₡ ____________" : formatCRC(order?.totalCRC || 0)}
                       </span>
                     </div>
                   </div>
@@ -1330,11 +1384,35 @@ export function ServiceDocumentModal({
                     </thead>
                     <tbody>
                       {orderItems.length === 0 ? (
-                        <tr>
-                          <td colSpan={5} className="py-1.5 px-2.5 text-center text-slate-500 italic">
-                            Productos asociados a la orden #{order.orderNumber}.
-                          </td>
-                        </tr>
+                        isTemplateMode ? (
+                          <>
+                            {[1, 2, 3, 4].map((rowNum) => (
+                              <tr key={rowNum} className="border-b border-slate-200 text-[8.5px]">
+                                <td className="py-1.5 px-2.5 border-r border-slate-200 text-center font-mono font-bold text-slate-400">
+                                  {rowNum}
+                                </td>
+                                <td className="py-1.5 px-2.5 border-r border-slate-200 text-slate-300">
+                                  ____________________________________________________
+                                </td>
+                                <td className="py-1.5 px-2.5 border-r border-slate-200 font-mono text-[8px] text-slate-300">
+                                  ____________
+                                </td>
+                                <td className="py-1.5 px-2.5 border-r border-slate-200 text-center font-mono text-slate-300">
+                                  ___
+                                </td>
+                                <td className="py-1.5 px-2.5 text-center text-[8px] text-slate-300">
+                                  ___________
+                                </td>
+                              </tr>
+                            ))}
+                          </>
+                        ) : (
+                          <tr>
+                            <td colSpan={5} className="py-1.5 px-2.5 text-center text-slate-500 italic">
+                              Productos asociados a la orden #{order?.orderNumber || ""}.
+                            </td>
+                          </tr>
+                        )
                       ) : (
                         orderItems.map((item, idx) => (
                           <tr key={idx} className="border-b border-slate-200 text-[8.5px]">
@@ -1807,7 +1885,7 @@ export function ServiceDocumentModal({
             {/* DOCUMENT FOOTER */}
             <div className="pt-2 border-t border-slate-300 text-center text-[8.5px] text-slate-500 font-mono flex items-center justify-between shrink-0">
               <span>ZxZ Mods • Céd. Jur. {COMPANY_CONFIG.cedulaJuridica || "3-101-436132"} <span className="text-[7.5px] text-slate-400">({COMPANY_CONFIG.legalName})</span> • Comprobante Físico Oficial A4</span>
-              <span>Orden #{order.orderNumber}</span>
+              <span>{isTemplateMode ? "Plantilla Oficial" : `Orden #${order?.orderNumber || ""}`}</span>
               <span>Tel: {COMPANY_CONFIG.contact.phone} • WhatsApp: {COMPANY_CONFIG.contact.whatsappDisplay}</span>
             </div>
           </div>
