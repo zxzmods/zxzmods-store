@@ -180,7 +180,18 @@ async function writePersistentCache(data: ExchangeRateData) {
       if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
       }
-      fs.writeFileSync(PERSISTENT_CACHE_PATH, JSON.stringify(data, null, 2), "utf-8");
+      let existingJson: any = {};
+      if (fs.existsSync(PERSISTENT_CACHE_PATH)) {
+        try {
+          existingJson = JSON.parse(fs.readFileSync(PERSISTENT_CACHE_PATH, "utf-8"));
+        } catch {}
+      }
+      const toWrite = {
+        ...existingJson,
+        ...data,
+        shippingRates: data.shippingRates || existingJson.shippingRates,
+      };
+      fs.writeFileSync(PERSISTENT_CACHE_PATH, JSON.stringify(toWrite, null, 2), "utf-8");
     } catch (err) {
       console.error("Error writing persistent exchange rate cache:", err);
     }
@@ -465,6 +476,13 @@ export async function GET(request: Request) {
       updatedAt: new Date().toISOString(),
       lastSyncAt: new Date().toISOString(),
       diagnostics: live.diagnostics,
+      shippingRates: persisted?.shippingRates || {
+        ratePerLbUSD: 4.50,
+        ratePerCubicFootUSD: 15.00,
+        ratePerLbCRC: Math.round(4.50 * live.rate),
+        ratePerCubicFootCRC: Math.round(15.00 * live.rate),
+        updatedAt: null,
+      },
     };
 
     memoryCache = {
@@ -485,6 +503,13 @@ export async function GET(request: Request) {
       ...persisted,
       cached: true,
       source: persisted.source || "Banco Central de Costa Rica (BCCR)",
+      shippingRates: persisted.shippingRates || {
+        ratePerLbUSD: 4.50,
+        ratePerCubicFootUSD: 15.00,
+        ratePerLbCRC: Math.round(4.50 * persisted.rate),
+        ratePerCubicFootCRC: Math.round(15.00 * persisted.rate),
+        updatedAt: null,
+      },
     };
 
     if (includeDiagnostics) {
@@ -497,17 +522,16 @@ export async function GET(request: Request) {
       fetchedAt: now,
     };
 
-    const response = NextResponse.json({
+    return NextResponse.json({
       success: true,
       data: fallbackData,
     });
-    response.headers.set("Cache-Control", "public, s-maxage=60, stale-while-revalidate=120");
-    return response;
   }
 
   // 5. Safe baseline if disk was also unavailable
+  const baselineRate = 455.21;
   const baselineData: ExchangeRateData = {
-    rate: 455.21,
+    rate: baselineRate,
     buyRate: 451.46,
     currency: "USD",
     baseCurrency: "CRC",
@@ -517,6 +541,13 @@ export async function GET(request: Request) {
     cached: false,
     updatedAt: new Date().toISOString(),
     lastSyncAt: new Date().toISOString(),
+    shippingRates: {
+      ratePerLbUSD: 4.50,
+      ratePerCubicFootUSD: 15.00,
+      ratePerLbCRC: Math.round(4.50 * baselineRate),
+      ratePerCubicFootCRC: Math.round(15.00 * baselineRate),
+      updatedAt: null,
+    },
   };
 
   const response = NextResponse.json({
@@ -537,22 +568,26 @@ export async function POST(request: Request) {
 
     const current = await readPersistentCache();
 
-    // Action 0: Master updates Freight & Import Rates (lb & cubic feet in USD or CRC)
+    // Action 0: Master updates Freight & Import Rates (lb & cubic feet in USD or CRC independently)
     if (action === "update_shipping_rates") {
       const activeRate = current?.rate ?? 515;
       let newLbUSD: number | undefined = undefined;
       let newCuFtUSD: number | undefined = undefined;
 
-      if (typeof body.ratePerLbUSD === "number" && body.ratePerLbUSD > 0) {
-        newLbUSD = Number(body.ratePerLbUSD.toFixed(2));
-      } else if (typeof body.ratePerLbCRC === "number" && body.ratePerLbCRC > 0) {
-        newLbUSD = Number((body.ratePerLbCRC / activeRate).toFixed(2));
+      const parsedLbUSD = body.ratePerLbUSD !== undefined && body.ratePerLbUSD !== null && body.ratePerLbUSD !== "" ? parseFloat(String(body.ratePerLbUSD)) : NaN;
+      const parsedLbCRC = body.ratePerLbCRC !== undefined && body.ratePerLbCRC !== null && body.ratePerLbCRC !== "" ? parseFloat(String(body.ratePerLbCRC)) : NaN;
+      if (!isNaN(parsedLbUSD) && parsedLbUSD > 0) {
+        newLbUSD = Number(parsedLbUSD.toFixed(2));
+      } else if (!isNaN(parsedLbCRC) && parsedLbCRC > 0) {
+        newLbUSD = Number((parsedLbCRC / activeRate).toFixed(2));
       }
 
-      if (typeof body.ratePerCubicFootUSD === "number" && body.ratePerCubicFootUSD > 0) {
-        newCuFtUSD = Number(body.ratePerCubicFootUSD.toFixed(2));
-      } else if (typeof body.ratePerCubicFootCRC === "number" && body.ratePerCubicFootCRC > 0) {
-        newCuFtUSD = Number((body.ratePerCubicFootCRC / activeRate).toFixed(2));
+      const parsedCuFtUSD = body.ratePerCubicFootUSD !== undefined && body.ratePerCubicFootUSD !== null && body.ratePerCubicFootUSD !== "" ? parseFloat(String(body.ratePerCubicFootUSD)) : NaN;
+      const parsedCuFtCRC = body.ratePerCubicFootCRC !== undefined && body.ratePerCubicFootCRC !== null && body.ratePerCubicFootCRC !== "" ? parseFloat(String(body.ratePerCubicFootCRC)) : NaN;
+      if (!isNaN(parsedCuFtUSD) && parsedCuFtUSD > 0) {
+        newCuFtUSD = Number(parsedCuFtUSD.toFixed(2));
+      } else if (!isNaN(parsedCuFtCRC) && parsedCuFtCRC > 0) {
+        newCuFtUSD = Number((parsedCuFtCRC / activeRate).toFixed(2));
       }
 
       const finalLbUSD = newLbUSD ?? current?.shippingRates?.ratePerLbUSD ?? 4.50;
@@ -576,6 +611,12 @@ export async function POST(request: Request) {
 
       memoryCache = null;
       const updated = await readPersistentCache();
+
+      if (!IS_SERVERLESS && updated) {
+        try {
+          fs.writeFileSync(PERSISTENT_CACHE_PATH, JSON.stringify(updated, null, 2), "utf-8");
+        } catch {}
+      }
 
       await recordAuditLog({
         actorId: auth.session.userId,

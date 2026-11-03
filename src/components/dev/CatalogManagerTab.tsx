@@ -3443,6 +3443,47 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
 
   const registeredBrandSuggestions = registeredDealerBrands;
 
+  // Persistent tracking of last used product brand (Master & Staff convenience)
+  const [lastUsedBrand, setLastUsedBrand] = useState<string>("");
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("zxz_last_used_product_brand");
+      if (stored && stored.trim()) {
+        setLastUsedBrand(stored.trim());
+      } else if (products && products.length > 0) {
+        // Fallback to the newest product's brand
+        const latest = products[0]?.brandName || (Array.isArray(products[0]?.brand) ? products[0].brand[0] : "");
+        if (latest && typeof latest === "string" && latest.trim()) {
+          setLastUsedBrand(latest.trim());
+        }
+      }
+    } catch {}
+  }, [products]);
+
+  const updateLastUsedBrand = useCallback((brand: string) => {
+    const clean = brand.trim();
+    if (!clean) return;
+    setLastUsedBrand(clean);
+    try {
+      localStorage.setItem("zxz_last_used_product_brand", clean);
+    } catch {}
+  }, []);
+
+  const quickSelectBrands = useMemo(() => {
+    const defaultList = ["RPM Powersports", "EVP", "Bikeman Performance", "DRT Motorsports", "Shock Therapy", "GGB Exhaust"];
+    const result: string[] = [];
+    if (lastUsedBrand && lastUsedBrand.trim()) {
+      result.push(lastUsedBrand.trim());
+    }
+    defaultList.forEach((b) => {
+      if (!result.some((r) => r.toLowerCase() === b.toLowerCase())) {
+        result.push(b);
+      }
+    });
+    return result;
+  }, [lastUsedBrand]);
+
   // Only vehicle brands that have registered models in the database/backdoor, sorted canonically
   const registeredVehicleBrands = useMemo(() => {
     const validBrands = (brands || [])
@@ -4770,6 +4811,9 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
 
       const data = await res.json();
       if (res.ok && data.success) {
+        if (productForm.brandName && productForm.brandName.trim()) {
+          updateLastUsedBrand(productForm.brandName);
+        }
         await fetchCatalog();
         setInitialFormSnapshot(JSON.stringify({ ...productForm, selectedVehicles }));
         setIsEditingProductView(false);
@@ -7789,6 +7833,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                           if (val) {
                             setProductForm((prev) => ({ ...prev, brandName: val }));
                             updateAutoSkuIfApplicable(val, undefined);
+                            updateLastUsedBrand(val);
                           }
                         }}
                         className="w-full bg-white border border-red-200 rounded-xl p-2 text-xs text-slate-900 focus:outline-none focus:border-red-500 font-bold shadow-2xs cursor-pointer"
@@ -7811,6 +7856,15 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                           const val = e.target.value;
                           setProductForm({ ...productForm, brandName: val });
                           updateAutoSkuIfApplicable(val, undefined);
+                          if (val.trim().length >= 3) {
+                            updateLastUsedBrand(val);
+                          }
+                        }}
+                        onBlur={(e) => {
+                          const val = e.target.value;
+                          if (val.trim()) {
+                            updateLastUsedBrand(val);
+                          }
                         }}
                         placeholder="e.g. Bikeman Performance, RPM Powersports, EVP..."
                         className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2 text-xs text-slate-900 focus:outline-none focus:border-red-500 font-semibold"
@@ -7821,10 +7875,11 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                         ))}
                       </datalist>
 
-                      {/* Quick Chips of Top Registered Dealer Brands */}
-                      <div className="flex flex-wrap gap-1 pt-0.5">
-                        {["RPM Powersports", "EVP", "Bikeman Performance", "DRT Motorsports", "Shock Therapy", "GGB Exhaust"].map((quickBrand) => {
+                      {/* Quick Chips of Top Registered Dealer Brands - Last Used Brand First */}
+                      <div className="flex flex-wrap items-center gap-1 pt-0.5">
+                        {quickSelectBrands.map((quickBrand, idx) => {
                           const isActive = productForm.brandName.toLowerCase() === quickBrand.toLowerCase();
+                          const isLastUsed = idx === 0 && Boolean(lastUsedBrand && lastUsedBrand.toLowerCase() === quickBrand.toLowerCase());
                           return (
                             <button
                               key={quickBrand}
@@ -7832,14 +7887,21 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                               onClick={() => {
                                 setProductForm((prev) => ({ ...prev, brandName: quickBrand }));
                                 updateAutoSkuIfApplicable(quickBrand, undefined);
+                                updateLastUsedBrand(quickBrand);
                               }}
-                              className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition cursor-pointer border ${
+                              className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition cursor-pointer border flex items-center gap-1 ${
                                 isActive
-                                   ? "bg-[#C02030] text-white border-[#C02030] shadow-2xs"
-                                   : "bg-white text-slate-700 border-slate-200 hover:border-red-300 hover:bg-red-50/50"
+                                  ? "bg-[#C02030] text-white border-[#C02030] shadow-2xs"
+                                  : isLastUsed
+                                  ? "bg-amber-50 text-amber-900 border-amber-300 hover:border-amber-400 hover:bg-amber-100/60"
+                                  : "bg-white text-slate-700 border-slate-200 hover:border-red-300 hover:bg-red-50/50"
                               }`}
+                              title={isLastUsed ? (lang === "es" ? "Última marca utilizada" : "Last used brand") : quickBrand}
                             >
-                              {quickBrand}
+                              {isLastUsed && (
+                                <span className={isActive ? "text-amber-200" : "text-amber-500 font-extrabold"}>★</span>
+                              )}
+                              <span>{quickBrand}</span>
                             </button>
                           );
                         })}
@@ -8859,47 +8921,6 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                               </p>
                             </div>
                           )}
-                        </div>
-
-                        {/* Breakdown Summary Box */}
-                        <div className="p-3 bg-purple-950 text-white rounded-xl space-y-1.5 shadow-sm">
-                          <div className="text-[10px] font-bold uppercase tracking-wider text-purple-300">
-                            {t.backdoorProductShippingBreakdownTitle}
-                          </div>
-                          <div className="grid grid-cols-3 gap-2 text-center text-xs">
-                            <div className="bg-white/10 rounded-lg p-1.5">
-                              <span className="text-[9px] text-purple-200 block">
-                                {productForm.shippingCalcMode === "CUBIC_FEET" ? "Base Volumen" : "Base Peso"}
-                              </span>
-                              <span className="font-mono font-bold text-white text-[11px]">
-                                ${(
-                                  productForm.shippingCalcMode === "CUBIC_FEET"
-                                    ? (parseFloat(String(productForm.shippingVolumeCuFt)) || 0) * shippingRates.ratePerCubicFootUSD
-                                    : (parseFloat(String(productForm.shippingWeightLb)) || 0) * shippingRates.ratePerLbUSD
-                                ).toFixed(2)}
-                              </span>
-                            </div>
-                            <div className="bg-white/10 rounded-lg p-1.5">
-                              <span className="text-[9px] text-purple-200 block">Envío Dist.</span>
-                              <span className="font-mono font-bold text-white text-[11px]">
-                                ${(parseFloat(String(productForm.distributorShippingUSD)) || 0).toFixed(2)}
-                              </span>
-                            </div>
-                            <div className="bg-white/10 rounded-lg p-1.5">
-                              <span className="text-[9px] text-purple-200 block">Impuestos Dist.</span>
-                              <span className="font-mono font-bold text-white text-[11px]">
-                                ${(parseFloat(String(productForm.distributorTaxUSD)) || 0).toFixed(2)}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="flex items-center justify-between pt-1 border-t border-purple-800/80 text-xs">
-                            <span className="text-purple-300 font-semibold text-[10px]">
-                              Total S_price = ${Number(productForm.S_price_D || 0).toFixed(2)} USD
-                            </span>
-                            <span className="font-mono font-extrabold text-emerald-300">
-                              {formatCRC(productForm.S_price)}
-                            </span>
-                          </div>
                         </div>
 
                         {/* Manual Switcher Option */}
