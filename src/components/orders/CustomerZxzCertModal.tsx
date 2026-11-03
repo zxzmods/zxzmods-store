@@ -3,6 +3,7 @@
 import React, { useMemo } from "react";
 import { useLanguage } from "@/context/LanguageContext";
 import { COMPANY_CONFIG } from "@/config/company";
+import { trimDocSku } from "@/lib/utils";
 import {
   Printer,
   X,
@@ -367,8 +368,8 @@ export function CustomerZxzCertModal({
                           <td className="p-2.5 border-r border-slate-100 font-semibold text-slate-900">
                             {item.title || item.name || "Componente ZxZ"}
                           </td>
-                          <td className="p-2.5 border-r border-slate-100 font-mono text-[10px] text-slate-600">
-                            {item.sku || "ZXZ-ACC"}
+                          <td className="p-2.5 border-r border-slate-100 font-mono text-[10px] text-slate-600 max-w-[120px] truncate" title={item.sku || "ZXZ-ACC"}>
+                            {trimDocSku(item.sku || "ZXZ-ACC", 18)}
                           </td>
                           <td className="p-2.5 border-r border-slate-100 text-center font-mono font-bold text-slate-900">
                             {item.quantity || 1}

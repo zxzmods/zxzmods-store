@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { formatCRC } from "@/lib/i18n";
 import { COMPANY_CONFIG } from "@/config/company";
+import { trimDocSku } from "@/lib/utils";
 
 export interface WarrantyLegalDocumentData {
   orderNumber: string;
@@ -232,7 +233,9 @@ export function WarrantyLegalDocumentModal({
                       <td className="p-2.5 font-semibold text-slate-900">
                         {it.name || "Accesorio ZxZ"}
                       </td>
-                      <td className="p-2.5 font-mono text-slate-500">{it.sku || "N/A"}</td>
+                      <td className="p-2.5 font-mono text-slate-500 max-w-[120px] truncate" title={it.sku || "N/A"}>
+                        {trimDocSku(it.sku || "N/A", 18)}
+                      </td>
                       <td className="p-2.5 text-right font-mono font-bold text-slate-900">
                         {it.priceCRC ? formatCRC(it.priceCRC) : "₡0"}
                       </td>

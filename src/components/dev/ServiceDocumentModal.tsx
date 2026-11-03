@@ -5,6 +5,7 @@ import { useLanguage } from "@/context/LanguageContext";
 import { formatCRC } from "@/lib/i18n";
 import { COMPANY_CONFIG } from "@/config/company";
 import { normalizeServiceCategory, NormalizedServiceCategory } from "@/lib/orderWorkflow";
+import { trimDocSku } from "@/lib/utils";
 import {
   Printer,
   X,
@@ -1207,8 +1208,8 @@ export function ServiceDocumentModal({
                               <td className="py-1.5 px-2.5 border-r border-slate-300 font-semibold text-slate-900 truncate max-w-[280px]">
                                 {item.title || item.name || "Repuesto / Accesorio SxS"}
                               </td>
-                              <td className="py-1.5 px-2.5 border-r border-slate-300 font-mono text-[9px] text-slate-700">
-                                {item.sku || "ZXZ-ACC"}
+                              <td className="py-1.5 px-2.5 border-r border-slate-300 font-mono text-[9px] text-slate-700 max-w-[90px] truncate" title={item.sku || "ZXZ-ACC"}>
+                                {trimDocSku(item.sku || "ZXZ-ACC", 18)}
                               </td>
                               <td className="py-1.5 px-2.5 border-r border-slate-300 text-center font-mono font-bold">
                                 {item.quantity || 1}
@@ -1422,8 +1423,8 @@ export function ServiceDocumentModal({
                             <td className="py-1 px-2.5 border-r border-slate-200 font-semibold text-slate-900 truncate max-w-[280px]">
                               {item.title || item.name || "Accesorio SxS"}
                             </td>
-                            <td className="py-1 px-2.5 border-r border-slate-200 font-mono text-[8px] text-slate-700">
-                              {item.sku || "ZXZ-ACC"}
+                            <td className="py-1 px-2.5 border-r border-slate-200 font-mono text-[8px] text-slate-700 max-w-[85px] truncate" title={item.sku || "ZXZ-ACC"}>
+                              {trimDocSku(item.sku || "ZXZ-ACC", 18)}
                             </td>
                             <td className="py-1 px-2.5 border-r border-slate-200 text-center font-mono font-bold">
                               {item.quantity || 1}

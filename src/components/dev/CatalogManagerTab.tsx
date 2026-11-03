@@ -98,6 +98,12 @@ export interface InstallExtraPart {
   priceCRC: number;
 }
 
+export interface ExtraPartSuggestion {
+  name: string;
+  priceCRC: number;
+  count: number;
+}
+
 interface Product {
   id: string;
   sku: string;
@@ -2560,12 +2566,14 @@ function InstallationBreakdownEditor({
   durationMinutes = 60,
   onDurationChange,
   onChange,
+  lang = "es",
   t,
   showIncludeCheckbox = false,
   isIncluded = true,
   onToggleInclude,
   comboProductsInstallSummary,
   onApplyComboProductsInstall,
+  suggestedExtraParts = [],
 }: {
   labourCostCRC: number;
   extraParts: InstallExtraPart[];
@@ -2574,7 +2582,7 @@ function InstallationBreakdownEditor({
   durationMinutes?: number;
   onDurationChange?: (mins: number) => void;
   onChange: (labour: number, parts: InstallExtraPart[], profit: number) => void;
-  lang: "es" | "en";
+  lang?: "es" | "en";
   t: any;
   showIncludeCheckbox?: boolean;
   isIncluded?: boolean;
@@ -2587,6 +2595,7 @@ function InstallationBreakdownEditor({
     totalInstall: number;
   };
   onApplyComboProductsInstall?: () => void;
+  suggestedExtraParts?: ExtraPartSuggestion[];
 }) {
   const extraPartsTotal = useMemo(() => {
     return (extraParts || []).reduce((sum, pt) => sum + (Number(pt.priceCRC) || 0), 0);
@@ -2605,6 +2614,15 @@ function InstallationBreakdownEditor({
       id: `pt-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
       name: "",
       priceCRC: 0,
+    };
+    onChange(labourCostCRC || 0, [...(extraParts || []), newPart], profitCRC || 0);
+  };
+
+  const handleAddSuggestedPart = (name: string, priceCRC: number) => {
+    const newPart: InstallExtraPart = {
+      id: `pt-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      name: name.trim(),
+      priceCRC: Math.max(0, Math.round(Number(priceCRC) || 0)),
     };
     onChange(labourCostCRC || 0, [...(extraParts || []), newPart], profitCRC || 0);
   };
@@ -2761,6 +2779,71 @@ function InstallationBreakdownEditor({
           </span>
         </div>
 
+        {/* Auto-suggest Chips of Previously Used Extra Parts & Materials */}
+        {suggestedExtraParts && suggestedExtraParts.length > 0 && (
+          <div className="p-2.5 bg-emerald-50/80 rounded-xl border border-emerald-200/90 space-y-1.5 shadow-2xs">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-black uppercase tracking-wider text-emerald-950 flex items-center gap-1">
+                <Sparkles className="w-3 h-3 text-emerald-600" />
+                <span>
+                  {lang === "es"
+                    ? "Repuestos sugeridos (clic para autocompletar):"
+                    : "Suggested parts (click to quick auto-add):"}
+                </span>
+              </span>
+              <span className="text-[9px] text-emerald-700 font-bold">
+                {lang === "es" ? "Histórico del catálogo" : "Catalog history"}
+              </span>
+            </div>
+
+            <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto pr-1">
+              {suggestedExtraParts.slice(0, 12).map((sug) => {
+                const isAlreadyInList = (extraParts || []).some(
+                  (pt) => pt.name.trim().toLowerCase() === sug.name.toLowerCase()
+                );
+                return (
+                  <button
+                    key={sug.name}
+                    type="button"
+                    onClick={() => handleAddSuggestedPart(sug.name, sug.priceCRC)}
+                    className={`px-2 py-1 rounded-lg text-[10px] font-semibold transition cursor-pointer border flex items-center gap-1 shadow-2xs ${
+                      isAlreadyInList
+                        ? "bg-emerald-600 text-white border-emerald-700 font-bold"
+                        : "bg-white text-slate-800 border-emerald-200 hover:border-emerald-500 hover:bg-emerald-100/70"
+                    }`}
+                    title={
+                      lang === "es"
+                        ? `Clic para agregar "${sug.name}" (+${formatCRC(sug.priceCRC)})`
+                        : `Click to add "${sug.name}" (+${formatCRC(sug.priceCRC)})`
+                    }
+                  >
+                    <Plus className={`w-2.5 h-2.5 ${isAlreadyInList ? "text-emerald-100" : "text-emerald-600"}`} />
+                    <span className="truncate max-w-[150px]">{sug.name}</span>
+                    {sug.priceCRC > 0 && (
+                      <span className={`font-mono text-[9px] ${isAlreadyInList ? "text-emerald-100" : "text-emerald-700 font-bold"}`}>
+                        ({formatCRC(sug.priceCRC)})
+                      </span>
+                    )}
+                    {sug.count > 0 && (
+                      <span className={`text-[8px] px-1 py-0.2 rounded-full font-mono ${isAlreadyInList ? "bg-emerald-800 text-white" : "bg-emerald-100 text-emerald-900 font-bold"}`}>
+                        {sug.count}×
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        <datalist id="used-extra-parts-datalist">
+          {suggestedExtraParts?.map((sug) => (
+            <option key={sug.name} value={sug.name}>
+              {sug.priceCRC > 0 ? `${formatCRC(sug.priceCRC)} (${sug.count}×)` : ""}
+            </option>
+          ))}
+        </datalist>
+
         {(!extraParts || extraParts.length === 0) ? (
           <div className="py-2.5 px-3 bg-slate-50 rounded-lg border border-dashed border-slate-200 text-center">
             <p className="text-[11px] text-slate-400 italic">
@@ -2777,8 +2860,20 @@ function InstallationBreakdownEditor({
                 <div className="flex-1 min-w-0">
                   <input
                     type="text"
+                    list="used-extra-parts-datalist"
                     value={part.name}
-                    onChange={(e) => handleUpdateExtraPart(idx, "name", e.target.value)}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      handleUpdateExtraPart(idx, "name", val);
+                      if ((!part.priceCRC || part.priceCRC === 0) && suggestedExtraParts && suggestedExtraParts.length > 0) {
+                        const match = suggestedExtraParts.find(
+                          (s) => s.name.toLowerCase() === val.trim().toLowerCase()
+                        );
+                        if (match && match.priceCRC > 0) {
+                          handleUpdateExtraPart(idx, "priceCRC", match.priceCRC);
+                        }
+                      }
+                    }}
                     placeholder={t.devInstallExtraPartsNamePlaceholder || "Nombre del repuesto (ej: Relé 40A, Arnés, Base)"}
                     className="w-full bg-white border border-slate-200 rounded px-2 py-1 text-xs text-slate-800 focus:outline-none focus:border-emerald-500 font-medium"
                   />
@@ -3483,6 +3578,80 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
     });
     return result;
   }, [lastUsedBrand]);
+
+  // Aggregated already-used extra installation parts & materials for auto-suggest
+  const availableExtraPartsSuggestions = useMemo<ExtraPartSuggestion[]>(() => {
+    const map = new Map<string, { name: string; priceCRC: number; count: number }>();
+
+    const recordPart = (rawName: any, rawPrice: any) => {
+      if (!rawName || typeof rawName !== "string") return;
+      const cleanName = rawName.trim();
+      if (!cleanName || cleanName.length < 2) return;
+      const key = cleanName.toLowerCase();
+      const price = Math.max(0, Math.round(Number(rawPrice) || 0));
+      const existing = map.get(key);
+      if (existing) {
+        existing.count += 1;
+        if (!existing.priceCRC && price > 0) {
+          existing.priceCRC = price;
+        }
+      } else {
+        map.set(key, {
+          name: cleanName,
+          priceCRC: price,
+          count: 1,
+        });
+      }
+    };
+
+    const extractParts = (source: any) => {
+      if (!source) return;
+      if (Array.isArray(source)) {
+        source.forEach((pt) => recordPart(pt?.name, pt?.priceCRC));
+      } else if (typeof source === "string") {
+        try {
+          const parsed = JSON.parse(source);
+          if (Array.isArray(parsed)) {
+            parsed.forEach((pt) => recordPart(pt?.name, pt?.priceCRC));
+          }
+        } catch {}
+      }
+    };
+
+    // 1. Scan all existing products in catalog
+    (products || []).forEach((p: any) => {
+      extractParts(p.installExtraParts);
+      extractParts(p.installExtraPartsJson);
+    });
+
+    // 2. Scan all existing combos in catalog
+    (combos || []).forEach((c: any) => {
+      extractParts(c.installExtraParts);
+      extractParts(c.installExtraPartsJson);
+    });
+
+    // 3. Common SxS workshop presets for instant suggestions if catalog items are fresh
+    const presets: { name: string; priceCRC: number }[] = [
+      { name: "Relé Automotriz 40A", priceCRC: 4500 },
+      { name: "Portafusible & Fusible 30A", priceCRC: 3500 },
+      { name: "Arnés Eléctrico Blindado", priceCRC: 8500 },
+      { name: "Terminales de Cobre y Termoencogible", priceCRC: 2500 },
+      { name: "Abrazaderas de Acero Inoxidable", priceCRC: 3000 },
+      { name: "Base / Soporte Metálico Reforzado", priceCRC: 12000 },
+      { name: "Tornillería Grado 8 / Acero Inox", priceCRC: 3500 },
+      { name: "Filtro de Aire / Espuma Pre-filtro", priceCRC: 7000 },
+      { name: "Aceite Sintético / Líquido DOT 4", priceCRC: 6500 },
+    ];
+
+    presets.forEach((pr) => {
+      const key = pr.name.toLowerCase();
+      if (!map.has(key)) {
+        map.set(key, { name: pr.name, priceCRC: pr.priceCRC, count: 0 });
+      }
+    });
+
+    return Array.from(map.values()).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  }, [products, combos]);
 
   // Only vehicle brands that have registered models in the database/backdoor, sorted canonically
   const registeredVehicleBrands = useMemo(() => {
@@ -9034,6 +9203,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                   t={t}
                   showIncludeCheckbox={true}
                   isIncluded={productForm.I_price_includes}
+                  suggestedExtraParts={availableExtraPartsSuggestions}
                   onToggleInclude={(val) => {
                     setProductForm((prev) => {
                       const ivaRate = prev.ivaPercent ?? 13;
@@ -10786,6 +10956,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                     showIncludeCheckbox={false}
                     comboProductsInstallSummary={comboProductsInstallSummary}
                     onApplyComboProductsInstall={handleApplyComboProductsInstall}
+                    suggestedExtraParts={availableExtraPartsSuggestions}
                     onChange={(labour, parts, profit) => {
                       const partsTotal = (parts || []).reduce((sum, pt) => sum + (Number(pt.priceCRC) || 0), 0);
                       const totalInstall = Math.max(0, labour) + Math.max(0, partsTotal) + Math.max(0, profit);

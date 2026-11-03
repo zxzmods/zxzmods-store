@@ -9,6 +9,7 @@ import { useLanguage } from "@/context/LanguageContext";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { COMPANY_CONFIG } from "@/config/company";
 import { formatCRC, formatUSD, convertCRCToUSD } from "@/lib/i18n";
+import { trimDocSku } from "@/lib/utils";
 import {
   extractReceiptItems,
   getServiceTypeLabel,
@@ -507,7 +508,8 @@ export default function OrderReceiptPage() {
                       const itemName = isEs
                         ? it.nameEs || it.title || "Artículo"
                         : it.nameEn || it.nameEs || it.title || "Item";
-                      const itemSku = it.sku || it.slug || (it.id ? String(it.id).slice(0, 10) : `ITM-${idx + 1}`);
+                      const rawSku = it.sku || it.slug || (it.id ? String(it.id).slice(0, 10) : `ITM-${idx + 1}`);
+                      const itemSku = trimDocSku(rawSku, 22);
                       const qty = Math.max(1, Number(it.quantity) || 1);
                       const unitCost = Number(it.unitPriceCRC || it.priceCRC || it.price || 0);
                       const lineSubtotal = unitCost * qty;
@@ -519,7 +521,7 @@ export default function OrderReceiptPage() {
                         <tr key={idx} className="hover:bg-neutral-50/50">
                           <td className="py-2 px-2">
                             <div className="font-bold text-neutral-900">{itemName}</div>
-                            <div className="text-[9px] font-mono text-neutral-400">SKU: {itemSku}</div>
+                            <div className="text-[9px] font-mono text-neutral-400 max-w-[240px] truncate" title={rawSku}>SKU: {itemSku}</div>
                             {paramsText && (
                               <div className="text-[9px] text-neutral-500 mt-0.5">{paramsText}</div>
                             )}

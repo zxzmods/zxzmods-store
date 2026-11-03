@@ -1,5 +1,6 @@
 import { COMPANY_CONFIG } from "@/config/company";
 import { formatCRC, formatUSD, convertCRCToUSD } from "@/lib/i18n";
+import { trimDocSku } from "@/lib/utils";
 
 export interface ReceiptItem {
   id?: string;
@@ -320,7 +321,8 @@ export function generateReceiptHtml(
     // Render all parts
     const partsRows = items.map((it, idx) => {
       const itemName = isEs ? it.nameEs || it.title || "Artículo" : it.nameEn || it.nameEs || it.title || "Item";
-      const itemSku = it.sku || it.slug || (it.id ? String(it.id).slice(0, 10) : `ITM-${idx + 1}`);
+      const rawSku = it.sku || it.slug || (it.id ? String(it.id).slice(0, 10) : `ITM-${idx + 1}`);
+      const itemSku = trimDocSku(rawSku, 22);
       const qty = Math.max(1, Number(it.quantity) || 1);
       const unitCost = Number(it.unitPriceCRC || it.priceCRC || it.price || 0);
       const lineSubtotal = unitCost * qty;
@@ -389,7 +391,8 @@ export function generateReceiptHtml(
 
     itemsRowsHtml = items.length > 0 ? items.map((it, idx) => {
       const itemName = isEs ? it.nameEs || it.title || "Artículo" : it.nameEn || it.nameEs || it.title || "Item";
-      const itemSku = it.sku || it.slug || (it.id ? String(it.id).slice(0, 10) : `ITM-${idx + 1}`);
+      const rawSku = it.sku || it.slug || (it.id ? String(it.id).slice(0, 10) : `ITM-${idx + 1}`);
+      const itemSku = trimDocSku(rawSku, 22);
       const qty = Math.max(1, Number(it.quantity) || 1);
       const unitCost = Number(it.unitPriceCRC || it.priceCRC || it.price || 0);
       const lineSubtotal = unitCost * qty;
