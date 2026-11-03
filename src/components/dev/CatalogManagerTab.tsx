@@ -2574,6 +2574,7 @@ function InstallationBreakdownEditor({
   comboProductsInstallSummary,
   onApplyComboProductsInstall,
   suggestedExtraParts = [],
+  onRegisterNewExtraPart,
 }: {
   labourCostCRC: number;
   extraParts: InstallExtraPart[];
@@ -2596,6 +2597,7 @@ function InstallationBreakdownEditor({
   };
   onApplyComboProductsInstall?: () => void;
   suggestedExtraParts?: ExtraPartSuggestion[];
+  onRegisterNewExtraPart?: (name: string, priceCRC: number) => void;
 }) {
   const extraPartsTotal = useMemo(() => {
     return (extraParts || []).reduce((sum, pt) => sum + (Number(pt.priceCRC) || 0), 0);
@@ -2630,11 +2632,15 @@ function InstallationBreakdownEditor({
   const handleUpdateExtraPart = (idx: number, field: "name" | "priceCRC", value: any) => {
     const updated = [...(extraParts || [])];
     if (!updated[idx]) return;
+    const finalVal = field === "priceCRC" ? Math.max(0, Math.round(Number(value) || 0)) : value;
     updated[idx] = {
       ...updated[idx],
-      [field]: field === "priceCRC" ? Math.max(0, Math.round(Number(value) || 0)) : value,
+      [field]: finalVal,
     };
     onChange(labourCostCRC || 0, updated, profitCRC || 0);
+    if (field === "name" && typeof value === "string" && value.trim().length >= 2) {
+      onRegisterNewExtraPart?.(value.trim(), updated[idx].priceCRC || 0);
+    }
   };
 
   const handleRemoveExtraPart = (idx: number) => {
@@ -2874,7 +2880,13 @@ function InstallationBreakdownEditor({
                         }
                       }
                     }}
-                    placeholder={t.devInstallExtraPartsNamePlaceholder || "Nombre del repuesto (ej: Relé 40A, Arnés, Base)"}
+                    onBlur={(e) => {
+                      const val = e.target.value.trim();
+                      if (val.length >= 2) {
+                        onRegisterNewExtraPart?.(val, part.priceCRC || 0);
+                      }
+                    }}
+                    placeholder={t.devInstallExtraPartsNamePlaceholder || "Nombre del material o repuesto (ej: Red Locktite, Pasta Térmica...)"}
                     className="w-full bg-white border border-slate-200 rounded px-2 py-1 text-xs text-slate-800 focus:outline-none focus:border-emerald-500 font-medium"
                   />
                 </div>
@@ -3579,7 +3591,48 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
     return result;
   }, [lastUsedBrand]);
 
+  // User-added extra installation parts tracking (persisted in localStorage across sessions)
+  const [customExtraParts, setCustomExtraParts] = useState<{ name: string; priceCRC: number }[]>([]);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("zxz_custom_extra_install_parts");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          setCustomExtraParts(parsed);
+        }
+      }
+    } catch {}
+  }, []);
+
+  const registerNewExtraPart = useCallback((name: string, priceCRC: number = 0) => {
+    const clean = name.trim();
+    if (!clean || clean.length < 2) return;
+    setCustomExtraParts((prev) => {
+      const key = clean.toLowerCase();
+      const existingIdx = prev.findIndex((p) => p.name.toLowerCase() === key);
+      let updated: { name: string; priceCRC: number }[];
+      if (existingIdx >= 0) {
+        const existing = prev[existingIdx];
+        updated = [...prev];
+        updated[existingIdx] = {
+          name: clean,
+          priceCRC: priceCRC > 0 ? priceCRC : existing.priceCRC,
+        };
+      } else {
+        updated = [...prev, { name: clean, priceCRC: Math.max(0, Math.round(priceCRC || 0)) }];
+      }
+      try {
+        localStorage.setItem("zxz_custom_extra_install_parts", JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+  }, []);
+
   // Aggregated already-used extra installation parts & materials for auto-suggest
+  // Strictly respects Zero Mock Data Policy: Only 'Red Locktite', 'Pasta Térmica',
+  // and whatever new parts the user adds in products, combos, or registers.
   const availableExtraPartsSuggestions = useMemo<ExtraPartSuggestion[]>(() => {
     const map = new Map<string, { name: string; priceCRC: number; count: number }>();
 
@@ -3618,40 +3671,38 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       }
     };
 
-    // 1. Scan all existing products in catalog
+    // 1. Scan real existing products in catalog
     (products || []).forEach((p: any) => {
       extractParts(p.installExtraParts);
       extractParts(p.installExtraPartsJson);
     });
 
-    // 2. Scan all existing combos in catalog
+    // 2. Scan real existing combos in catalog
     (combos || []).forEach((c: any) => {
       extractParts(c.installExtraParts);
       extractParts(c.installExtraPartsJson);
     });
 
-    // 3. Common SxS workshop presets for instant suggestions if catalog items are fresh
-    const presets: { name: string; priceCRC: number }[] = [
-      { name: "Relé Automotriz 40A", priceCRC: 4500 },
-      { name: "Portafusible & Fusible 30A", priceCRC: 3500 },
-      { name: "Arnés Eléctrico Blindado", priceCRC: 8500 },
-      { name: "Terminales de Cobre y Termoencogible", priceCRC: 2500 },
-      { name: "Abrazaderas de Acero Inoxidable", priceCRC: 3000 },
-      { name: "Base / Soporte Metálico Reforzado", priceCRC: 12000 },
-      { name: "Tornillería Grado 8 / Acero Inox", priceCRC: 3500 },
-      { name: "Filtro de Aire / Espuma Pre-filtro", priceCRC: 7000 },
-      { name: "Aceite Sintético / Líquido DOT 4", priceCRC: 6500 },
+    // 3. User-added parts from live input & localStorage
+    customExtraParts.forEach((cp) => {
+      recordPart(cp.name, cp.priceCRC);
+    });
+
+    // 4. Authorized baseline parts requested by staff (Red Locktite & Pasta Térmica)
+    const authorizedBaseline = [
+      { name: "Red Locktite", priceCRC: 0 },
+      { name: "Pasta Térmica", priceCRC: 0 },
     ];
 
-    presets.forEach((pr) => {
-      const key = pr.name.toLowerCase();
+    authorizedBaseline.forEach((item) => {
+      const key = item.name.toLowerCase();
       if (!map.has(key)) {
-        map.set(key, { name: pr.name, priceCRC: pr.priceCRC, count: 0 });
+        map.set(key, { name: item.name, priceCRC: item.priceCRC, count: 0 });
       }
     });
 
     return Array.from(map.values()).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
-  }, [products, combos]);
+  }, [products, combos, customExtraParts]);
 
   // Only vehicle brands that have registered models in the database/backdoor, sorted canonically
   const registeredVehicleBrands = useMemo(() => {
@@ -4983,6 +5034,13 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
         if (productForm.brandName && productForm.brandName.trim()) {
           updateLastUsedBrand(productForm.brandName);
         }
+        if (Array.isArray(productForm.installExtraParts)) {
+          productForm.installExtraParts.forEach((pt) => {
+            if (pt?.name && pt.name.trim()) {
+              registerNewExtraPart(pt.name.trim(), pt.priceCRC || 0);
+            }
+          });
+        }
         await fetchCatalog();
         setInitialFormSnapshot(JSON.stringify({ ...productForm, selectedVehicles }));
         setIsEditingProductView(false);
@@ -5520,6 +5578,13 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
 
       const data = await res.json();
       if (res.ok && data.success) {
+        if (Array.isArray(comboForm.installExtraParts)) {
+          comboForm.installExtraParts.forEach((pt) => {
+            if (pt?.name && pt.name.trim()) {
+              registerNewExtraPart(pt.name.trim(), pt.priceCRC || 0);
+            }
+          });
+        }
         setIsEditingComboView(false);
         setIsComboModalOpen(false);
         await fetchCatalog();
@@ -9204,6 +9269,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                   showIncludeCheckbox={true}
                   isIncluded={productForm.I_price_includes}
                   suggestedExtraParts={availableExtraPartsSuggestions}
+                  onRegisterNewExtraPart={registerNewExtraPart}
                   onToggleInclude={(val) => {
                     setProductForm((prev) => {
                       const ivaRate = prev.ivaPercent ?? 13;
@@ -10957,6 +11023,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                     comboProductsInstallSummary={comboProductsInstallSummary}
                     onApplyComboProductsInstall={handleApplyComboProductsInstall}
                     suggestedExtraParts={availableExtraPartsSuggestions}
+                    onRegisterNewExtraPart={registerNewExtraPart}
                     onChange={(labour, parts, profit) => {
                       const partsTotal = (parts || []).reduce((sum, pt) => sum + (Number(pt.priceCRC) || 0), 0);
                       const totalInstall = Math.max(0, labour) + Math.max(0, partsTotal) + Math.max(0, profit);
