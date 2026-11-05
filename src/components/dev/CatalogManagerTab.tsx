@@ -92,17 +92,15 @@ import {
   type ProductLivePricingProjection,
 } from "@/lib/productPricing";
 
-export interface InstallExtraPart {
-  id: string;
-  name: string;
-  priceCRC: number;
-}
+import {
+  type InstallExtraPart,
+  type ExtraPartSuggestion,
+  normalizePartKey,
+  sanitizeExtraParts,
+  aggregateSuggestedExtraParts,
+} from "@/lib/catalogExtraParts";
 
-export interface ExtraPartSuggestion {
-  name: string;
-  priceCRC: number;
-  count: number;
-}
+export type { InstallExtraPart, ExtraPartSuggestion };
 
 interface Product {
   id: string;
@@ -2620,6 +2618,15 @@ function InstallationBreakdownEditor({
 
   const handleAddSuggestedPart = (name: string, priceCRC: number) => {
     const existingParts = [...(extraParts || [])];
+    const cleanKey = normalizePartKey(name);
+    // If already in list, toggle it off (remove)
+    const existingIdx = existingParts.findIndex((p) => normalizePartKey(p.name || "") === cleanKey);
+    if (existingIdx >= 0) {
+      const updated = existingParts.filter((_, i) => i !== existingIdx);
+      onChange(labourCostCRC || 0, updated, profitCRC || 0);
+      return;
+    }
+
     const emptyIdx = existingParts.findIndex((p) => !p.name || !p.name.trim());
     const finalPrice = Math.max(0, Math.round(Number(priceCRC) || 0));
     if (emptyIdx >= 0) {
@@ -2811,19 +2818,9 @@ function InstallationBreakdownEditor({
 
             <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto pr-1">
               {suggestedExtraParts.slice(0, 12).map((sug) => {
-                const cleanSugKey = sug.name
-                  .toLowerCase()
-                  .normalize("NFD")
-                  .replace(/[\u0300-\u036f]/g, "")
-                  .replace(/ck/g, "c")
-                  .replace(/[^a-z0-9]/g, "");
+                const cleanSugKey = normalizePartKey(sug.name);
                 const isAlreadyInList = (extraParts || []).some((pt) => {
-                  const cleanPtKey = (pt.name || "")
-                    .toLowerCase()
-                    .normalize("NFD")
-                    .replace(/[\u0300-\u036f]/g, "")
-                    .replace(/ck/g, "c")
-                    .replace(/[^a-z0-9]/g, "");
+                  const cleanPtKey = normalizePartKey(pt.name || "");
                   return cleanPtKey && cleanPtKey === cleanSugKey;
                 });
                 return (
@@ -2891,24 +2888,9 @@ function InstallationBreakdownEditor({
                       const val = e.target.value;
                       handleUpdateExtraPart(idx, "name", val);
                       if ((!part.priceCRC || part.priceCRC === 0) && suggestedExtraParts && suggestedExtraParts.length > 0) {
-                        const cleanInput = val
-                          .toLowerCase()
-                          .normalize("NFD")
-                          .replace(/[\u0300-\u036f]/g, "")
-                          .replace(/ck/g, "c")
-                          .replace(/[^a-z0-9]/g, "")
-                          .trim();
+                        const cleanInput = normalizePartKey(val);
                         if (cleanInput) {
-                          const match = suggestedExtraParts.find((s) => {
-                            const sKey = s.name
-                              .toLowerCase()
-                              .normalize("NFD")
-                              .replace(/[\u0300-\u036f]/g, "")
-                              .replace(/ck/g, "c")
-                              .replace(/[^a-z0-9]/g, "")
-                              .trim();
-                            return sKey === cleanInput;
-                          });
+                          const match = suggestedExtraParts.find((s) => normalizePartKey(s.name) === cleanInput);
                           if (match && match.priceCRC > 0) {
                             handleUpdateExtraPart(idx, "priceCRC", match.priceCRC);
                           }
@@ -3620,115 +3602,19 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
     return result;
   }, [lastUsedBrand]);
 
-  // Purge any legacy partial keystrokes stored in localStorage
+  // Purge any legacy partial keystrokes stored in localStorage / sessionStorage
   useEffect(() => {
     try {
       localStorage.removeItem("zxz_custom_extra_install_parts");
+      sessionStorage.removeItem("zxz_custom_extra_install_parts");
     } catch {}
   }, []);
 
   // Aggregated already-used extra installation parts & materials for auto-suggest
   // Strictly respects Zero Mock Data Policy: Only 'red locktite', 'Pasta Termica',
-  // and whatever real parts exist in products or combos in the catalog.
+  // and real parts saved in products or combos in the catalog, filtering out any keystroke prefix fragments.
   const availableExtraPartsSuggestions = useMemo<ExtraPartSuggestion[]>(() => {
-    // Normalizes strings to match accents and casing (e.g. "Pasta Térmica" == "Pasta Termica", "red locktite" == "Red Loctite")
-    const normalizePartKey = (str: string): string => {
-      return str
-        .toLowerCase()
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "") // removes accents (é -> e)
-        .replace(/ck/g, "c")             // treats locktite and loctite identically
-        .replace(/[^a-z0-9]/g, "")       // removes spaces and special chars
-        .trim();
-    };
-
-    const map = new Map<string, { name: string; priceCRC: number; count: number }>();
-
-    const recordPart = (rawName: any, rawPrice: any) => {
-      if (!rawName || typeof rawName !== "string") return;
-      const cleanName = rawName.trim();
-      // Drop any partial fragment of 2 characters or less
-      if (!cleanName || cleanName.length <= 2) return;
-      const key = normalizePartKey(cleanName);
-      if (!key || key.length < 3) return;
-
-      const price = Math.max(0, Math.round(Number(rawPrice) || 0));
-      const existing = map.get(key);
-      if (existing) {
-        existing.count += 1;
-        if (!existing.priceCRC && price > 0) {
-          existing.priceCRC = price;
-        }
-        // If current occurrence has price or has better casing, prefer it
-        if (!existing.priceCRC && price > 0) {
-          existing.name = cleanName;
-        }
-      } else {
-        map.set(key, {
-          name: cleanName,
-          priceCRC: price,
-          count: 1,
-        });
-      }
-    };
-
-    const extractParts = (source: any) => {
-      if (!source) return;
-      if (Array.isArray(source)) {
-        source.forEach((pt) => recordPart(pt?.name, pt?.priceCRC));
-      } else if (typeof source === "string") {
-        try {
-          const parsed = JSON.parse(source);
-          if (Array.isArray(parsed)) {
-            parsed.forEach((pt) => recordPart(pt?.name, pt?.priceCRC));
-          }
-        } catch {}
-      }
-    };
-
-    // 1. Scan real existing products in catalog
-    (products || []).forEach((p: any) => {
-      extractParts(p.installExtraParts);
-      extractParts(p.installExtraPartsJson);
-    });
-
-    // 2. Scan real existing combos in catalog
-    (combos || []).forEach((c: any) => {
-      extractParts(c.installExtraParts);
-      extractParts(c.installExtraPartsJson);
-    });
-
-    // 3. Authorized baseline parts requested by staff (Red Locktite & Pasta Térmica)
-    const authorizedBaseline = [
-      { name: "red locktite", priceCRC: 0 },
-      { name: "Pasta Termica", priceCRC: 0 },
-    ];
-
-    authorizedBaseline.forEach((item) => {
-      const key = normalizePartKey(item.name);
-      if (!map.has(key)) {
-        map.set(key, { name: item.name, priceCRC: item.priceCRC, count: 0 });
-      }
-    });
-
-    // 4. Filter out any prefix/substring keystroke residue (e.g. "Gr", "Gra", "Gras" vs "Grasa")
-    const list = Array.from(map.values());
-    const filtered = list.filter((item) => {
-      const itemKey = normalizePartKey(item.name);
-      if (itemKey.length < 3) return false;
-      // If there is another item that has higher count and starts with this item's key, it's typing residue
-      const isTypingResidue = list.some((other) => {
-        const otherKey = normalizePartKey(other.name);
-        return (
-          otherKey !== itemKey &&
-          otherKey.startsWith(itemKey) &&
-          other.count > item.count
-        );
-      });
-      return !isTypingResidue;
-    });
-
-    return filtered.sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+    return aggregateSuggestedExtraParts(products, combos);
   }, [products, combos]);
 
   // Only vehicle brands that have registered models in the database/backdoor, sorted canonically
@@ -5008,8 +4894,8 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       installLabourCostCRC: Math.round(Number(productForm.installLabourCostCRC) || 0),
       installProfitCRC: Math.round(Number(productForm.installProfitCRC) || 0),
       installationDurationMinutes: Math.max(15, Math.round(Number(productForm.installationDurationMinutes) || 60)),
-      installExtraParts: productForm.installExtraParts || [],
-      installExtraPartsJson: JSON.stringify(productForm.installExtraParts || []),
+      installExtraParts: sanitizeExtraParts(productForm.installExtraParts || []),
+      installExtraPartsJson: JSON.stringify(sanitizeExtraParts(productForm.installExtraParts || [])),
       isInstallationIncluded: Boolean(productForm.I_price_includes),
       totalPriceD: productForm.T_price_D || "calculate in checkout with the selling value of dolar to colones",
       // Multimedia:
@@ -5576,8 +5462,8 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
           installLabourCostCRC: Math.round(Number(comboForm.installLabourCostCRC) || 0),
           installProfitCRC: Math.round(Number(comboForm.installProfitCRC) || 0),
           installationDurationMinutes: Math.max(15, Math.round(Number(comboForm.installationDurationMinutes) || 60)),
-          installExtraParts: comboForm.installExtraParts || [],
-          installExtraPartsJson: JSON.stringify(comboForm.installExtraParts || []),
+          installExtraParts: sanitizeExtraParts(comboForm.installExtraParts || []),
+          installExtraPartsJson: JSON.stringify(sanitizeExtraParts(comboForm.installExtraParts || [])),
           discountPercent: comboForm.discountPercent,
           itemsJson: JSON.stringify(items),
           imageUrl: chosenComboPrimary,

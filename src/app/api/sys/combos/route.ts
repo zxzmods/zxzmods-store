@@ -3,6 +3,7 @@ import { requireStealthSession } from "@/lib/stealthAuth";
 import { prisma } from "@/lib/prisma";
 import { recordAuditLog } from "@/lib/audit";
 import { cleanDescriptionText } from "@/lib/products";
+import { sanitizeExtraParts } from "@/lib/catalogExtraParts";
 
 export async function POST(request: Request) {
   const auth = await requireStealthSession();
@@ -48,9 +49,9 @@ export async function POST(request: Request) {
       : Math.round(Number(installationPriceCRC) || 0);
     const installProfit = body.installProfitCRC !== undefined ? Math.round(Number(body.installProfitCRC) || 0) : 0;
     const extraPartsJson = body.installExtraParts !== undefined
-      ? JSON.stringify(body.installExtraParts)
+      ? JSON.stringify(sanitizeExtraParts(body.installExtraParts))
       : typeof body.installExtraPartsJson === "string"
-      ? body.installExtraPartsJson
+      ? JSON.stringify(sanitizeExtraParts(body.installExtraPartsJson))
       : "[]";
 
     let extraPartsSum = 0;

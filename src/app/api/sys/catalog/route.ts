@@ -5,6 +5,7 @@ import { calculateComboAvailability } from "@/lib/comboAvailability";
 import { normalizeAudioUrl, normalizeVideoUrl, cleanDescriptionText, extractAndCleanDescription } from "@/lib/products";
 import { computeProductLivePricing } from "@/lib/productPricing";
 import { getLiveExchangeRate } from "@/lib/exchangeRate";
+import { sanitizeExtraParts } from "@/lib/catalogExtraParts";
 
 export async function GET() {
   const auth = await requireStealthSession();
@@ -236,12 +237,20 @@ export async function GET() {
           if (p.installExtraPartsJson) {
             try {
               const parsed = JSON.parse(p.installExtraPartsJson);
-              if (Array.isArray(parsed)) return parsed;
+              if (Array.isArray(parsed)) return sanitizeExtraParts(parsed);
             } catch {}
           }
           return [];
         })(),
-        installExtraPartsJson: p.installExtraPartsJson || "[]",
+        installExtraPartsJson: (() => {
+          if (p.installExtraPartsJson) {
+            try {
+              const parsed = JSON.parse(p.installExtraPartsJson);
+              if (Array.isArray(parsed)) return JSON.stringify(sanitizeExtraParts(parsed));
+            } catch {}
+          }
+          return "[]";
+        })(),
         installationBreakdownJson: p.installationBreakdownJson || null,
         installationDurationMinutes: p.installationDurationMinutes ?? 60,
         parameters: (() => {
@@ -268,12 +277,20 @@ export async function GET() {
           if (c.installExtraPartsJson) {
             try {
               const parsed = JSON.parse(c.installExtraPartsJson);
-              if (Array.isArray(parsed)) return parsed;
+              if (Array.isArray(parsed)) return sanitizeExtraParts(parsed);
             } catch {}
           }
           return [];
         })(),
-        installExtraPartsJson: c.installExtraPartsJson || "[]",
+        installExtraPartsJson: (() => {
+          if (c.installExtraPartsJson) {
+            try {
+              const parsed = JSON.parse(c.installExtraPartsJson);
+              if (Array.isArray(parsed)) return JSON.stringify(sanitizeExtraParts(parsed));
+            } catch {}
+          }
+          return "[]";
+        })(),
         installationBreakdownJson: c.installationBreakdownJson || null,
         parameters: (() => {
           if (c.parametersJson) {

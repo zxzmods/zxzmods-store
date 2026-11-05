@@ -6,6 +6,7 @@ import { ensureDealerBrandRegistered } from "@/lib/dealerBrands";
 import { normalizeAudioUrl, normalizeVideoUrl, cleanDescriptionText } from "@/lib/products";
 import { cleanupRemovedMediaUrls } from "@/lib/storage";
 import { fetchLiveSupplierAvailability } from "@/lib/supplierAvailability";
+import { sanitizeExtraParts } from "@/lib/catalogExtraParts";
 
 function collectProductMediaUrls(p: any): string[] {
   if (!p) return [];
@@ -343,11 +344,13 @@ export async function PATCH(
     }
     let extraPartsJson = existingProduct.installExtraPartsJson ?? "[]";
     if (body.installExtraParts !== undefined) {
-      extraPartsJson = JSON.stringify(body.installExtraParts);
+      const sanitized = sanitizeExtraParts(body.installExtraParts);
+      extraPartsJson = JSON.stringify(sanitized);
       updateData.installExtraPartsJson = extraPartsJson;
       hasInstallUpdate = true;
     } else if (body.installExtraPartsJson !== undefined) {
-      extraPartsJson = typeof body.installExtraPartsJson === "string" ? body.installExtraPartsJson : JSON.stringify(body.installExtraPartsJson);
+      const sanitized = sanitizeExtraParts(body.installExtraPartsJson);
+      extraPartsJson = JSON.stringify(sanitized);
       updateData.installExtraPartsJson = extraPartsJson;
       hasInstallUpdate = true;
     }

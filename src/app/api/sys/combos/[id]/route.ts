@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { recordAuditLog } from "@/lib/audit";
 import { cleanDescriptionText } from "@/lib/products";
 import { cleanupRemovedMediaUrls } from "@/lib/storage";
+import { sanitizeExtraParts } from "@/lib/catalogExtraParts";
 
 function collectComboMediaUrls(c: any): string[] {
   if (!c) return [];
@@ -151,11 +152,13 @@ export async function PATCH(
     }
     let extraPartsJson = existingCombo.installExtraPartsJson ?? "[]";
     if (body.installExtraParts !== undefined) {
-      extraPartsJson = JSON.stringify(body.installExtraParts);
+      const sanitized = sanitizeExtraParts(body.installExtraParts);
+      extraPartsJson = JSON.stringify(sanitized);
       updateData.installExtraPartsJson = extraPartsJson;
       hasInstallUpdate = true;
     } else if (body.installExtraPartsJson !== undefined) {
-      extraPartsJson = typeof body.installExtraPartsJson === "string" ? body.installExtraPartsJson : JSON.stringify(body.installExtraPartsJson);
+      const sanitized = sanitizeExtraParts(body.installExtraPartsJson);
+      extraPartsJson = JSON.stringify(sanitized);
       updateData.installExtraPartsJson = extraPartsJson;
       hasInstallUpdate = true;
     }
