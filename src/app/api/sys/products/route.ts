@@ -259,6 +259,7 @@ export async function POST(request: Request) {
         supplierLeadDaysMin,
         supplierLeadDaysMax,
         supplierLastPriceUSD,
+        dealerDiscountPercent: body.dealerDiscountPercent !== undefined && body.dealerDiscountPercent !== null && body.dealerDiscountPercent !== "" ? Math.max(0, Math.min(100, Number(body.dealerDiscountPercent) || 0)) : 0,
         compatibilities: {
           create: Array.isArray(compatibilities) && compatibilities.length > 0
             ? compatibilities

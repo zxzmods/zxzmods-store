@@ -16,6 +16,7 @@ model Brand {
   descriptionEs          String
   descriptionEn          String
   featured               Boolean        @default(false)
+  dealerDiscountPercent  Float?         @default(0)
   models                 VehicleModel[]
   createdAt              DateTime       @default(now())
 }
@@ -109,6 +110,7 @@ model Product {
   supplierLeadDaysMin        Int       @default(7)
   supplierLeadDaysMax        Int       @default(21)
   supplierLastPriceUSD       Float?
+  dealerDiscountPercent      Float?                 @default(0)
   installLabourCostCRC       Int                    @default(0)
   installProfitCRC           Int                    @default(0)
   installationDurationMinutes Int?                  @default(60)
@@ -453,9 +455,10 @@ model DealerBrand {
   name        String
   logoUrl     String
   redirectUrl String   @default("")
-  order       Int      @default(0)
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
+  order                 Int      @default(0)
+  isActive              Boolean  @default(true)
+  dealerDiscountPercent Float    @default(0)
+  createdAt             DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   @@index([isActive])

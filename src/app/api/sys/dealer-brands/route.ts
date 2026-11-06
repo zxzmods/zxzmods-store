@@ -49,6 +49,7 @@ export async function POST(request: Request) {
       redirectUrl = "",
       order = 0,
       isActive = true,
+      dealerDiscountPercent = 0,
     } = body;
 
     if (!name?.trim()) {
@@ -91,6 +92,7 @@ export async function POST(request: Request) {
         redirectUrl: finalRedirectUrl,
         order: Number(order) || 0,
         isActive: Boolean(isActive),
+        dealerDiscountPercent: Math.max(0, Math.min(100, Number(dealerDiscountPercent) || 0)),
       },
     });
 

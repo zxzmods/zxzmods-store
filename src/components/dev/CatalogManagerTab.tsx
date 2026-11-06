@@ -187,6 +187,7 @@ interface Product {
   supplierLeadDaysMin?: number | null;
   supplierLeadDaysMax?: number | null;
   supplierLastPriceUSD?: number | null;
+  dealerDiscountPercent?: number | null;
   supplierStockCheckedAt?: Date | string | null;
   parameters?: ConfigurableParameter[];
   parametersJson?: string;
@@ -3386,6 +3387,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
     supplierLeadDaysMin: 7 as number | string,
     supplierLeadDaysMax: 21 as number | string,
     supplierLastPriceUSD: "" as number | string,
+    dealerDiscountPercent: 0 as number | string,
     supplierStockCheckedAt: "",
     parameters: [] as ConfigurableParameter[],
   });
@@ -3677,6 +3679,70 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
     }
   }, [editingProduct, isSkuManuallyEdited, productForm.brandName, selectedVehicles, products, dealerBrands, brands]);
 
+  // Helper to find a registered dealer discount for any brand name
+  const getDealerBrandDiscount = useCallback((brandName: string): number => {
+    if (!brandName || !brandName.trim()) return 0;
+    const clean = brandName.trim().toLowerCase();
+    const foundDealer = dealerBrands.find(
+      (db: any) => db.name && db.name.trim().toLowerCase() === clean
+    );
+    if (foundDealer && typeof foundDealer.dealerDiscountPercent === "number" && foundDealer.dealerDiscountPercent >= 0) {
+      return Number(foundDealer.dealerDiscountPercent);
+    }
+    const foundBrand = brands.find(
+      (b: any) => b.name && b.name.trim().toLowerCase() === clean
+    );
+    if (foundBrand && typeof foundBrand.dealerDiscountPercent === "number" && foundBrand.dealerDiscountPercent >= 0) {
+      return Number(foundBrand.dealerDiscountPercent);
+    }
+    return 0;
+  }, [dealerBrands, brands]);
+
+  const [liveExchangeRate, setLiveExchangeRate] = useState<number>(455.21);
+  const [shippingRates, setShippingRates] = useState<{
+    ratePerLbUSD: number;
+    ratePerCubicFootUSD: number;
+  }>({
+    ratePerLbUSD: 4.5,
+    ratePerCubicFootUSD: 15.0,
+  });
+
+  // Apply selected brand name with auto-applied dealer discount and price recalculation
+  const applyBrandWithDealerDiscount = useCallback((brandName: string) => {
+    const clean = brandName.trim();
+    if (!clean) return;
+    updateLastUsedBrand(clean);
+    updateAutoSkuIfApplicable(clean, undefined);
+
+    const disc = getDealerBrandDiscount(clean);
+    setProductForm((prev) => {
+      const activeRate = liveExchangeRate > 300 ? liveExchangeRate : 455.21;
+      const rawSup = prev.supplierLastPriceUSD;
+      const numSup = parseFloat(String(rawSup)) || 0;
+      const hasSupplierUSD = numSup > 0;
+
+      const effectivePPriceD = hasSupplierUSD
+        ? Number((numSup * (1 - disc / 100)).toFixed(2))
+        : (disc > 0 && Number(prev.P_price_D) > 0 ? Number((Number(prev.P_price_D) * (1 - disc / 100)).toFixed(2)) : prev.P_price_D);
+
+      const nextPPriceCRC = effectivePPriceD > 0 ? Math.round(effectivePPriceD * activeRate) : prev.P_price;
+      const ivaRate = prev.ivaPercent ?? 13;
+      const nextIva = calculateIvaAmount(nextPPriceCRC, prev.S_price, prev.profit, prev.I_price, prev.I_price_includes, prev.discountPercent, ivaRate);
+      const nextTotal = recalculateTPrice(nextPPriceCRC, prev.S_price, prev.profit, prev.I_price, prev.I_price_includes, prev.discountPercent, ivaRate);
+
+      return {
+        ...prev,
+        brandName: clean,
+        dealerDiscountPercent: disc,
+        P_price_D: effectivePPriceD,
+        P_price: nextPPriceCRC,
+        ivaCRC: nextIva,
+        priceCRC: nextTotal,
+        T_price: nextTotal,
+      };
+    });
+  }, [getDealerBrandDiscount, liveExchangeRate, updateAutoSkuIfApplicable, updateLastUsedBrand]);
+
   // Toggle a vehicle family in/out of selectedVehicles (User Requirement)
   const handleToggleVehicleFamily = useCallback((familySlugs: string[]) => {
     if (!familySlugs || familySlugs.length === 0) return;
@@ -3736,14 +3802,6 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
     }
   }, [productForm.brandName, selectedVehicles, products, dealerBrands, brands, editingProduct?.id, lang]);
 
-  const [liveExchangeRate, setLiveExchangeRate] = useState<number>(455.21);
-  const [shippingRates, setShippingRates] = useState<{
-    ratePerLbUSD: number;
-    ratePerCubicFootUSD: number;
-  }>({
-    ratePerLbUSD: 4.5,
-    ratePerCubicFootUSD: 15.0,
-  });
   const [adjustingProductId, setAdjustingProductId] = useState<string | null>(null);
 
   const refreshLiveExchangeRate = useCallback(async (): Promise<number> => {
@@ -3877,7 +3935,10 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
           const activeRate = currentRate > 300 ? currentRate : (liveExchangeRate || 455.21);
           setProductForm((prev) => {
             const hasValidUSD = Number.isFinite(fetchedPriceUSD) && fetchedPriceUSD > 0;
-            const nextPPriceD = hasValidUSD ? Number(fetchedPriceUSD.toFixed(2)) : prev.P_price_D;
+            const dealerDiscount = Math.max(0, Math.min(100, Number(prev.dealerDiscountPercent) || 0));
+            const nextPPriceD = hasValidUSD
+              ? Number((fetchedPriceUSD * (1 - dealerDiscount / 100)).toFixed(2))
+              : prev.P_price_D;
             const nextPPriceCRC = hasValidUSD
               ? Math.round(nextPPriceD * activeRate)
               : prev.P_price;
@@ -3900,7 +3961,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
               supplierStockCount: data.result.stockCount ?? prev.supplierStockCount,
               supplierLeadDaysMin: data.result.leadDaysMin || prev.supplierLeadDaysMin || 7,
               supplierLeadDaysMax: data.result.leadDaysMax || prev.supplierLeadDaysMax || 21,
-              supplierLastPriceUSD: hasValidUSD ? nextPPriceD : (data.result.supplierPriceUSD ?? prev.supplierLastPriceUSD),
+              supplierLastPriceUSD: hasValidUSD ? Number(fetchedPriceUSD.toFixed(2)) : (data.result.supplierPriceUSD ?? prev.supplierLastPriceUSD),
               P_price_D: nextPPriceD,
               P_price: nextPPriceCRC,
               S_price: nextSPriceCRC,
@@ -4217,6 +4278,9 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       supplierLeadDaysMin: prod.supplierLeadDaysMin || 7,
       supplierLeadDaysMax: prod.supplierLeadDaysMax || 21,
       supplierLastPriceUSD: prod.supplierLastPriceUSD !== null && prod.supplierLastPriceUSD !== undefined ? prod.supplierLastPriceUSD : "",
+      dealerDiscountPercent: prod.dealerDiscountPercent !== null && prod.dealerDiscountPercent !== undefined
+        ? prod.dealerDiscountPercent
+        : getDealerBrandDiscount(prod.brandName || (Array.isArray(prod.brand) ? prod.brand[0] : "")),
       supplierStockCheckedAt: prod.supplierStockCheckedAt ? new Date(prod.supplierStockCheckedAt).toISOString() : "",
       parameters: (() => {
         if (Array.isArray(prod.parameters)) return prod.parameters;
@@ -4318,6 +4382,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       supplierLeadDaysMin: 7,
       supplierLeadDaysMax: 21,
       supplierLastPriceUSD: "",
+      dealerDiscountPercent: 0,
       supplierStockCheckedAt: "",
       parameters: [] as ConfigurableParameter[],
     suggestedProductIds: [] as string[],
@@ -4921,6 +4986,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       supplierLeadDaysMin: Number(productForm.supplierLeadDaysMin) || 7,
       supplierLeadDaysMax: Number(productForm.supplierLeadDaysMax) || 21,
       supplierLastPriceUSD: productForm.supplierLastPriceUSD !== "" ? Number(productForm.supplierLastPriceUSD) : null,
+      dealerDiscountPercent: productForm.dealerDiscountPercent !== "" ? Number(productForm.dealerDiscountPercent) : 0,
       supplierStockCheckedAt: productForm.supplierStockCheckedAt ? new Date(productForm.supplierStockCheckedAt).toISOString() : null,
       parameters: productForm.parameters,
       parametersJson: JSON.stringify(productForm.parameters || []),
@@ -7964,19 +8030,22 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                         onChange={(e) => {
                           const val = e.target.value;
                           if (val) {
-                            setProductForm((prev) => ({ ...prev, brandName: val }));
-                            updateAutoSkuIfApplicable(val, undefined);
-                            updateLastUsedBrand(val);
+                            applyBrandWithDealerDiscount(val);
+                          } else {
+                            setProductForm((prev) => ({ ...prev, brandName: "" }));
                           }
                         }}
                         className="w-full bg-white border border-red-200 rounded-xl p-2 text-xs text-slate-900 focus:outline-none focus:border-red-500 font-bold shadow-2xs cursor-pointer"
                       >
                         <option value="">-- Seleccionar Marca Distribuidora (EVP, RPM, Bikeman...) --</option>
-                        {registeredDealerBrands.map((bName: string) => (
-                          <option key={bName} value={bName}>
-                            {bName}
-                          </option>
-                        ))}
+                        {registeredDealerBrands.map((bName: string) => {
+                          const disc = getDealerBrandDiscount(bName);
+                          return (
+                            <option key={bName} value={bName}>
+                              {bName} {disc > 0 ? `(-${disc}% Desc. Distribuidor)` : ""}
+                            </option>
+                          );
+                        })}
                       </select>
 
                       {/* Text Input with Datalist */}
@@ -7987,16 +8056,22 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                         value={productForm.brandName}
                         onChange={(e) => {
                           const val = e.target.value;
-                          setProductForm({ ...productForm, brandName: val });
+                          setProductForm((prev) => ({ ...prev, brandName: val }));
                           updateAutoSkuIfApplicable(val, undefined);
                           if (val.trim().length >= 3) {
                             updateLastUsedBrand(val);
+                            const matched = registeredDealerBrands.find(
+                              (b) => b.toLowerCase() === val.trim().toLowerCase()
+                            );
+                            if (matched) {
+                              applyBrandWithDealerDiscount(matched);
+                            }
                           }
                         }}
                         onBlur={(e) => {
                           const val = e.target.value;
                           if (val.trim()) {
-                            updateLastUsedBrand(val);
+                            applyBrandWithDealerDiscount(val.trim());
                           }
                         }}
                         placeholder="e.g. Bikeman Performance, RPM Powersports, EVP..."
@@ -8013,14 +8088,13 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                         {quickSelectBrands.map((quickBrand, idx) => {
                           const isActive = productForm.brandName.toLowerCase() === quickBrand.toLowerCase();
                           const isLastUsed = idx === 0 && Boolean(lastUsedBrand && lastUsedBrand.toLowerCase() === quickBrand.toLowerCase());
+                          const brandDisc = getDealerBrandDiscount(quickBrand);
                           return (
                             <button
                               key={quickBrand}
                               type="button"
                               onClick={() => {
-                                setProductForm((prev) => ({ ...prev, brandName: quickBrand }));
-                                updateAutoSkuIfApplicable(quickBrand, undefined);
-                                updateLastUsedBrand(quickBrand);
+                                applyBrandWithDealerDiscount(quickBrand);
                               }}
                               className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition cursor-pointer border flex items-center gap-1 ${
                                 isActive
@@ -8035,6 +8109,11 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                                 <span className={isActive ? "text-amber-200" : "text-amber-500 font-extrabold"}>★</span>
                               )}
                               <span>{quickBrand}</span>
+                              {brandDisc > 0 && (
+                                <span className={`text-[8px] px-1 py-0.2 rounded-full font-mono font-extrabold ${isActive ? "bg-red-900 text-white" : "bg-red-100 text-red-800"}`}>
+                                  -{brandDisc}%
+                                </span>
+                              )}
                             </button>
                           );
                         })}
@@ -8574,11 +8653,11 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                   </div>
                 </div>
 
-                {/* Last Supplier Price USD */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Supplier Price USD, Dealer Discount %, and Platform */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
                     <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                      {lang === "es" ? "Precio del Proveedor (USD $) → P_price_D:" : "Supplier Price (USD $) → P_price_D:"}
+                      {lang === "es" ? "Precio de Lista Proveedor (USD $):" : "Supplier List Price (USD $):"}
                     </label>
                     <input
                       type="number"
@@ -8589,18 +8668,82 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                         const numVal = parseFloat(rawVal);
                         setProductForm((prev) => {
                           const hasValid = Number.isFinite(numVal) && numVal >= 0;
-                          const nextPPriceCRC = hasValid && numVal > 0 ? Math.round(numVal * (liveExchangeRate || 455.21)) : prev.P_price;
+                          const disc = Math.max(0, Math.min(100, Number(prev.dealerDiscountPercent) || 0));
+                          const effectivePPriceD = hasValid ? Number((numVal * (1 - disc / 100)).toFixed(2)) : prev.P_price_D;
+                          const activeRate = liveExchangeRate > 300 ? liveExchangeRate : 455.21;
+                          const nextPPriceCRC = hasValid && effectivePPriceD > 0 ? Math.round(effectivePPriceD * activeRate) : prev.P_price;
+                          const ivaRate = prev.ivaPercent ?? 13;
+                          const nextIva = calculateIvaAmount(nextPPriceCRC, prev.S_price, prev.profit, prev.I_price, prev.I_price_includes, prev.discountPercent, ivaRate);
+                          const nextTotal = recalculateTPrice(nextPPriceCRC, prev.S_price, prev.profit, prev.I_price, prev.I_price_includes, prev.discountPercent, ivaRate);
                           return {
                             ...prev,
                             supplierLastPriceUSD: rawVal,
-                            P_price_D: hasValid ? numVal : prev.P_price_D,
+                            P_price_D: hasValid ? effectivePPriceD : prev.P_price_D,
                             P_price: nextPPriceCRC,
+                            ivaCRC: nextIva,
+                            priceCRC: nextTotal,
+                            T_price: nextTotal,
                           };
                         });
                       }}
                       placeholder="e.g. 979.95"
-                      className="w-full bg-slate-50 border border-red-200 rounded-xl p-2 text-xs font-mono text-slate-900 focus:outline-none focus:border-red-500"
+                      className="w-full bg-slate-50 border border-red-200 rounded-xl p-2 text-xs font-mono text-slate-900 focus:outline-none focus:border-red-500 font-bold"
                     />
+                    <p className="text-[9px] text-slate-400 mt-0.5">
+                      {lang === "es" ? "Precio público en la tienda del proveedor en USA." : "Public retail price on supplier store."}
+                    </p>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[11px] font-bold text-slate-700 block">
+                        {t.devSupplierDealerDiscountLabel || "Descuento Distribuidor (%):"}
+                      </label>
+                      {getDealerBrandDiscount(productForm.brandName) > 0 && (
+                        <span className="text-[9px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded-full">
+                          {t.devSupplierDealerDiscountAppliedBadge || "Auto-aplicado"}
+                        </span>
+                      )}
+                    </div>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.5"
+                        value={productForm.dealerDiscountPercent}
+                        onChange={(e) => {
+                          const rawVal = e.target.value;
+                          const numVal = Math.max(0, Math.min(100, parseFloat(rawVal) || 0));
+                          setProductForm((prev) => {
+                            const supUSD = parseFloat(String(prev.supplierLastPriceUSD)) || 0;
+                            const activeRate = liveExchangeRate > 300 ? liveExchangeRate : 455.21;
+                            const effectivePPriceD = supUSD > 0
+                              ? Number((supUSD * (1 - numVal / 100)).toFixed(2))
+                              : (Number(prev.P_price_D) > 0 && numVal > 0 ? Number((Number(prev.P_price_D) * (1 - numVal / 100)).toFixed(2)) : prev.P_price_D);
+                            const nextPPriceCRC = effectivePPriceD > 0 ? Math.round(effectivePPriceD * activeRate) : prev.P_price;
+                            const ivaRate = prev.ivaPercent ?? 13;
+                            const nextIva = calculateIvaAmount(nextPPriceCRC, prev.S_price, prev.profit, prev.I_price, prev.I_price_includes, prev.discountPercent, ivaRate);
+                            const nextTotal = recalculateTPrice(nextPPriceCRC, prev.S_price, prev.profit, prev.I_price, prev.I_price_includes, prev.discountPercent, ivaRate);
+                            return {
+                              ...prev,
+                              dealerDiscountPercent: rawVal,
+                              P_price_D: effectivePPriceD,
+                              P_price: nextPPriceCRC,
+                              ivaCRC: nextIva,
+                              priceCRC: nextTotal,
+                              T_price: nextTotal,
+                            };
+                          });
+                        }}
+                        placeholder="0"
+                        className="w-full bg-slate-50 border border-red-200 rounded-xl pr-8 pl-2 py-2 text-xs font-mono text-slate-900 focus:outline-none focus:border-red-500 font-bold"
+                      />
+                      <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-bold font-mono text-slate-400">%</span>
+                    </div>
+                    <p className="text-[9px] text-slate-400 mt-0.5">
+                      {t.devSupplierDealerDiscountHelp || "Descuento otorgado a ZxZ Mods sobre el precio de lista."}
+                    </p>
                   </div>
 
                   <div>
@@ -8614,8 +8757,34 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                       placeholder="SHOPIFY, SCHEMA_ORG, MANUAL"
                       className="w-full bg-slate-50 border border-red-200 rounded-xl p-2 text-xs font-mono text-slate-900 focus:outline-none focus:border-red-500"
                     />
+                    <p className="text-[9px] text-slate-400 mt-0.5">
+                      {lang === "es" ? "Motor del proveedor scrapeado." : "Scraped provider engine."}
+                    </p>
                   </div>
                 </div>
+
+                {/* Effective Dealer Cost Preview Banner */}
+                {Number(productForm.dealerDiscountPercent) > 0 && Number(productForm.supplierLastPriceUSD) > 0 && (
+                  <div className="p-3 bg-emerald-50/90 rounded-2xl border border-emerald-200 flex items-center justify-between flex-wrap gap-2 text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-emerald-950 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-md">
+                        {lang === "es" ? "Descuento Concesionario Aplicado" : "Dealer Discount Applied"} (-{productForm.dealerDiscountPercent}%)
+                      </span>
+                      <span className="text-emerald-800 font-medium">
+                        {lang === "es" ? "Costo Efectivo de Compra:" : "Effective Purchase Cost:"}
+                      </span>
+                      <span className="font-mono font-black text-emerald-900 text-sm">
+                        ${Number(productForm.P_price_D || 0).toFixed(2)} USD
+                      </span>
+                      <span className="text-emerald-700 font-mono text-[11px]">
+                        ({formatCRC(productForm.P_price)})
+                      </span>
+                    </div>
+                    <div className="text-[11px] font-mono font-bold text-emerald-700 bg-white/80 border border-emerald-200 px-2 py-0.5 rounded-lg">
+                      {lang === "es" ? "Ahorro Dealer:" : "Dealer Savings:"} ${(Number(productForm.supplierLastPriceUSD) - Number(productForm.P_price_D)).toFixed(2)} USD
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* FULL PRICING BREAKDOWN (price) */}
@@ -8775,10 +8944,14 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                           const translatedCRC = Math.round(usdVal * rate);
                           setProductForm((prev) => {
                             const ivaRate = prev.ivaPercent ?? 13;
+                            const disc = Math.max(0, Math.min(100, Number(prev.dealerDiscountPercent) || 0));
+                            const impliedSupplierUSD = disc > 0 && disc < 100
+                              ? Number((usdVal / (1 - disc / 100)).toFixed(2))
+                              : (usdVal > 0 ? usdVal : prev.supplierLastPriceUSD);
                             return {
                               ...prev,
                               P_price_D: usdVal,
-                              supplierLastPriceUSD: usdVal > 0 ? usdVal : prev.supplierLastPriceUSD,
+                              supplierLastPriceUSD: impliedSupplierUSD,
                               P_price: translatedCRC,
                               ivaCRC: calculateIvaAmount(translatedCRC, prev.S_price, prev.profit, prev.I_price, prev.I_price_includes, prev.discountPercent, ivaRate),
                               priceCRC: recalculateTPrice(translatedCRC, prev.S_price, prev.profit, prev.I_price, prev.I_price_includes, prev.discountPercent, ivaRate),

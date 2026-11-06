@@ -87,6 +87,10 @@ export async function PATCH(
       updateData.isActive = Boolean(body.isActive);
     }
 
+    if (body.dealerDiscountPercent !== undefined) {
+      updateData.dealerDiscountPercent = Math.max(0, Math.min(100, Number(body.dealerDiscountPercent) || 0));
+    }
+
     const updated = await prisma.dealerBrand.update({
       where: { id },
       data: updateData,

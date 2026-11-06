@@ -184,6 +184,7 @@ export async function GET() {
         shippingVolumeCuFt: p.shippingVolumeCuFt ?? jsonP?.shippingVolumeCuFt ?? null,
         distributorShippingUSD: p.distributorShippingUSD ?? jsonP?.distributorShippingUSD ?? 0,
         distributorTaxUSD: p.distributorTaxUSD ?? jsonP?.distributorTaxUSD ?? 0,
+        dealerDiscountPercent: p.dealerDiscountPercent ?? 0,
         livePricing,
         effectiveProfitCRC: livePricing.effectiveProfitCRC,
         hasProfitAlert: livePricing.hasProfitAlert,

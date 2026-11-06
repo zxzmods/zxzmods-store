@@ -272,6 +272,7 @@ export async function PATCH(
     if (body.supplierLeadDaysMin !== undefined) updateData.supplierLeadDaysMin = Number(body.supplierLeadDaysMin) || 7;
     if (body.supplierLeadDaysMax !== undefined) updateData.supplierLeadDaysMax = Number(body.supplierLeadDaysMax) || 21;
     if (body.supplierLastPriceUSD !== undefined) updateData.supplierLastPriceUSD = body.supplierLastPriceUSD !== null ? Number(body.supplierLastPriceUSD) : null;
+    if (body.dealerDiscountPercent !== undefined) updateData.dealerDiscountPercent = body.dealerDiscountPercent !== null && body.dealerDiscountPercent !== "" ? Math.max(0, Math.min(100, Number(body.dealerDiscountPercent) || 0)) : 0;
     if (body.supplierStockCheckedAt !== undefined) updateData.supplierStockCheckedAt = body.supplierStockCheckedAt ? new Date(body.supplierStockCheckedAt) : null;
 
     // Auto-fetch supplier price & availability if supplierUrl changed and wasn't just checked

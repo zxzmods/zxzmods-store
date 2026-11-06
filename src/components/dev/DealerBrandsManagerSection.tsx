@@ -22,6 +22,8 @@ import {
   Layers,
   Sparkles,
   Link as LinkIcon,
+  Tag,
+  Percent,
 } from "lucide-react";
 import { isVehicleBrand, resolveDefaultDealerBrandCode } from "@/lib/dealerBrands";
 import { uploadMediaDirect } from "@/lib/clientDirectUpload";
@@ -35,6 +37,7 @@ export interface DealerBrandRecord {
   redirectUrl: string;
   order: number;
   isActive: boolean;
+  dealerDiscountPercent?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -68,6 +71,7 @@ export function DealerBrandsManagerSection({ userRole }: DealerBrandsManagerSect
   const [formRedirectUrl, setFormRedirectUrl] = useState("");
   const [formOrder, setFormOrder] = useState<number>(0);
   const [formIsActive, setFormIsActive] = useState(true);
+  const [formDealerDiscountPercent, setFormDealerDiscountPercent] = useState<number>(0);
 
   // Upload states
   const [uploadingLogo, setUploadingLogo] = useState(false);
@@ -140,6 +144,7 @@ export function DealerBrandsManagerSection({ userRole }: DealerBrandsManagerSect
     setFormRedirectUrl("");
     setFormOrder(brands.length);
     setFormIsActive(true);
+    setFormDealerDiscountPercent(0);
     setLogoUploadError(null);
     setShowManualUrl(false);
     setModalFeedback(null);
@@ -154,6 +159,7 @@ export function DealerBrandsManagerSection({ userRole }: DealerBrandsManagerSect
     setFormRedirectUrl(brand.redirectUrl || "");
     setFormOrder(brand.order ?? 0);
     setFormIsActive(brand.isActive ?? true);
+    setFormDealerDiscountPercent(brand.dealerDiscountPercent ?? 0);
     setLogoUploadError(null);
     setShowManualUrl(Boolean(brand.logoUrl && brand.logoUrl.startsWith("http")));
     setModalFeedback(null);
@@ -267,6 +273,7 @@ export function DealerBrandsManagerSection({ userRole }: DealerBrandsManagerSect
       redirectUrl: formRedirectUrl.trim() || `/productos?brand=${encodeURIComponent(formName.trim())}`,
       order: Number(formOrder) || 0,
       isActive: Boolean(formIsActive),
+      dealerDiscountPercent: Math.max(0, Math.min(100, Number(formDealerDiscountPercent) || 0)),
     };
 
     try {
@@ -617,6 +624,16 @@ export function DealerBrandsManagerSection({ userRole }: DealerBrandsManagerSect
                       </Link>
                     )}
                   </div>
+
+                  {/* Dealer Discount Badge if registered */}
+                  {Number(brand.dealerDiscountPercent) > 0 && (
+                    <div className="pt-0.5">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs">
+                        <Tag className="w-2.5 h-2.5 text-amber-700" />
+                        <span>-{brand.dealerDiscountPercent}% {t.backdoorDealerBrandsDiscountBadge || "Desc. Distribuidor"}</span>
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Actions */}
@@ -883,6 +900,36 @@ export function DealerBrandsManagerSection({ userRole }: DealerBrandsManagerSect
                   {lang === "es"
                     ? "Al hacer clic en el logo en la página de inicio, el usuario será dirigido a esta ruta o búsqueda."
                     : "When clicked in the homepage wheel, the user will be redirected to this route or search query."}
+                </p>
+              </div>
+
+              {/* Dealer Wholesale Discount (%) */}
+              <div className="space-y-1.5 p-3.5 bg-amber-50/80 border border-amber-200 rounded-xl">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
+                    <Tag className="w-3.5 h-3.5 text-amber-600" />
+                    <span>{t.backdoorDealerBrandsDiscount || "Descuento Distribuidor (%)"}</span>
+                  </label>
+                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300">
+                    {Number(formDealerDiscountPercent) > 0 ? `${formDealerDiscountPercent}%` : "0% (Sin desc.)"}
+                  </span>
+                </div>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.5"
+                    value={formDealerDiscountPercent === 0 ? "0" : formDealerDiscountPercent}
+                    onChange={(e) => setFormDealerDiscountPercent(Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)))}
+                    placeholder="0"
+                    className="w-full pl-3 pr-8 py-2 text-xs font-mono font-bold bg-white border border-amber-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-500 text-slate-900"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">%</span>
+                </div>
+                <p className="text-[10px] text-amber-900 leading-relaxed">
+                  {t.backdoorDealerBrandsDiscountHelp ||
+                    "Porcentaje de descuento que esta marca otorga a ZxZ Mods sobre los productos listados (predeterminado 0%). Se auto-aplicará en los productos registrados de esta marca."}
                 </p>
               </div>
 

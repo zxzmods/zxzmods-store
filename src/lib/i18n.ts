@@ -1586,6 +1586,13 @@ export interface Translations {
   backdoorDealerBrandsSuccessDeleted: string;
   backdoorDealerBrandsSearchPlaceholder: string;
   backdoorDealerBrandsWheelPreview: string;
+  backdoorDealerBrandsDiscount: string;
+  backdoorDealerBrandsDiscountHelp: string;
+  backdoorDealerBrandsDiscountBadge: string;
+  devSupplierDealerDiscountLabel: string;
+  devSupplierDealerDiscountHelp: string;
+  devSupplierDealerDiscountAppliedBadge: string;
+  devSupplierEffectiveCostLabel: string;
 
   // BarrialCR Community & Page
   barrialCrHeroBadge: string;
@@ -3603,6 +3610,13 @@ export const translations: Record<Language, Translations> = {
     backdoorDealerBrandsSuccessDeleted: "Marca distribuidora eliminada correctamente.",
     backdoorDealerBrandsSearchPlaceholder: "Buscar marca distribuidora por nombre...",
     backdoorDealerBrandsWheelPreview: "Vista Previa de la Rueda",
+    backdoorDealerBrandsDiscount: "Descuento Distribuidor (%)",
+    backdoorDealerBrandsDiscountHelp: "Porcentaje de descuento que esta marca otorga a ZxZ Mods sobre los productos listados (predeterminado 0%). Se auto-aplicará en los productos registrados de esta marca.",
+    backdoorDealerBrandsDiscountBadge: "Desc. Distribuidor",
+    devSupplierDealerDiscountLabel: "Descuento Distribuidor / Concesionario (%)",
+    devSupplierDealerDiscountHelp: "Descuento otorgado por la marca/proveedor a ZxZ Mods sobre el precio de lista. Se auto-aplica si la marca seleccionada tiene descuento registrado.",
+    devSupplierDealerDiscountAppliedBadge: "Descuento de marca auto-aplicado",
+    devSupplierEffectiveCostLabel: "Costo Real Distribuidor (USD $) → P_price_D",
 
     // BarrialCR Community & Page
     barrialCrHeroBadge: "Comunidad Oficial",
@@ -5616,6 +5630,13 @@ export const translations: Record<Language, Translations> = {
     backdoorDealerBrandsSuccessDeleted: "Dealer brand removed successfully.",
     backdoorDealerBrandsSearchPlaceholder: "Search dealer brand by name...",
     backdoorDealerBrandsWheelPreview: "Wheel Preview",
+    backdoorDealerBrandsDiscount: "Dealer Discount (%)",
+    backdoorDealerBrandsDiscountHelp: "Discount percentage granted by this brand to ZxZ Mods over listed products (default 0%). Auto-applies when registering or editing products under this brand.",
+    backdoorDealerBrandsDiscountBadge: "Dealer Discount",
+    devSupplierDealerDiscountLabel: "Dealer / Distributor Discount (%)",
+    devSupplierDealerDiscountHelp: "Wholesale discount granted by brand/supplier to ZxZ Mods over listed price. Auto-applies if selected brand has a registered discount.",
+    devSupplierDealerDiscountAppliedBadge: "Brand discount auto-applied",
+    devSupplierEffectiveCostLabel: "Effective Dealer Cost (USD $) → P_price_D",
 
     // BarrialCR Community & Page
     barrialCrHeroBadge: "Official Community",
