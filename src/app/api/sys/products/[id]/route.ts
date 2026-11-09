@@ -294,7 +294,9 @@ export async function PATCH(
           updateData.supplierLeadDaysMax = live.leadDaysMax;
           if (live.supplierPriceUSD && live.supplierPriceUSD > 0) {
             updateData.supplierLastPriceUSD = live.supplierPriceUSD;
-            updateData.processingPriceD = live.supplierPriceUSD;
+            const effectiveDiscount = updateData.dealerDiscountPercent ?? existingProduct.dealerDiscountPercent ?? 0;
+            updateData.processingPriceD = Number((live.supplierPriceUSD * (1 - effectiveDiscount / 100)).toFixed(2));
+            updateData.processingPriceCRC = Math.round(updateData.processingPriceD * activeRate);
           }
         }
       } catch (checkErr) {
@@ -303,9 +305,24 @@ export async function PATCH(
     } else if (
       updateData.supplierLastPriceUSD &&
       updateData.supplierLastPriceUSD > 0 &&
-      (!updateData.processingPriceD || updateData.processingPriceD === existingProduct.processingPriceD)
+      (!updateData.processingPriceD || updateData.processingPriceD <= 0)
     ) {
-      updateData.processingPriceD = updateData.supplierLastPriceUSD;
+      const disc = updateData.dealerDiscountPercent ?? existingProduct.dealerDiscountPercent ?? 0;
+      updateData.processingPriceD = Number((updateData.supplierLastPriceUSD * (1 - disc / 100)).toFixed(2));
+      updateData.processingPriceCRC = Math.round(updateData.processingPriceD * activeRate);
+    }
+
+    if (body.installationAvailable !== undefined) {
+      updateData.installationAvailable = Boolean(body.installationAvailable);
+      if (body.installationAvailable === false) {
+        updateData.installationPriceCRC = 0;
+        updateData.installLabourCostCRC = 0;
+        updateData.installProfitCRC = 0;
+        updateData.homeInstallationAvailable = false;
+        updateData.isInstallationIncluded = false;
+        updateData.installExtraPartsJson = "[]";
+        updateData.installationDurationMinutes = 0;
+      }
     }
 
     const homeInst = body.inHome_install !== undefined ? body.inHome_install : body.homeInstallation !== undefined ? body.homeInstallation : body.homeInstallationAvailable;

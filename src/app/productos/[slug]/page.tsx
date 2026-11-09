@@ -72,6 +72,7 @@ import {
   Music,
   Play,
   Pause,
+  Truck,
 } from "lucide-react";
 
 function formatCheckedTime(iso: string | null | undefined, lang: "es" | "en") {
@@ -879,7 +880,8 @@ export default function ProductDetailPage() {
 
   const handleAddToCart = () => {
     if (!product) return;
-    const isIncluded = Boolean(
+    const isDeliveryOnly = product.installationAvailable === false || (product as any).installationAvailable === false;
+    const isIncluded = !isDeliveryOnly && Boolean(
       product.price?.I_price?.includes ||
       (product as any).isInstallationIncluded
     );
@@ -899,10 +901,10 @@ export default function ProductDetailPage() {
       basePriceUSD: Number(product.price?.P_price_D || product.supplierLastPriceUSD || 0),
       supplierUrl: variantSupplierUrl || product.supplierUrl || null,
       selectedParameters: selectedParametersList,
-      installationPriceCRC: isIncluded ? 0 : (Number(product.price?.I_price?.I_price) || 0),
-      withInstallation: isIncluded,
-      freeInstallation: isIncluded,
-      homeInstallation: product.homeInstallation !== false,
+      installationPriceCRC: isDeliveryOnly ? 0 : (isIncluded ? 0 : (Number(product.price?.I_price?.I_price) || 0)),
+      withInstallation: isDeliveryOnly ? false : isIncluded,
+      freeInstallation: isDeliveryOnly ? false : isIncluded,
+      homeInstallation: isDeliveryOnly ? false : (product.homeInstallation !== false),
       imageUrl: activeOptionImage || product.imgs?.[0] || "/images/logo.png",
       supplierStockStatus: availability?.status || product.supplierStockStatus,
       supplierStockMessage: lang === "es" ? availability?.messageEs : availability?.messageEn,
@@ -916,7 +918,8 @@ export default function ProductDetailPage() {
     if (!product) return;
     setSubmittingReservationQuote(true);
     try {
-      const isIncluded = Boolean(
+      const isDeliveryOnly = product.installationAvailable === false || (product as any).installationAvailable === false;
+      const isIncluded = !isDeliveryOnly && Boolean(
         product.price?.I_price?.includes ||
         (product as any).isInstallationIncluded
       );
@@ -938,10 +941,10 @@ export default function ProductDetailPage() {
           basePriceUSD: Number(product.price?.P_price_D || product.supplierLastPriceUSD || 0),
           supplierUrl: variantSupplierUrl || product.supplierUrl || null,
           selectedParameters: selectedParametersList,
-          installationPriceCRC: isIncluded ? 0 : (Number(product.price?.I_price?.I_price) || 0),
-          withInstallation: isIncluded,
-          freeInstallation: isIncluded,
-          homeInstallation: product.homeInstallation !== false,
+          installationPriceCRC: isDeliveryOnly ? 0 : (isIncluded ? 0 : (Number(product.price?.I_price?.I_price) || 0)),
+          withInstallation: isDeliveryOnly ? false : isIncluded,
+          freeInstallation: isDeliveryOnly ? false : isIncluded,
+          homeInstallation: isDeliveryOnly ? false : (product.homeInstallation !== false),
           imageUrl: activeOptionImage || product.imgs?.[0] || "/images/logo.png",
           supplierStockStatus: "OUT_OF_STOCK",
           supplierStockMessage: lang === "es" ? availability?.messageEs : availability?.messageEn,
@@ -981,7 +984,7 @@ export default function ProductDetailPage() {
     }
   };
 
-  const isFreeInstallation = product?.price?.I_price?.includes ?? false;
+  const isFreeInstallation = product?.installationAvailable !== false && (product?.price?.I_price?.includes ?? false);
 
   // Normalized brands list (guarantees Bikeman Performance)
   const displayedBrands = product?.brand
@@ -1365,8 +1368,13 @@ export default function ProductDetailPage() {
                     </span>
                   ))}
 
-                  {/* Home Installation Eligibility Badge */}
-                  {product.homeInstallation !== false ? (
+                  {/* Delivery Only / Home Installation Eligibility Badge */}
+                  {product.installationAvailable === false ? (
+                    <span className="inline-flex items-center gap-1.5 bg-sky-50 text-sky-800 border border-sky-200 text-xs font-semibold px-3 py-1 rounded-full">
+                      <Truck className="w-3.5 h-3.5 text-sky-600" />
+                      <span>{t.devDeliveryOnlyBadge || "Solo Entrega / Envío"}</span>
+                    </span>
+                  ) : product.homeInstallation !== false ? (
                     <span className="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-semibold px-3 py-1 rounded-full">
                       <Home className="w-3.5 h-3.5 text-emerald-600" />
                       <span>{t.cartHomeInstallationEligible}</span>
@@ -1663,7 +1671,12 @@ export default function ProductDetailPage() {
                       </div>
                     )}
 
-                    {product.homeInstallation !== false ? (
+                    {product.installationAvailable === false ? (
+                      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-50/80 border border-sky-200 text-sky-800 text-xs font-bold shadow-xs">
+                        <Truck className="w-3.5 h-3.5 text-sky-600" />
+                        <span>{t.devDeliveryOnlyBadge || "Solo Entrega / Envío (Sin Instalación)"}</span>
+                      </div>
+                    ) : product.homeInstallation !== false ? (
                       <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50/80 border border-emerald-200 text-emerald-800 text-xs font-bold shadow-xs">
                         <Home className="w-3.5 h-3.5 text-emerald-600" />
                         <span>{t.cartHomeInstallationEligible}</span>

@@ -976,6 +976,14 @@ export interface Translations {
   devFreeInstallationCheckbox: string;
   devFreeInstallationHelp: string;
   devFreeInstallationBadge: string;
+  devDeliveryOnlyOption: string;
+  devDeliveryOnlyHelp: string;
+  devDeliveryOnlyBadge: string;
+  devDeliveryOnlyNotice: string;
+  devInstallationAvailableOption: string;
+  devInstallationModeTitle: string;
+  devVehiclesRequiredError: string;
+  devNoVehiclesSelectedPrompt: string;
   devCompLabel: string;
   devCategoryLabel: string;
   devBrandLabel: string;
@@ -3055,6 +3063,14 @@ export const translations: Record<Language, Translations> = {
     devFreeInstallationCheckbox: "Instalación Gratis (Incluida en el precio)",
     devFreeInstallationHelp: "Al activar esta opción, la tienda mostrará el distintivo de 'Instalación Gratis' y el costo de instalación se incluirá como ₡0 en la tienda.",
     devFreeInstallationBadge: "Instalación Incluida",
+    devDeliveryOnlyOption: "Solo Entrega / Envío (Sin Instalación)",
+    devDeliveryOnlyHelp: "Para herramientas, consumibles o productos que no llevan instalación ni mano de obra.",
+    devDeliveryOnlyBadge: "Solo Entrega / Envío",
+    devDeliveryOnlyNotice: "Este producto está configurado exclusivamente para entrega o envío a domicilio (sin costo de instalación ni mano de obra).",
+    devInstallationAvailableOption: "Instalación Disponible (Taller / Domicilio)",
+    devInstallationModeTitle: "Modalidad de Entrega e Instalación",
+    devVehiclesRequiredError: "Debes seleccionar al menos un vehículo compatible o marcarlo como universal.",
+    devNoVehiclesSelectedPrompt: "Ningún vehículo seleccionado. Selecciona al menos un modelo o 'Universal'.",
     devCompLabel: "Tags de Compatibilidad (comp)",
     devCategoryLabel: "Categorías (category)",
     devBrandLabel: "Marca (brand)",
@@ -5075,6 +5091,14 @@ export const translations: Record<Language, Translations> = {
     devFreeInstallationCheckbox: "Free Installation (Included in price)",
     devFreeInstallationHelp: "When enabled, the store displays the 'Free Installation' badge and installation labor is counted as ₡0 in store.",
     devFreeInstallationBadge: "Installation Included",
+    devDeliveryOnlyOption: "Delivery Only / Shipping (No Installation)",
+    devDeliveryOnlyHelp: "For tools, consumables, or products that do not require installation or labor.",
+    devDeliveryOnlyBadge: "Delivery Only",
+    devDeliveryOnlyNotice: "This product is configured exclusively for delivery or direct shipping (no installation cost or labor).",
+    devInstallationAvailableOption: "Installation Available (Workshop / Mobile)",
+    devInstallationModeTitle: "Delivery & Installation Mode",
+    devVehiclesRequiredError: "You must select at least one compatible vehicle or mark as universal.",
+    devNoVehiclesSelectedPrompt: "No vehicles selected. Please select at least one model or 'Universal'.",
     devCompLabel: "Compatibility Tags (comp)",
     devCategoryLabel: "Categories (category)",
     devBrandLabel: "Brand (brand)",

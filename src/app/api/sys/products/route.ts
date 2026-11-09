@@ -112,22 +112,34 @@ export async function POST(request: Request) {
       }
     }
 
+    const dealerDiscount = body.dealerDiscountPercent !== undefined && body.dealerDiscountPercent !== null && body.dealerDiscountPercent !== ""
+      ? Math.max(0, Math.min(100, Number(body.dealerDiscountPercent) || 0))
+      : 0;
+
     const effectivePD =
       Number(pD) > 0
         ? Number(pD)
         : supplierLastPriceUSD && supplierLastPriceUSD > 0
-        ? supplierLastPriceUSD
+        ? Number((supplierLastPriceUSD * (1 - dealerDiscount / 100)).toFixed(2))
         : 0;
 
+    const isInstallationAvailable = body.installationAvailable !== undefined ? Boolean(body.installationAvailable) : true;
+
     // Calculate installation breakdown & costs
-    const installLabour = body.installLabourCostCRC !== undefined
-      ? Math.round(Number(body.installLabourCostCRC) || 0)
-      : Math.round(Number(body.price?.I_price?.I_price || installationPriceCRC) || 0);
-    const installProfit = body.installProfitCRC !== undefined ? Math.round(Number(body.installProfitCRC) || 0) : 0;
-    const extraPartsJson = body.installExtraParts !== undefined
-      ? JSON.stringify(sanitizeExtraParts(body.installExtraParts))
-      : typeof body.installExtraPartsJson === "string"
-      ? JSON.stringify(sanitizeExtraParts(body.installExtraPartsJson))
+    const installLabour = isInstallationAvailable
+      ? (body.installLabourCostCRC !== undefined
+          ? Math.round(Number(body.installLabourCostCRC) || 0)
+          : Math.round(Number(body.price?.I_price?.I_price || installationPriceCRC) || 0))
+      : 0;
+    const installProfit = isInstallationAvailable
+      ? (body.installProfitCRC !== undefined ? Math.round(Number(body.installProfitCRC) || 0) : 0)
+      : 0;
+    const extraPartsJson = isInstallationAvailable
+      ? (body.installExtraParts !== undefined
+          ? JSON.stringify(sanitizeExtraParts(body.installExtraParts))
+          : typeof body.installExtraPartsJson === "string"
+          ? JSON.stringify(sanitizeExtraParts(body.installExtraPartsJson))
+          : "[]")
       : "[]";
     let extraPartsSum = 0;
     try {
@@ -218,8 +230,9 @@ export async function POST(request: Request) {
         imageUrl: finalImageUrl,
         stockStatus,
         featured: Boolean(featured),
-        homeInstallationAvailable: Boolean(body.inHome_install !== undefined ? body.inHome_install : homeInstallationAvailable),
-        isInstallationIncluded: Boolean(body.price?.I_price?.includes !== undefined ? body.price?.I_price?.includes : isInstallationIncluded),
+        installationAvailable: isInstallationAvailable,
+        homeInstallationAvailable: isInstallationAvailable ? Boolean(body.inHome_install !== undefined ? body.inHome_install : homeInstallationAvailable) : false,
+        isInstallationIncluded: isInstallationAvailable ? Boolean(body.price?.I_price?.includes !== undefined ? body.price?.I_price?.includes : isInstallationIncluded) : false,
         brandName: brandArr[0] || brandName || "Bikeman Performance",
         requirements: requirements || null,
         reviews: typeof body.reviews === "string" ? body.reviews : "",

@@ -185,6 +185,7 @@ export async function GET() {
         distributorShippingUSD: p.distributorShippingUSD ?? jsonP?.distributorShippingUSD ?? 0,
         distributorTaxUSD: p.distributorTaxUSD ?? jsonP?.distributorTaxUSD ?? 0,
         dealerDiscountPercent: p.dealerDiscountPercent ?? 0,
+        installationAvailable: p.installationAvailable ?? true,
         livePricing,
         effectiveProfitCRC: livePricing.effectiveProfitCRC,
         hasProfitAlert: livePricing.hasProfitAlert,
@@ -270,6 +271,7 @@ export async function GET() {
       const availability = calculateComboAvailability(c.itemsJson, products);
       return {
         ...c,
+        installationAvailable: c.installationAvailable ?? true,
         descriptionEs: cleanDescriptionText(c.descriptionEs),
         descriptionEn: cleanDescriptionText(c.descriptionEn),
         installLabourCostCRC: c.installLabourCostCRC || (c.installationPriceCRC && !c.installProfitCRC && (!c.installExtraPartsJson || c.installExtraPartsJson === "[]") ? c.installationPriceCRC : 0),

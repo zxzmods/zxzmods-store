@@ -88,6 +88,8 @@ export interface ProductItem {
     count?: number;
   } | null;
   homeInstallation?: boolean; // qualifies for home installation
+  installationAvailable?: boolean; // false = no installation / delivery only
+  dealerDiscountPercent?: number;
   modelYearCompatibility?: ModelYearFitment[]; // Dedicated model & year compatibility list
   supplierUrl?: string | null;
   supplierPlatform?: string | null;

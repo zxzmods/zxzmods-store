@@ -135,6 +135,7 @@ interface Product {
   imageUrl: string;
   stockStatus: string;
   featured: boolean;
+  installationAvailable?: boolean;
   homeInstallationAvailable: boolean;
   isInstallationIncluded?: boolean;
   isArchived: boolean;
@@ -227,6 +228,7 @@ interface Combo {
   parametersJson?: string;
   imageUrl: string;
   featured: boolean;
+  installationAvailable?: boolean;
   homeInstallationAvailable: boolean;
   isArchived: boolean;
   suggestedProductIds?: string[];
@@ -3332,6 +3334,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
     warrantyCategory: "BOLT_ON_ELECTRICAL",
     stockStatus: "IN_STOCK_US",
     featured: true,
+    installationAvailable: true,
     inHome_install: true,
     homeInstallationAvailable: true,
     requirements: "",
@@ -3743,6 +3746,64 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
     });
   }, [getDealerBrandDiscount, liveExchangeRate, updateAutoSkuIfApplicable, updateLastUsedBrand]);
 
+  // Dynamically compute year span (from - to) across all selected vehicles based on registered model specs
+  const computeYearRangeForVehicles = useCallback((vehicleSlugs: string[]): { from: number; to: number } | null => {
+    if (!vehicleSlugs || vehicleSlugs.length === 0) return null;
+    const cleanSlugs = vehicleSlugs.map((s) => s.trim().toLowerCase()).filter((s) => s && s !== "all" && !s.includes("universal"));
+    if (cleanSlugs.length === 0) {
+      return { from: 2020, to: 2026 };
+    }
+
+    const collectedYears: number[] = [];
+
+    cleanSlugs.forEach((slug) => {
+      for (const b of (brands || [])) {
+        const m = (b.models || []).find((mod: any) => mod.slug?.toLowerCase() === slug);
+        if (m) {
+          if (Array.isArray(m.years)) {
+            m.years.forEach((y: any) => {
+              const num = Number(y);
+              if (num >= 1990 && num <= 2035) collectedYears.push(num);
+            });
+          }
+          if (m.yearsJson) {
+            try {
+              const parsed = JSON.parse(m.yearsJson);
+              if (Array.isArray(parsed)) {
+                parsed.forEach((y: any) => {
+                  const num = Number(y);
+                  if (num >= 1990 && num <= 2035) collectedYears.push(num);
+                });
+              }
+            } catch {}
+          }
+        }
+      }
+    });
+
+    if (collectedYears.length > 0) {
+      return {
+        from: Math.min(...collectedYears),
+        to: Math.max(...collectedYears),
+      };
+    }
+    return { from: 2022, to: 2026 };
+  }, [brands]);
+
+  // Synchronize vehicles, auto-sku and automatically compute year range
+  const updateVehiclesWithAutoYear = useCallback((newVehicles: string[]) => {
+    setSelectedVehicles(newVehicles);
+    updateAutoSkuIfApplicable(undefined, newVehicles);
+    const range = computeYearRangeForVehicles(newVehicles);
+    if (range) {
+      setProductForm((prev) => ({
+        ...prev,
+        yearFrom: range.from,
+        yearTo: range.to,
+      }));
+    }
+  }, [computeYearRangeForVehicles, updateAutoSkuIfApplicable]);
+
   // Toggle a vehicle family in/out of selectedVehicles (User Requirement)
   const handleToggleVehicleFamily = useCallback((familySlugs: string[]) => {
     if (!familySlugs || familySlugs.length === 0) return;
@@ -3760,17 +3821,15 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       updated = [...cleanCurrent, ...toAdd];
     }
 
-    setSelectedVehicles(updated);
-    updateAutoSkuIfApplicable(undefined, updated);
-  }, [selectedVehicles, updateAutoSkuIfApplicable]);
+    updateVehiclesWithAutoYear(updated);
+  }, [selectedVehicles, updateVehiclesWithAutoYear]);
 
   // Toggle universal fitment
   const handleToggleUniversal = useCallback(() => {
     const isUniversal = selectedVehicles.includes("all");
     const updated = isUniversal ? [] : ["all"];
-    setSelectedVehicles(updated);
-    updateAutoSkuIfApplicable(undefined, updated);
-  }, [selectedVehicles, updateAutoSkuIfApplicable]);
+    updateVehiclesWithAutoYear(updated);
+  }, [selectedVehicles, updateVehiclesWithAutoYear]);
 
   const handleForceGenerateSku = useCallback(() => {
     if (!productForm.brandName.trim()) {
@@ -4124,29 +4183,52 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
 
     // 7. Price hierarchy (P_price_D and S_price_D in USD, translated to Colones at liveExchangeRate when editing/saving)
     const activeRate = liveExchangeRate > 300 ? liveExchangeRate : 455.21;
-    const P_price_D = Number(prod.price?.P_price_D ?? prod.processingPriceD ?? 0);
+    const resolvedBrand = brandText || prod.brandName || (Array.isArray(prod.brand) ? prod.brand[0] : "");
+    const brandDiscount = getDealerBrandDiscount(resolvedBrand);
+    const rawDealerDiscount = prod.dealerDiscountPercent !== null && prod.dealerDiscountPercent !== undefined && (prod.dealerDiscountPercent as any) !== ""
+      ? Number(prod.dealerDiscountPercent)
+      : brandDiscount;
+    const effectiveDealerDiscount = rawDealerDiscount > 0 ? rawDealerDiscount : brandDiscount;
+
+    const rawSupUSD = prod.supplierLastPriceUSD !== null && prod.supplierLastPriceUSD !== undefined && (prod.supplierLastPriceUSD as any) !== ""
+      ? Number(prod.supplierLastPriceUSD)
+      : 0;
+
+    let P_price_D = Number(prod.price?.P_price_D ?? prod.processingPriceD ?? 0);
+    // If dealer discount is active and we have supplier USD price, ensure P_price_D reflects the dealer discount!
+    if (rawSupUSD > 0 && effectiveDealerDiscount > 0) {
+      const discountedCostUSD = Number((rawSupUSD * (1 - effectiveDealerDiscount / 100)).toFixed(2));
+      if (P_price_D <= 0 || Math.abs(P_price_D - rawSupUSD) < 0.05) {
+        P_price_D = discountedCostUSD;
+      }
+    }
     const rawSPriceCRC = Number(prod.price?.S_price ?? prod.shippingPriceCRC ?? 0);
     const S_price_D = resolveShippingUSD(prod.shippingPriceD ?? prod.price?.S_price_D, rawSPriceCRC);
     const P_price = P_price_D > 0 ? Math.round(P_price_D * activeRate) : (prod.price?.P_price ?? prod.processingPriceCRC ?? 0);
     const S_price = S_price_D > 0 ? Math.round(S_price_D * activeRate) : rawSPriceCRC;
-    const I_price_includes = prod.price?.I_price?.includes ?? prod.isInstallationIncluded ?? true;
+
+    // Delivery only / Installation availability
+    const isInstallationAvailable = prod.installationAvailable !== undefined ? Boolean(prod.installationAvailable) : true;
+    const I_price_includes = isInstallationAvailable ? (prod.price?.I_price?.includes ?? prod.isInstallationIncluded ?? true) : false;
 
     // Installation breakdown extraction
     let parsedExtraParts: InstallExtraPart[] = [];
-    if (Array.isArray(prod.installExtraParts)) {
-      parsedExtraParts = prod.installExtraParts;
-    } else if (prod.installExtraPartsJson) {
-      try {
-        const parsed = JSON.parse(prod.installExtraPartsJson);
-        if (Array.isArray(parsed)) parsedExtraParts = parsed;
-      } catch {}
+    if (isInstallationAvailable) {
+      if (Array.isArray(prod.installExtraParts)) {
+        parsedExtraParts = prod.installExtraParts;
+      } else if (prod.installExtraPartsJson) {
+        try {
+          const parsed = JSON.parse(prod.installExtraPartsJson);
+          if (Array.isArray(parsed)) parsedExtraParts = parsed;
+        } catch {}
+      }
     }
     const extraPartsSum = parsedExtraParts.reduce((s, pt) => s + (Number(pt.priceCRC) || 0), 0);
-    const rawIPrice = prod.price?.I_price?.I_price ?? prod.installationPriceCRC ?? 0;
-    const labourCost = prod.installLabourCostCRC ?? (rawIPrice > 0 && extraPartsSum === 0 ? rawIPrice : 0);
-    const installProfit = prod.installProfitCRC ?? 0;
-    const computedTotalInstall = labourCost + extraPartsSum + installProfit;
-    const I_price = computedTotalInstall > 0 ? computedTotalInstall : rawIPrice;
+    const rawIPrice = isInstallationAvailable ? (prod.price?.I_price?.I_price ?? prod.installationPriceCRC ?? 0) : 0;
+    const labourCost = isInstallationAvailable ? (prod.installLabourCostCRC ?? (rawIPrice > 0 && extraPartsSum === 0 ? rawIPrice : 0)) : 0;
+    const installProfit = isInstallationAvailable ? (prod.installProfitCRC ?? 0) : 0;
+    const computedTotalInstall = isInstallationAvailable ? (labourCost + extraPartsSum + installProfit) : 0;
+    const I_price = isInstallationAvailable ? (computedTotalInstall > 0 ? computedTotalInstall : rawIPrice) : 0;
     const profit = prod.price?.profit ?? prod.profitCRC ?? 0;
     const ivaPercent = (prod as any).ivaPercent ?? 13;
     const discountPercent = (prod as any).discountPercent || 0;
@@ -4229,8 +4311,9 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       warrantyCategory: prod.warrantyCategory || "BOLT_ON_ELECTRICAL",
       stockStatus: prod.stockStatus || "IN_STOCK_US",
       featured: prod.featured ?? true,
-      inHome_install: prod.inHome_install ?? prod.homeInstallation ?? prod.homeInstallationAvailable ?? true,
-      homeInstallationAvailable: prod.homeInstallationAvailable ?? true,
+      installationAvailable: isInstallationAvailable,
+      inHome_install: isInstallationAvailable ? (prod.inHome_install ?? prod.homeInstallation ?? prod.homeInstallationAvailable ?? true) : false,
+      homeInstallationAvailable: isInstallationAvailable ? (prod.homeInstallationAvailable ?? true) : false,
       requirements: prod.requirements || "",
       reviews: typeof prod.reviews === "string" ? prod.reviews : JSON.stringify(prod.reviews || ""),
       P_price_D,
@@ -4278,9 +4361,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       supplierLeadDaysMin: prod.supplierLeadDaysMin || 7,
       supplierLeadDaysMax: prod.supplierLeadDaysMax || 21,
       supplierLastPriceUSD: prod.supplierLastPriceUSD !== null && prod.supplierLastPriceUSD !== undefined ? prod.supplierLastPriceUSD : "",
-      dealerDiscountPercent: prod.dealerDiscountPercent !== null && prod.dealerDiscountPercent !== undefined
-        ? prod.dealerDiscountPercent
-        : getDealerBrandDiscount(prod.brandName || (Array.isArray(prod.brand) ? prod.brand[0] : "")),
+      dealerDiscountPercent: effectiveDealerDiscount,
       supplierStockCheckedAt: prod.supplierStockCheckedAt ? new Date(prod.supplierStockCheckedAt).toISOString() : "",
       parameters: (() => {
         if (Array.isArray(prod.parameters)) return prod.parameters;
@@ -4313,8 +4394,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
     setIsSkuManuallyEdited(false);
     refreshLiveExchangeRate();
     const defaultCat = categories.length > 0 ? categories[0].slug : "performance";
-    const defaultVehicle = registeredVehicleBrands[0]?.models?.[0]?.slug || "zforce-z10";
-    const initialCreateVehicles = [defaultVehicle];
+    const initialCreateVehicles: string[] = [];
     setSelectedVehicles(initialCreateVehicles);
 
     const createInitialForm = {
@@ -4333,6 +4413,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       warrantyCategory: "BOLT_ON_ELECTRICAL",
       stockStatus: "IN_STOCK_US",
       featured: false,
+      installationAvailable: true,
       inHome_install: false,
       homeInstallationAvailable: false,
       requirements: "",
@@ -4372,8 +4453,8 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       isInstallationIncluded: true,
       descriptionEs: "",
       descriptionEn: "",
-      yearFrom: 2022,
-      yearTo: 2026,
+      yearFrom: "" as number | string,
+      yearTo: "" as number | string,
       modelYearCompatibilityText: "",
       supplierUrl: "",
       supplierPlatform: "SHOPIFY",
@@ -4394,7 +4475,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
     setIsRelatedSearchDropdownOpen(false);
     setRequiredProductSearch("");
     setIsRequiredSearchDropdownOpen(false);
-    setInitialFormSnapshot(JSON.stringify({ ...createInitialForm, category: defaultCat, selectedVehicles: initialCreateVehicles }));
+    setInitialFormSnapshot(JSON.stringify({ ...createInitialForm, category: defaultCat, selectedVehicles: [] }));
     setIsEditingProductView(true);
     setFeedback(null);
   };
@@ -4732,6 +4813,8 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
     if (!productForm.p_title.trim() && !productForm.nameEs.trim()) missing.push("Título (p_title / Español)");
     if (!productForm.nameEn.trim()) missing.push("Nombre en Inglés");
     if (!productForm.brandName.trim()) missing.push("Marca (brand)");
+    const effectiveVehicles = selectedVehicles.map((v) => v.trim()).filter(Boolean);
+    if (effectiveVehicles.length === 0) missing.push(t.devVehiclesRequiredError || "Vehículos Compatibles (comp)");
     const effectiveCategories = (productForm.selectedCategories && productForm.selectedCategories.length > 0)
       ? productForm.selectedCategories
       : (productForm.category ? [productForm.category] : []);
@@ -4798,7 +4881,6 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       .filter(Boolean)
       .map(normalizeAudioUrl);
 
-    const effectiveVehicles = selectedVehicles.map((v) => v.trim()).filter(Boolean);
     const parsedComp = effectiveVehicles.length > 0 ? effectiveVehicles : ["all"];
 
     const primaryCategorySlug = effectiveCategories[0] || "performance";
@@ -4912,9 +4994,10 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       warrantyCategory: effectiveWarranty,
       stockStatus: effectiveStockStatus,
       featured: productForm.featured,
-      inHome_install: productForm.inHome_install,
-      homeInstallationAvailable: productForm.inHome_install,
-      homeInstallation: productForm.inHome_install,
+      installationAvailable: productForm.installationAvailable !== false,
+      inHome_install: productForm.installationAvailable !== false ? productForm.inHome_install : false,
+      homeInstallationAvailable: productForm.installationAvailable !== false ? productForm.inHome_install : false,
+      homeInstallation: productForm.installationAvailable !== false ? productForm.inHome_install : false,
       requirements: productForm.requirements.trim() || null,
       reviews: productForm.reviews.trim() || "",
       // Full price hierarchy:
@@ -4925,8 +5008,8 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
         S_price: Math.round(Number(productForm.S_price) || 0),
         lockedExchangeRate: liveExchangeRate,
         I_price: {
-          includes: Boolean(productForm.I_price_includes),
-          I_price: Math.round(Number(productForm.I_price) || 0),
+          includes: productForm.installationAvailable !== false ? Boolean(productForm.I_price_includes) : false,
+          I_price: productForm.installationAvailable !== false ? Math.round(Number(productForm.I_price) || 0) : 0,
         },
         profit: Math.round(Number(productForm.profit) || 0),
         iva: {
@@ -4955,13 +5038,13 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       priceCRC: finalTPrice,
       originalPriceCRC: finalOriginalPrice,
       discountPercent: Math.max(0, Math.min(100, Math.round(Number(productForm.discountPercent) || 0))),
-      installationPriceCRC: Math.round(Number(productForm.I_price) || 0),
-      installLabourCostCRC: Math.round(Number(productForm.installLabourCostCRC) || 0),
-      installProfitCRC: Math.round(Number(productForm.installProfitCRC) || 0),
-      installationDurationMinutes: Math.max(15, Math.round(Number(productForm.installationDurationMinutes) || 60)),
-      installExtraParts: sanitizeExtraParts(productForm.installExtraParts || []),
-      installExtraPartsJson: JSON.stringify(sanitizeExtraParts(productForm.installExtraParts || [])),
-      isInstallationIncluded: Boolean(productForm.I_price_includes),
+      installationPriceCRC: productForm.installationAvailable !== false ? Math.round(Number(productForm.I_price) || 0) : 0,
+      installLabourCostCRC: productForm.installationAvailable !== false ? Math.round(Number(productForm.installLabourCostCRC) || 0) : 0,
+      installProfitCRC: productForm.installationAvailable !== false ? Math.round(Number(productForm.installProfitCRC) || 0) : 0,
+      installationDurationMinutes: productForm.installationAvailable !== false ? Math.max(15, Math.round(Number(productForm.installationDurationMinutes) || 60)) : 0,
+      installExtraParts: productForm.installationAvailable !== false ? sanitizeExtraParts(productForm.installExtraParts || []) : [],
+      installExtraPartsJson: productForm.installationAvailable !== false ? JSON.stringify(sanitizeExtraParts(productForm.installExtraParts || [])) : "[]",
+      isInstallationIncluded: productForm.installationAvailable !== false ? Boolean(productForm.I_price_includes) : false,
       totalPriceD: productForm.T_price_D || "calculate in checkout with the selling value of dolar to colones",
       // Multimedia:
       imgs: orderedImgs,
@@ -8340,6 +8423,13 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                       </div>
                     </div>
 
+                    {selectedVehicles.length === 0 && (
+                      <div className="p-3 bg-amber-50/80 rounded-xl border border-dashed border-amber-300 flex items-center gap-2 text-xs text-amber-900 mb-2">
+                        <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                        <span>{t.devNoVehiclesSelectedPrompt || "Ningún vehículo seleccionado. Selecciona al menos un modelo o 'Universal'."}</span>
+                      </div>
+                    )}
+
                     <div className="space-y-2">
                       {selectedVehicles.map((vehicleSlug, index) => (
                         <div key={index} className="flex items-center gap-2 min-w-0">
@@ -8348,8 +8438,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                             onChange={(e) => {
                               const val = e.target.value;
                               const updated = selectedVehicles.map((v, i) => (i === index ? val : v));
-                              setSelectedVehicles(updated);
-                              updateAutoSkuIfApplicable(undefined, updated);
+                              updateVehiclesWithAutoYear(updated);
                             }}
                             className="flex-1 min-w-0 bg-slate-50 border border-red-200 rounded-xl p-2 text-xs font-semibold text-slate-900 focus:outline-none focus:border-red-500 truncate"
                           >
@@ -8393,8 +8482,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                             type="button"
                             onClick={() => {
                               const updated = selectedVehicles.filter((_, i) => i !== index);
-                              setSelectedVehicles(updated);
-                              updateAutoSkuIfApplicable(undefined, updated);
+                              updateVehiclesWithAutoYear(updated);
                             }}
                             className="p-2 rounded-xl border border-red-200 text-red-600 hover:bg-red-50 transition shrink-0"
                             title={t.devRemoveVehicle}
@@ -9328,51 +9416,184 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                   </div>
                 </div>
 
+                {/* Modalidad de Entrega e Instalación: Con Instalación vs Solo Entrega / Envío (Sin Instalación) */}
+                <div className="p-4 rounded-2xl bg-white border border-slate-200/90 shadow-2xs space-y-3">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                      <Truck className="w-4 h-4 text-[#C02030]" />
+                      <span>{t.devInstallationModeTitle || "Modalidad de Entrega e Instalación"}</span>
+                    </span>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                      productForm.installationAvailable !== false
+                        ? "bg-emerald-50 text-emerald-800 border-emerald-300"
+                        : "bg-sky-50 text-sky-800 border-sky-300"
+                    }`}>
+                      {productForm.installationAvailable !== false
+                        ? (lang === "es" ? "Instalación Habilitada" : "Installation Enabled")
+                        : (t.devDeliveryOnlyBadge || "Solo Entrega / Envío")}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {/* Option 1: Con Instalación */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProductForm((prev) => ({
+                          ...prev,
+                          installationAvailable: true,
+                        }));
+                      }}
+                      className={`p-3 rounded-xl border text-left transition flex items-start gap-2.5 cursor-pointer ${
+                        productForm.installationAvailable !== false
+                          ? "bg-emerald-50/70 border-emerald-400 ring-2 ring-emerald-500/20 shadow-xs"
+                          : "bg-slate-50 border-slate-200 hover:border-slate-300 hover:bg-white"
+                      }`}
+                    >
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                        productForm.installationAvailable !== false ? "bg-emerald-600 text-white" : "bg-slate-200 text-slate-600"
+                      }`}>
+                        <Wrench className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-xs font-bold text-slate-900">
+                          {t.devInstallationAvailableOption || "Instalación Disponible (Taller / Domicilio)"}
+                        </div>
+                        <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">
+                          {lang === "es"
+                            ? "Pieza mecánica, eléctrica o accesorio que requiere o admite montaje en taller o a domicilio."
+                            : "Mechanical/electrical part or accessory requiring or offering workshop/mobile fitting."}
+                        </p>
+                      </div>
+                    </button>
+
+                    {/* Option 2: Solo Entrega / Envío */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProductForm((prev) => {
+                          const ivaRate = prev.ivaPercent ?? 13;
+                          return {
+                            ...prev,
+                            installationAvailable: false,
+                            inHome_install: false,
+                            homeInstallationAvailable: false,
+                            isInstallationIncluded: false,
+                            I_price_includes: false,
+                            I_price: 0,
+                            installationPriceCRC: 0,
+                            installLabourCostCRC: 0,
+                            installProfitCRC: 0,
+                            installExtraParts: [],
+                            installationDurationMinutes: 0,
+                            ivaCRC: calculateIvaAmount(prev.P_price, prev.S_price, prev.profit, 0, false, prev.discountPercent, ivaRate),
+                            priceCRC: recalculateTPrice(prev.P_price, prev.S_price, prev.profit, 0, false, prev.discountPercent, ivaRate),
+                            T_price: recalculateTPrice(prev.P_price, prev.S_price, prev.profit, 0, false, prev.discountPercent, ivaRate),
+                          };
+                        });
+                      }}
+                      className={`p-3 rounded-xl border text-left transition flex items-start gap-2.5 cursor-pointer ${
+                        productForm.installationAvailable === false
+                          ? "bg-sky-50/80 border-sky-400 ring-2 ring-sky-500/20 shadow-xs"
+                          : "bg-slate-50 border-slate-200 hover:border-slate-300 hover:bg-white"
+                      }`}
+                    >
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                        productForm.installationAvailable === false ? "bg-sky-600 text-white" : "bg-slate-200 text-slate-600"
+                      }`}>
+                        <Truck className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-xs font-bold text-slate-900">
+                          {t.devDeliveryOnlyOption || "Solo Entrega / Envío (Sin Instalación)"}
+                        </div>
+                        <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">
+                          {t.devDeliveryOnlyHelp || "Para herramientas, consumibles o productos que no llevan instalación ni mano de obra."}
+                        </p>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
                 {/* I_price (Installation & Labor Breakdown - Editable by Staff & Master) */}
-                <InstallationBreakdownEditor
-                  labourCostCRC={productForm.installLabourCostCRC}
-                  extraParts={productForm.installExtraParts}
-                  profitCRC={productForm.installProfitCRC}
-                  totalCostCRC={productForm.I_price}
-                  durationMinutes={productForm.installationDurationMinutes}
-                  onDurationChange={(mins) => setProductForm((prev) => ({ ...prev, installationDurationMinutes: mins }))}
-                  lang={lang}
-                  t={t}
-                  showIncludeCheckbox={true}
-                  isIncluded={productForm.I_price_includes}
-                  suggestedExtraParts={availableExtraPartsSuggestions}
-                  onToggleInclude={(val) => {
-                    setProductForm((prev) => {
-                      const ivaRate = prev.ivaPercent ?? 13;
-                      return {
-                        ...prev,
-                        I_price_includes: val,
-                        isInstallationIncluded: val,
-                        ivaCRC: calculateIvaAmount(prev.P_price, prev.S_price, prev.profit, prev.I_price, val, prev.discountPercent, ivaRate),
-                        priceCRC: recalculateTPrice(prev.P_price, prev.S_price, prev.profit, prev.I_price, val, prev.discountPercent, ivaRate),
-                        T_price: recalculateTPrice(prev.P_price, prev.S_price, prev.profit, prev.I_price, val, prev.discountPercent, ivaRate),
-                      };
-                    });
-                  }}
-                  onChange={(labour, parts, profit) => {
-                    const partsTotal = (parts || []).reduce((sum, pt) => sum + (Number(pt.priceCRC) || 0), 0);
-                    const totalInstall = Math.max(0, labour) + Math.max(0, partsTotal) + Math.max(0, profit);
-                    setProductForm((prev) => {
-                      const ivaRate = prev.ivaPercent ?? 13;
-                      return {
-                        ...prev,
-                        installLabourCostCRC: labour,
-                        installExtraParts: parts,
-                        installProfitCRC: profit,
-                        I_price: totalInstall,
-                        installationPriceCRC: totalInstall,
-                        ivaCRC: calculateIvaAmount(prev.P_price, prev.S_price, prev.profit, totalInstall, prev.I_price_includes, prev.discountPercent, ivaRate),
-                        priceCRC: recalculateTPrice(prev.P_price, prev.S_price, prev.profit, totalInstall, prev.I_price_includes, prev.discountPercent, ivaRate),
-                        T_price: recalculateTPrice(prev.P_price, prev.S_price, prev.profit, totalInstall, prev.I_price_includes, prev.discountPercent, ivaRate),
-                      };
-                    });
-                  }}
-                />
+                {productForm.installationAvailable !== false ? (
+                  <InstallationBreakdownEditor
+                    labourCostCRC={productForm.installLabourCostCRC}
+                    extraParts={productForm.installExtraParts}
+                    profitCRC={productForm.installProfitCRC}
+                    totalCostCRC={productForm.I_price}
+                    durationMinutes={productForm.installationDurationMinutes}
+                    onDurationChange={(mins) => setProductForm((prev) => ({ ...prev, installationDurationMinutes: mins }))}
+                    lang={lang}
+                    t={t}
+                    showIncludeCheckbox={true}
+                    isIncluded={productForm.I_price_includes}
+                    suggestedExtraParts={availableExtraPartsSuggestions}
+                    onToggleInclude={(val) => {
+                      setProductForm((prev) => {
+                        const ivaRate = prev.ivaPercent ?? 13;
+                        return {
+                          ...prev,
+                          I_price_includes: val,
+                          isInstallationIncluded: val,
+                          ivaCRC: calculateIvaAmount(prev.P_price, prev.S_price, prev.profit, prev.I_price, val, prev.discountPercent, ivaRate),
+                          priceCRC: recalculateTPrice(prev.P_price, prev.S_price, prev.profit, prev.I_price, val, prev.discountPercent, ivaRate),
+                          T_price: recalculateTPrice(prev.P_price, prev.S_price, prev.profit, prev.I_price, val, prev.discountPercent, ivaRate),
+                        };
+                      });
+                    }}
+                    onChange={(labour, parts, profit) => {
+                      const partsTotal = (parts || []).reduce((sum, pt) => sum + (Number(pt.priceCRC) || 0), 0);
+                      const totalInstall = Math.max(0, labour) + Math.max(0, partsTotal) + Math.max(0, profit);
+                      setProductForm((prev) => {
+                        const ivaRate = prev.ivaPercent ?? 13;
+                        return {
+                          ...prev,
+                          installLabourCostCRC: labour,
+                          installExtraParts: parts,
+                          installProfitCRC: profit,
+                          I_price: totalInstall,
+                          installationPriceCRC: totalInstall,
+                          ivaCRC: calculateIvaAmount(prev.P_price, prev.S_price, prev.profit, totalInstall, prev.I_price_includes, prev.discountPercent, ivaRate),
+                          priceCRC: recalculateTPrice(prev.P_price, prev.S_price, prev.profit, totalInstall, prev.I_price_includes, prev.discountPercent, ivaRate),
+                          T_price: recalculateTPrice(prev.P_price, prev.S_price, prev.profit, totalInstall, prev.I_price_includes, prev.discountPercent, ivaRate),
+                        };
+                      });
+                    }}
+                  />
+                ) : (
+                  <div className="p-4 rounded-2xl bg-sky-50/70 border border-sky-200 flex items-center justify-between flex-wrap gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-sky-100 border border-sky-200 flex items-center justify-center text-sky-700 shrink-0">
+                        <Truck className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="text-xs font-extrabold text-sky-950 flex items-center gap-2">
+                          <span>{t.devDeliveryOnlyBadge || "Solo Entrega / Envío"}</span>
+                          <span className="text-[10px] font-mono font-bold bg-sky-100 text-sky-800 px-2 py-0.5 rounded-full border border-sky-300">
+                            I_price: ₡0
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-sky-900/80 mt-0.5">
+                          {t.devDeliveryOnlyNotice || "Este producto está configurado exclusivamente para entrega o envío a domicilio (sin costo de instalación ni mano de obra)."}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProductForm((prev) => ({
+                          ...prev,
+                          installationAvailable: true,
+                        }));
+                      }}
+                      className="px-3 py-1.5 rounded-xl bg-white border border-sky-300 hover:bg-sky-100 text-xs font-bold text-sky-800 transition cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                    >
+                      <Wrench className="w-3.5 h-3.5 text-sky-600" />
+                      <span>{lang === "es" ? "Habilitar Instalación" : "Enable Installation"}</span>
+                    </button>
+                  </div>
+                )}
 
                 {/* Product Percentage Discount Section (User Requirement: Percentage Only) */}
                 <div className="p-4 bg-purple-50/70 rounded-2xl border border-purple-200 space-y-3">
@@ -9640,10 +9861,15 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   {/* inHome_install */}
-                  <label className="flex items-center gap-2.5 p-2.5 rounded-xl bg-slate-50 border border-red-100 hover:border-red-300 cursor-pointer transition">
+                  <label className={`flex items-center gap-2.5 p-2.5 rounded-xl border transition ${
+                    productForm.installationAvailable === false
+                      ? "bg-slate-100/70 border-slate-200 opacity-60 cursor-not-allowed"
+                      : "bg-slate-50 border-red-100 hover:border-red-300 cursor-pointer"
+                  }`}>
                     <input
                       type="checkbox"
-                      checked={productForm.inHome_install}
+                      disabled={productForm.installationAvailable === false}
+                      checked={productForm.installationAvailable !== false && productForm.inHome_install}
                       onChange={(e) =>
                         setProductForm({
                           ...productForm,
@@ -9651,14 +9877,14 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                           homeInstallationAvailable: e.target.checked,
                         })
                       }
-                      className="w-4 h-4 rounded text-[#C02030] focus:ring-0 cursor-pointer"
+                      className="w-4 h-4 rounded text-[#C02030] focus:ring-0 cursor-pointer disabled:cursor-not-allowed"
                     />
                     <div className="text-left flex-1">
                       <span className="text-xs font-bold text-slate-900 block">
                         Instalación a Domicilio
                       </span>
                       <span className="text-[10px] text-slate-500 font-mono">
-                        inHome_install: {productForm.inHome_install ? "true" : "false"}
+                        inHome_install: {productForm.installationAvailable !== false && productForm.inHome_install ? "true" : "false"}
                       </span>
                     </div>
                   </label>

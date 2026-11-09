@@ -83,6 +83,7 @@ model Product {
   imageUrl             String
   stockStatus          String                 @default("IN_STOCK_US") // IN_STOCK_US, SPECIAL_ORDER, IN_STOCK_CR
   featured                  Boolean                @default(false)
+  installationAvailable     Boolean                @default(true) // false = no installation / delivery only
   homeInstallationAvailable Boolean                @default(true) // inHome_install
   isInstallationIncluded    Boolean                @default(true) // I_price.includes
   isArchived                Boolean                @default(false)
@@ -166,6 +167,7 @@ model Combo {
   imagesJson           String?  @default("[]")
   uniqueProductJson    String?  @default("{}")
   featured             Boolean  @default(true)
+  installationAvailable Boolean @default(true) // false = no installation / delivery only
   homeInstallationAvailable Boolean @default(true)
   isArchived           Boolean  @default(false)
   suggestedProductIdsJson String? @default("[]")
@@ -192,6 +194,7 @@ model PerformancePackage {
   includesDyno         Boolean  @default(false)
   includesWarranty     Boolean  @default(true)
   featured             Boolean  @default(true)
+  installationAvailable Boolean @default(true) // false = no installation / delivery only
   homeInstallationAvailable Boolean @default(true)
   createdAt            DateTime @default(now())
 }
