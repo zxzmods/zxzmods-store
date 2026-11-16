@@ -137,6 +137,10 @@ export interface ParameterOption {
   images?: string[];     // Multiple dedicated image URLs for this specific option/variant
   supplierUrl?: string;  // Dedicated supplier URL for this specific variant option (User Requirement 1)
   linkedProductId?: string; // ID, SKU or slug of the linked product for product linking (User Requirement 3)
+  addonProductId?: string;  // ID, SKU or slug of the registered product to add to cart together (DRT style cart add-on)
+  addonProductSlug?: string;
+  addonProductSku?: string;
+  addonProduct?: ProductItem; // Enriched full registered ProductItem for cart add-on
   isDefault?: boolean;
   isCurrentProduct?: boolean;
   connections?: ParameterOptionConnection[]; // Matrix connections to 2nd parameter options (expansion)
@@ -219,7 +223,7 @@ export interface ConfigurableParameter {
   id: string;
   nameEs: string;
   nameEn?: string;
-  type?: "color" | "button" | "select" | "product_linking" | "product_link";
+  type?: "color" | "button" | "select" | "product_linking" | "product_link" | "cart_addon";
   supplierUrl?: string;
   options: ParameterOption[];
 }

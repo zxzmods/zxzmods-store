@@ -357,9 +357,10 @@ export async function GET(request: Request) {
 
         for (const param of finalProduct.parameters) {
           const isLinkedParam =
-            (param as any).type === "product_linking" ||
-            (param as any).type === "product_link" ||
-            (param as any).options?.some((o: any) => Boolean(o.linkedProductId));
+            (param as any).type !== "cart_addon" &&
+            ((param as any).type === "product_linking" ||
+              (param as any).type === "product_link" ||
+              (param as any).options?.some((o: any) => Boolean(o.linkedProductId)));
 
           if (!isLinkedParam) continue;
 
@@ -531,6 +532,34 @@ export async function GET(request: Request) {
         include: { category: true, compatibilities: true },
       });
       const candidates = candidateRows.map((p) => dbProductToProductItem(p, null, isStaff));
+
+      // Enrich cart_addon parameter options with live registered product data from candidates
+      if (finalProduct.parameters && Array.isArray(finalProduct.parameters)) {
+        for (const param of finalProduct.parameters) {
+          if ((param as any).type === "cart_addon" && Array.isArray((param as any).options)) {
+            for (const opt of (param as any).options) {
+              const targetRef = String(opt.addonProductId || opt.addonProductSlug || opt.addonProductSku || "").trim().toLowerCase();
+              if (!targetRef) continue;
+              const matchedAddon = candidates.find(
+                (cp) =>
+                  cp.id.toLowerCase() === targetRef ||
+                  (cp.sku && cp.sku.toLowerCase() === targetRef) ||
+                  (cp.slug && cp.slug.toLowerCase() === targetRef)
+              );
+              if (matchedAddon) {
+                opt.addonProduct = matchedAddon;
+                opt.addonProductId = matchedAddon.id;
+                opt.addonProductSlug = matchedAddon.slug || matchedAddon.id;
+                opt.addonProductSku = matchedAddon.sku || matchedAddon.id;
+                opt.priceDeltaCRC = matchedAddon.price?.T_price || matchedAddon.priceCRC || opt.priceDeltaCRC || 0;
+                opt.imageUrl = matchedAddon.imageUrl || matchedAddon.imgs?.[0] || opt.imageUrl;
+                if (!opt.labelEs) opt.labelEs = matchedAddon.nameEs || matchedAddon.p_title;
+                if (!opt.labelEn) opt.labelEn = matchedAddon.nameEn || matchedAddon.p_title;
+              }
+            }
+          }
+        }
+      }
 
       finalProduct.relatedProducts = getRecommendedFillerProducts(
         finalProduct,

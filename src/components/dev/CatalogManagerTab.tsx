@@ -1372,6 +1372,8 @@ function ParametersEditorSection({
   const [uploadingOptId, setUploadingOptId] = useState<string | null>(null);
   const [urlInputByOpt, setUrlInputByOpt] = useState<Record<string, string>>({});
   const [isDualMatrixModalOpen, setIsDualMatrixModalOpen] = useState<boolean>(false);
+  const [addonSearchByParam, setAddonSearchByParam] = useState<Record<string, string>>({});
+  const [addonDropdownOpenByParam, setAddonDropdownOpenByParam] = useState<Record<string, boolean>>({});
 
   const POPULAR_COLORS = [
     { label: "Naranja", hex: "#EA580C" },
@@ -1641,6 +1643,73 @@ function ParametersEditorSection({
     onChange([...(parameters || []), linkParam]);
   };
 
+  const handleAddCartAddonPreset = () => {
+    const addonParam: ConfigurableParameter = {
+      id: `param-addon-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      nameEs: "Agregar Complementos al Carrito",
+      nameEn: "Add Complementary Products to Cart",
+      type: "cart_addon",
+      options: [],
+    };
+    onChange([...(parameters || []), addonParam]);
+  };
+
+  const handleAddRegisteredAddonProduct = (pIndex: number, targetProd: Product) => {
+    const updated = [...(parameters || [])];
+    const currentOpts = [...(updated[pIndex].options || [])];
+    const prodId = targetProd.id;
+    const prodSlug = targetProd.slug || targetProd.id;
+    const prodSku = targetProd.sku || targetProd.id;
+
+    // Prevent adding duplicate product into the same cart_addon parameter
+    if (
+      currentOpts.some(
+        (o) =>
+          o.addonProductId === prodId ||
+          o.addonProductId === prodSlug ||
+          o.addonProductId === prodSku
+      )
+    ) {
+      return;
+    }
+
+    const targetPrice = targetProd.price?.T_price || targetProd.priceCRC || 0;
+    const targetTitleEs = targetProd.nameEs || targetProd.p_title || "";
+    const targetTitleEn = targetProd.nameEn || targetTitleEs;
+    const targetImg =
+      (typeof targetProd.imageUrl === "string" && targetProd.imageUrl.trim() ? targetProd.imageUrl.trim() : "") ||
+      (Array.isArray(targetProd.imgs) && targetProd.imgs[0] && typeof targetProd.imgs[0] === "string" ? targetProd.imgs[0].trim() : "") ||
+      (() => {
+        if ((targetProd as any).imagesJson) {
+          try {
+            const parsed = JSON.parse((targetProd as any).imagesJson);
+            if (Array.isArray(parsed) && parsed[0]) return String(parsed[0]).trim();
+          } catch {}
+        }
+        return "";
+      })() ||
+      "";
+
+    const newOpt: ParameterOption = {
+      id: `opt-addon-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      labelEs: targetTitleEs,
+      labelEn: targetTitleEn,
+      priceDeltaCRC: targetPrice,
+      imageUrl: targetImg,
+      images: targetImg ? [targetImg] : [],
+      supplierUrl: targetProd.supplierUrl || "",
+      addonProductId: prodId,
+      addonProductSlug: prodSlug,
+      addonProductSku: prodSku,
+    };
+
+    updated[pIndex] = {
+      ...updated[pIndex],
+      options: [...currentOpts, newOpt],
+    };
+    onChange(updated);
+  };
+
   const handleRemoveParameter = (pIndex: number) => {
     const updated = (parameters || []).filter((_, idx) => idx !== pIndex);
     onChange(updated);
@@ -1831,6 +1900,15 @@ function ParametersEditorSection({
           </button>
           <button
             type="button"
+            onClick={handleAddCartAddonPreset}
+            className="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-bold transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
+            title="Agregar productos ya registrados para añadirlos juntos al carrito con botón toggle"
+          >
+            <Plus className="w-3.5 h-3.5 text-emerald-600" />
+            <span>{t.devAddCartAddonPresetBtn || "+ Agregar al Carrito Junto (Complementos)"}</span>
+          </button>
+          <button
+            type="button"
             onClick={handleAddColorPreset}
             className="px-3 py-1.5 rounded-xl bg-orange-50 hover:bg-orange-100 text-[#EA580C] border border-orange-200 text-xs font-bold transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
             title="Agrega rápidamente la opción de colores Naranja, Negro y Azul con botones visuales"
@@ -1868,6 +1946,14 @@ function ParametersEditorSection({
             >
               <Link2 className="w-3.5 h-3.5 text-blue-600" />
               <span>{t.devAddProductLinkingPresetBtn || "+ Vincular Productos (Amazon)"}</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleAddCartAddonPreset}
+              className="px-3 py-1.5 rounded-xl bg-white border border-emerald-300 text-emerald-700 text-xs font-bold hover:bg-emerald-50 flex items-center gap-1.5 shadow-2xs cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5 text-emerald-600" />
+              <span>{t.devAddCartAddonPresetBtn || "+ Agregar al Carrito Junto (Complementos)"}</span>
             </button>
             <button
               type="button"
@@ -1910,12 +1996,53 @@ function ParametersEditorSection({
           {safeParams.map((param, pIdx) => {
             const isProductLinking =
               param.type === "product_linking" || param.type === "product_link";
+            const isCartAddon = param.type === "cart_addon";
+            const addonQuery = (addonSearchByParam[param.id] || "").trim().toLowerCase();
+            const isAddonDropdownOpen = Boolean(addonDropdownOpenByParam[param.id]);
+
+            // Filter registered products for cart_addon autocomplete
+            const addedProdRefs = new Set(
+              (param.options || [])
+                .map((o) => String(o.addonProductId || o.addonProductSlug || o.addonProductSku || "").toLowerCase())
+                .filter(Boolean)
+            );
+            const curSkuNorm = (currentProductSku || "").toLowerCase().trim();
+            const curNameNorm = (currentProductName || "").toLowerCase().trim();
+
+            const matchingAddonProducts = isCartAddon
+              ? availableProducts
+                  .filter((p) => {
+                    const pId = (p.id || "").toLowerCase();
+                    const pSku = (p.sku || "").toLowerCase();
+                    const pSlug = (p.slug || "").toLowerCase();
+                    if (addedProdRefs.has(pId) || (pSku && addedProdRefs.has(pSku)) || (pSlug && addedProdRefs.has(pSlug))) {
+                      return false;
+                    }
+                    if (curSkuNorm && pSku === curSkuNorm) return false;
+                    const pTitleEs = (p.nameEs || p.p_title || "").toLowerCase();
+                    const pTitleEn = (p.nameEn || "").toLowerCase();
+                    if (curNameNorm && pTitleEs === curNameNorm) return false;
+                    if (!addonQuery) return true;
+                    return (
+                      pTitleEs.includes(addonQuery) ||
+                      pTitleEn.includes(addonQuery) ||
+                      pSku.includes(addonQuery) ||
+                      pSlug.includes(addonQuery) ||
+                      (p.brandName && p.brandName.toLowerCase().includes(addonQuery))
+                    );
+                  })
+                  .slice(0, 12)
+              : [];
 
             return (
               <div
                 key={param.id || pIdx}
                 className={`p-4 rounded-2xl bg-slate-50 border space-y-3 ${
-                  isProductLinking ? "border-blue-300 ring-1 ring-blue-100" : "border-slate-200"
+                  isProductLinking
+                    ? "border-blue-300 ring-1 ring-blue-100"
+                    : isCartAddon
+                    ? "border-emerald-300 ring-1 ring-emerald-100"
+                    : "border-slate-200"
                 }`}
               >
                 <div className="flex items-center justify-between gap-3">
@@ -1928,7 +2055,7 @@ function ParametersEditorSection({
                         type="text"
                         value={param.nameEs}
                         onChange={(e) => handleUpdateParameter(pIdx, "nameEs", e.target.value)}
-                        placeholder="ej: Color, Edición o Kit"
+                        placeholder={isCartAddon ? "ej: Agregar Complementos al Carrito" : "ej: Color, Edición o Kit"}
                         className="w-full bg-white border border-slate-200 rounded-xl p-2 text-xs font-bold text-slate-900 focus:outline-none focus:border-red-500"
                       />
                     </div>
@@ -1940,7 +2067,7 @@ function ParametersEditorSection({
                         type="text"
                         value={param.nameEn || ""}
                         onChange={(e) => handleUpdateParameter(pIdx, "nameEn", e.target.value)}
-                        placeholder="e.g. Color, Edition or Kit"
+                        placeholder={isCartAddon ? "e.g. Add Complementary Products to Cart" : "e.g. Color, Edition or Kit"}
                         className="w-full bg-white border border-slate-200 rounded-xl p-2 text-xs text-slate-900 focus:outline-none focus:border-red-500"
                       />
                     </div>
@@ -1996,6 +2123,18 @@ function ParametersEditorSection({
                       <Link2 className="w-2.5 h-2.5" />
                       {t.devParamTypeProductLinking || "Vinculación de Productos (Estilo Amazon)"}
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => handleUpdateParameter(pIdx, "type", "cart_addon")}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition flex items-center gap-1 cursor-pointer border ${
+                        isCartAddon
+                          ? "bg-emerald-600 text-white border-emerald-600 shadow-2xs"
+                          : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                      }`}
+                    >
+                      <Plus className="w-2.5 h-2.5" />
+                      {t.devParamTypeCartAddon || "Agregar al Carrito Junto (Complementos)"}
+                    </button>
                   </div>
                 </div>
 
@@ -2013,7 +2152,224 @@ function ParametersEditorSection({
                   </div>
                 )}
 
+                {isCartAddon && (
+                  <div className="p-2.5 rounded-xl bg-emerald-50/90 border border-emerald-200 text-[11px] text-emerald-950 flex items-start gap-2">
+                    <Package className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-bold block">
+                        {t.devParamTypeCartAddon || "Agregar al Carrito Junto (Complementos)"}
+                      </span>
+                      <span className="text-emerald-800">
+                        {t.devCartAddonDesc || "Agrega productos ya registrados para que el cliente pueda activarlos con un botón toggle y añadirlos juntos al carrito. Exclusivo de este producto (no se transfiere por vinculación; se mantiene al cambiar colores u opciones locales)."}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
                 {/* Options List */}
+                {isCartAddon ? (
+                  <div className="pl-3 border-l-2 border-emerald-400 space-y-3 mt-2">
+                    {/* Type-to-Search Registered Product Input */}
+                    <div className="relative space-y-1.5">
+                      <label className="text-[11px] font-bold text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
+                        <Search className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Buscar Producto Registrado para Agregar:</span>
+                      </label>
+                      <div className="relative">
+                        <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                        <input
+                          type="text"
+                          value={addonSearchByParam[param.id] || ""}
+                          onFocus={() =>
+                            setAddonDropdownOpenByParam((prev) => ({ ...prev, [param.id]: true }))
+                          }
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setAddonSearchByParam((prev) => ({ ...prev, [param.id]: val }));
+                            setAddonDropdownOpenByParam((prev) => ({ ...prev, [param.id]: true }));
+                          }}
+                          placeholder={t.devCartAddonSearchPlaceholder || "Escribe el nombre o SKU de un producto registrado para agregar..."}
+                          className="w-full pl-9 pr-8 py-2.5 bg-white border border-emerald-300 rounded-xl text-xs font-semibold text-slate-900 focus:outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/15 shadow-2xs"
+                        />
+                        {addonSearchByParam[param.id] && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setAddonSearchByParam((prev) => ({ ...prev, [param.id]: "" }))
+                            }
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Autocomplete Dropdown of Matching Registered Products */}
+                      {(isAddonDropdownOpen || Boolean(addonQuery)) && (
+                        <div className="bg-white border border-emerald-200 rounded-2xl shadow-lg max-h-60 overflow-y-auto divide-y divide-slate-100 z-20">
+                          <div className="px-3 py-1.5 bg-slate-50 flex items-center justify-between text-[10px] font-bold text-slate-500">
+                            <span>Productos registrados ({matchingAddonProducts.length} encontrados)</span>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setAddonDropdownOpenByParam((prev) => ({ ...prev, [param.id]: false }))
+                              }
+                              className="text-slate-400 hover:text-slate-700 cursor-pointer"
+                            >
+                              Cerrar ✕
+                            </button>
+                          </div>
+                          {matchingAddonProducts.length === 0 ? (
+                            <div className="p-3 text-center text-xs text-slate-400 italic">
+                              No se encontraron productos registrados con ese nombre o SKU.
+                            </div>
+                          ) : (
+                            matchingAddonProducts.map((prod) => {
+                              const pPrice = prod.price?.T_price || prod.priceCRC || 0;
+                              const pTitle = prod.nameEs || prod.p_title || prod.sku;
+                              const pThumb =
+                                prod.imageUrl ||
+                                (Array.isArray(prod.imgs) && prod.imgs[0] ? prod.imgs[0] : "") ||
+                                "/images/logo.png";
+
+                              return (
+                                <button
+                                  key={prod.id}
+                                  type="button"
+                                  onClick={() => {
+                                    handleAddRegisteredAddonProduct(pIdx, prod);
+                                    setAddonSearchByParam((prev) => ({ ...prev, [param.id]: "" }));
+                                    setAddonDropdownOpenByParam((prev) => ({ ...prev, [param.id]: false }));
+                                  }}
+                                  className="w-full px-3 py-2 hover:bg-emerald-50/80 flex items-center justify-between gap-2.5 text-left transition cursor-pointer group"
+                                >
+                                  <div className="flex items-center gap-2.5 min-w-0">
+                                    <img
+                                      src={pThumb}
+                                      alt={pTitle}
+                                      className="w-9 h-9 rounded-lg border border-slate-200 bg-white object-contain p-0.5 shrink-0"
+                                    />
+                                    <div className="min-w-0">
+                                      <span className="text-xs font-bold text-slate-900 group-hover:text-emerald-800 truncate block">
+                                        {pTitle}
+                                      </span>
+                                      <span className="text-[10px] font-mono text-slate-500">
+                                        SKU: {prod.sku || prod.id} · <strong className="text-emerald-700">{formatCRC(pPrice)}</strong>
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <span className="px-2.5 py-1 rounded-lg bg-emerald-600 group-hover:bg-emerald-700 text-white text-[10px] font-bold shrink-0 flex items-center gap-1 shadow-2xs">
+                                    <Plus className="w-3 h-3" />
+                                    <span>Agregar</span>
+                                  </span>
+                                </button>
+                              );
+                            })
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Added Registered Products List */}
+                    {(param.options || []).length === 0 ? (
+                      <div className="p-3.5 rounded-xl border border-dashed border-emerald-300 bg-white/80 text-center text-xs text-slate-500">
+                        {t.devCartAddonEmptyNotice || "Busca y selecciona arriba los productos registrados que se podrán agregar junto con este producto."}
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider block">
+                          Productos registrados vinculados para agregar al carrito ({(param.options || []).length}):
+                        </span>
+                        {(param.options || []).map((opt, oIdx) => {
+                          const linkedProd = availableProducts.find(
+                            (p) =>
+                              p.id === opt.addonProductId ||
+                              p.slug === opt.addonProductId ||
+                              p.sku === opt.addonProductId
+                          );
+                          const livePrice = linkedProd
+                            ? (linkedProd.price?.T_price || linkedProd.priceCRC || opt.priceDeltaCRC || 0)
+                            : (opt.priceDeltaCRC || 0);
+                          const thumbUrl =
+                            opt.imageUrl ||
+                            linkedProd?.imageUrl ||
+                            (Array.isArray(linkedProd?.imgs) && linkedProd.imgs[0] ? linkedProd.imgs[0] : "") ||
+                            "/images/logo.png";
+
+                          return (
+                            <div
+                              key={opt.id || oIdx}
+                              className="p-3 rounded-2xl bg-white border border-emerald-200 shadow-2xs space-y-2"
+                            >
+                              <div className="flex items-center justify-between gap-2.5">
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  <img
+                                    src={thumbUrl}
+                                    alt={opt.labelEs}
+                                    className="w-11 h-11 rounded-xl border border-slate-200 bg-slate-50 object-contain p-1 shrink-0"
+                                  />
+                                  <div className="min-w-0">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-mono text-[9px] font-bold">
+                                        Producto Registrado: #{opt.addonProductSku || linkedProd?.sku || opt.addonProductId}
+                                      </span>
+                                      <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-800 font-mono text-[10px] font-extrabold">
+                                        +{formatCRC(livePrice)}
+                                      </span>
+                                    </div>
+                                    <span className="text-xs font-bold text-slate-900 truncate block mt-0.5">
+                                      {linkedProd ? (linkedProd.nameEs || linkedProd.p_title) : opt.labelEs}
+                                    </span>
+                                  </div>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveOption(pIdx, oIdx)}
+                                  className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition shrink-0 cursor-pointer"
+                                  title={t.devRemoveOptionBtn}
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+
+                              {/* Optional Custom Display Label */}
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1.5 border-t border-slate-100">
+                                <div>
+                                  <label className="text-[9px] font-bold text-slate-500 block mb-0.5">
+                                    Texto del botón / etiqueta (ES):
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={opt.labelEs}
+                                    onChange={(e) =>
+                                      handleUpdateOption(pIdx, oIdx, "labelEs", e.target.value)
+                                    }
+                                    placeholder="ej: Agregar Fairlead DRT Billet"
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-1.5 text-xs font-semibold text-slate-900 focus:outline-none focus:border-emerald-600"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="text-[9px] font-bold text-slate-500 block mb-0.5">
+                                    Texto del botón / etiqueta (EN):
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={opt.labelEn || ""}
+                                    onChange={(e) =>
+                                      handleUpdateOption(pIdx, oIdx, "labelEn", e.target.value)
+                                    }
+                                    placeholder="e.g. Add DRT Billet Fairlead"
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-1.5 text-xs text-slate-900 focus:outline-none focus:border-emerald-600"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                ) : (
                 <div className={`pl-3 border-l-2 space-y-2.5 mt-2 ${isProductLinking ? "border-blue-400" : "border-red-300"}`}>
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wide">
@@ -2537,6 +2893,7 @@ function ParametersEditorSection({
                     <span>{t.devAddOptionBtn}</span>
                   </button>
                 </div>
+                )}
               </div>
             );
           })}

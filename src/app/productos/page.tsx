@@ -153,8 +153,10 @@ function ProductCatalogCard({
 }) {
   const selectedParametersList: SelectedParameterItem[] = useMemo(() => {
     if (!product.parameters || product.parameters.length === 0) return [];
-    return product.parameters.map((param) => {
-      const isLinked = (param as any).type === "product_linking" || (param as any).type === "product_link";
+    return product.parameters
+      .filter((param) => (param as any).type !== "cart_addon")
+      .map((param) => {
+        const isLinked = (param as any).type === "product_linking" || (param as any).type === "product_link";
       const matchingLinkedOption = isLinked
         ? param.options?.find(
             (o: any) =>

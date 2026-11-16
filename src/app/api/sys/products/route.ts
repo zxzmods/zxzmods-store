@@ -427,7 +427,7 @@ export async function POST(request: Request) {
       }
 
       for (const p of paramsArr) {
-        const isPLink = p.type === "product_linking" || p.type === "product_link" || p.options?.some((o: any) => Boolean(o.linkedProductId));
+        const isPLink = p.type !== "cart_addon" && (p.type === "product_linking" || p.type === "product_link" || p.options?.some((o: any) => Boolean(o.linkedProductId)));
         if (!isPLink || !Array.isArray(p.options)) continue;
 
         const thisProductOpt = p.options.find((o: any) => {

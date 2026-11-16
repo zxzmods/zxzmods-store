@@ -1089,6 +1089,15 @@ export interface Translations {
   devLinkedProductBadge: string;
   devLinkedProductDesc: string;
   productLinkedUpgradesTitle: string;
+  devAddCartAddonPresetBtn: string;
+  devParamTypeCartAddon: string;
+  devCartAddonDesc: string;
+  devCartAddonSearchPlaceholder: string;
+  devCartAddonEmptyNotice: string;
+  productCartAddonSectionTitle: string;
+  productCartAddonToggleOff: string;
+  productCartAddonToggleOn: string;
+  productCartAddonSelectedSummary: string;
 
   // Pick-up, Delivery & Home Installation
   servicesTitle: string;
@@ -2994,6 +3003,15 @@ export const translations: Record<Language, Translations> = {
     devLinkedProductBadge: "Producto Vinculado",
     devLinkedProductDesc: "Cambia imágenes, precio y especificaciones sin salir de la pantalla.",
     productLinkedUpgradesTitle: "Edición / Versión del Producto:",
+    devAddCartAddonPresetBtn: "+ Agregar al Carrito Junto (Complementos)",
+    devParamTypeCartAddon: "Agregar al Carrito Junto (Complementos)",
+    devCartAddonDesc: "Agrega productos ya registrados para que el cliente pueda activarlos con un botón toggle y añadirlos juntos al carrito. Exclusivo de este producto (no se transfiere por vinculación; se mantiene al cambiar colores u opciones locales).",
+    devCartAddonSearchPlaceholder: "Escribe el nombre o SKU de un producto registrado para agregar...",
+    devCartAddonEmptyNotice: "Busca y selecciona arriba los productos registrados que se podrán agregar junto con este producto.",
+    productCartAddonSectionTitle: "Agregar Complementos al Carrito",
+    productCartAddonToggleOff: "Agregar",
+    productCartAddonToggleOn: "Agregado",
+    productCartAddonSelectedSummary: "complemento(s) para agregar junto al carrito",
     devComboIncludedProducts: "Productos Incluidos en el Combo",
     devComboSearchProductPlaceholder: "Buscar producto del catálogo para agregar al combo...",
     devComboAddProduct: "Agregar al Combo",
@@ -5028,6 +5046,15 @@ export const translations: Record<Language, Translations> = {
     devLinkedProductBadge: "Linked Product",
     devLinkedProductDesc: "Swaps images, pricing, and specs seamlessly on this screen.",
     productLinkedUpgradesTitle: "Product Edition / Version:",
+    devAddCartAddonPresetBtn: "+ Add Together to Cart (Add-ons)",
+    devParamTypeCartAddon: "Add Together to Cart (Add-ons)",
+    devCartAddonDesc: "Attach already registered products so customers can toggle them on and add them together to the cart. Exclusive to this product (not carried over by product linking; stays active when changing colors or local options).",
+    devCartAddonSearchPlaceholder: "Type the name or SKU of a registered product to add...",
+    devCartAddonEmptyNotice: "Search and select registered products above that can be added together with this product.",
+    productCartAddonSectionTitle: "Add Complementary Products to Cart",
+    productCartAddonToggleOff: "Add",
+    productCartAddonToggleOn: "Added",
+    productCartAddonSelectedSummary: "add-on(s) to add together to cart",
     devComboIncludedProducts: "Products Included in Combo",
     devComboSearchProductPlaceholder: "Search catalog product to add to combo...",
     devComboAddProduct: "Add to Combo",

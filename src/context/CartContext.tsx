@@ -48,7 +48,7 @@ export interface LiveExchangeRate {
 
 interface CartContextType {
   items: CartItem[];
-  addItem: (item: Omit<CartItem, "quantity">) => void;
+  addItem: (item: Omit<CartItem, "quantity">, addons?: Omit<CartItem, "quantity">[]) => void;
   removeItem: (id: string) => void;
   toggleInstallation: (id: string) => void;
   updateQuantity: (id: string, qty: number) => void;
@@ -543,12 +543,18 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const addItem = (item: Omit<CartItem, "quantity">) => {
+  const addItem = (item: Omit<CartItem, "quantity">, addons?: Omit<CartItem, "quantity">[]) => {
+    const executeAdd = () => {
+      performAddItem(item, true);
+      if (Array.isArray(addons) && addons.length > 0) {
+        addons.forEach((addon) => performAddItem(addon, false));
+      }
+    };
     if (!user) {
-      requireAuth(() => performAddItem(item, true), t.authGatingCartReason);
+      requireAuth(executeAdd, t.authGatingCartReason);
       return;
     }
-    performAddItem(item, true);
+    executeAdd();
   };
 
   const addItemSilently = (item: Omit<CartItem, "quantity">) => {

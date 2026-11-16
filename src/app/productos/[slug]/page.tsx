@@ -381,8 +381,17 @@ export default function ProductDetailPage() {
 
   // Selected Configurable Parameters State (parameterId -> optionId)
   const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>({});
+  // Toggled Cart Add-on Option IDs (attached to this specific product; cleared on product linking switch, kept on local parameter changes)
+  const [selectedAddonIds, setSelectedAddonIds] = useState<Record<string, boolean>>({});
   const [switchingLinkedProduct, setSwitchingLinkedProduct] = useState(false);
   const [switchingTargetId, setSwitchingTargetId] = useState<string | null>(null);
+
+  const toggleCartAddonOption = (optId: string) => {
+    setSelectedAddonIds((prev) => ({
+      ...prev,
+      [optId]: !prev[optId],
+    }));
+  };
 
   const isCurrentProductOpt = (opt: any, currentProduct: ProductItem | null): boolean => {
     if (!opt || !currentProduct) return false;
@@ -431,9 +440,10 @@ export default function ProductDetailPage() {
     opt: any
   ) => {
     const isProductLinking =
-      param.type === "product_linking" ||
-      param.type === "product_link" ||
-      Boolean(opt.linkedProductId);
+      param.type !== "cart_addon" &&
+      (param.type === "product_linking" ||
+        param.type === "product_link" ||
+        Boolean(opt.linkedProductId));
 
     // If this option is linked to another product:
     if (isProductLinking && opt.linkedProductId) {
@@ -453,6 +463,8 @@ export default function ProductDetailPage() {
           const nextProd: ProductItem = data.product;
           setProduct(nextProd);
           setActiveImageIndex(0);
+          // Cart add-ons are strictly attached to each specific product and do NOT carry over across product linking
+          setSelectedAddonIds({});
 
           // Update URL in browser silently without full page refresh (Amazon style)
           const nextSlug = nextProd.slug || nextProd.sku || nextProd.id;
@@ -464,6 +476,7 @@ export default function ProductDetailPage() {
           const nextOpts: Record<string, string> = {};
           if (nextProd.parameters && Array.isArray(nextProd.parameters)) {
             nextProd.parameters.forEach((p: any) => {
+              if (p.type === "cart_addon") return;
               const isPLinked =
                 p.type === "product_linking" ||
                 p.type === "product_link" ||
@@ -499,7 +512,7 @@ export default function ProductDetailPage() {
       return;
     }
 
-    // Normal option selection
+    // Normal option selection (e.g. color, button, dual matrix): selectedAddonIds stays active!
     setSelectedOptions((prev) => ({
       ...prev,
       [param.id]: opt.id,
@@ -514,6 +527,7 @@ export default function ProductDetailPage() {
   useEffect(() => {
     if (!slug) return;
     setLoading(true);
+    setSelectedAddonIds({});
 
     fetch(`/api/products?slug=${encodeURIComponent(slug)}`)
       .then((res) => res.json())
@@ -528,6 +542,7 @@ export default function ProductDetailPage() {
           if (data.product.parameters && Array.isArray(data.product.parameters)) {
             const initialOpts: Record<string, string> = {};
             data.product.parameters.forEach((param: any) => {
+              if (param.type === "cart_addon") return;
               if (param.options && param.options.length > 0) {
                 const isLinked =
                   param.type === "product_linking" ||
@@ -719,11 +734,41 @@ export default function ProductDetailPage() {
     };
   }, [isLightboxOpen]);
 
-  // Dynamic Calculation of Parameters & Price Delta
+  // Separate standard variant parameters from cart_addon parameters
+  const standardParameters = useMemo(() => {
+    return (product?.parameters || []).filter((p) => p.type !== "cart_addon");
+  }, [product?.parameters]);
+
+  const cartAddonParameters = useMemo(() => {
+    return (product?.parameters || []).filter(
+      (p) => p.type === "cart_addon" && Array.isArray(p.options) && p.options.length > 0
+    );
+  }, [product?.parameters]);
+
+  const selectedAddonOptions = useMemo(() => {
+    const list: ParameterOption[] = [];
+    cartAddonParameters.forEach((param) => {
+      (param.options || []).forEach((opt) => {
+        if (selectedAddonIds[opt.id]) {
+          list.push(opt);
+        }
+      });
+    });
+    return list;
+  }, [cartAddonParameters, selectedAddonIds]);
+
+  const totalAddonsPriceCRC = useMemo(() => {
+    return selectedAddonOptions.reduce((sum, opt) => {
+      const pPrice = opt.addonProduct?.price?.T_price || opt.addonProduct?.priceCRC || opt.priceDeltaCRC || 0;
+      return sum + pPrice;
+    }, 0);
+  }, [selectedAddonOptions]);
+
+  // Dynamic Calculation of Parameters & Price Delta (strictly for standardParameters)
   const selectedParametersList: SelectedParameterItem[] = useMemo(() => {
-    if (!product?.parameters || product.parameters.length === 0) return [];
+    if (standardParameters.length === 0) return [];
     const list: SelectedParameterItem[] = [];
-    product.parameters.forEach((param) => {
+    standardParameters.forEach((param) => {
       const isLinkedParam =
         param.type === "product_linking" ||
         param.type === "product_link" ||
@@ -753,12 +798,12 @@ export default function ProductDetailPage() {
       }
     });
     return list;
-  }, [product, selectedOptions, lang]);
+  }, [product, standardParameters, selectedOptions, lang]);
 
   // Dual parameter matrix resolution (Param 1 x Param 2 expansion)
   const dualResolution = useMemo(() => {
-    return resolveDualParameterConnection(product?.parameters, selectedOptions);
-  }, [product?.parameters, selectedOptions]);
+    return resolveDualParameterConnection(standardParameters, selectedOptions);
+  }, [standardParameters, selectedOptions]);
 
   // Complete image gallery (selected parameter variant images first, then base product images)
   const allImages = useMemo(() => {
@@ -815,11 +860,11 @@ export default function ProductDetailPage() {
   }, [selectedImageOverride, allImages, activeImageIndex]);
 
   const totalDeltaCRC = useMemo(() => {
-    if (product?.parameters && product.parameters.length >= 2 && dualResolution.connection) {
+    if (standardParameters.length >= 2 && dualResolution.connection) {
       return dualResolution.effectivePriceDeltaCRC;
     }
     return selectedParametersList.reduce((acc, p) => acc + (p.priceDeltaCRC || 0), 0);
-  }, [selectedParametersList, product?.parameters, dualResolution]);
+  }, [selectedParametersList, standardParameters, dualResolution]);
 
   const effectivePriceCRC = (product?.price?.T_price || 0) + totalDeltaCRC;
 
@@ -878,6 +923,70 @@ export default function ProductDetailPage() {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
+  const buildAddonCartItems = useCallback(() => {
+    if (!product || selectedAddonOptions.length === 0) return [];
+    return selectedAddonOptions
+      .map((opt) => {
+        const addonProd = opt.addonProduct;
+        const prodId = addonProd?.id || opt.addonProductId;
+        if (!prodId) return null;
+        const addonDeliveryOnly =
+          addonProd?.installationAvailable === false ||
+          (addonProd as any)?.installationAvailable === false;
+        const addonIsIncluded =
+          !addonDeliveryOnly &&
+          Boolean(
+            addonProd?.price?.I_price?.includes ||
+              (addonProd as any)?.isInstallationIncluded
+          );
+        const addonPriceCRC =
+          addonProd?.price?.T_price ||
+          addonProd?.priceCRC ||
+          opt.priceDeltaCRC ||
+          0;
+        const addonBaseUSD = Number(
+          addonProd?.price?.P_price_D || addonProd?.supplierLastPriceUSD || 0
+        );
+        const addonImg =
+          addonProd?.imageUrl ||
+          addonProd?.imgs?.[0] ||
+          opt.imageUrl ||
+          "/images/logo.png";
+
+        return {
+          type: "PRODUCT" as const,
+          id: prodId,
+          sku: (addonProd?.sku || opt.addonProductSku || prodId).toUpperCase(),
+          title: addonProd?.p_title || opt.labelEs || "Complemento",
+          brand: addonProd?.brand?.[0] || product.brand?.[0] || "ZxZ Mods",
+          comp: addonProd?.comp || product.comp,
+          priceCRC: addonPriceCRC,
+          basePriceCRC: addonPriceCRC,
+          basePriceUSD: addonBaseUSD,
+          supplierUrl: addonProd?.supplierUrl || opt.supplierUrl || null,
+          installationPriceCRC: addonDeliveryOnly
+            ? 0
+            : addonIsIncluded
+            ? 0
+            : Number(addonProd?.price?.I_price?.I_price) || 0,
+          withInstallation: addonDeliveryOnly ? false : addonIsIncluded,
+          freeInstallation: addonDeliveryOnly ? false : addonIsIncluded,
+          homeInstallation: addonDeliveryOnly
+            ? false
+            : addonProd?.homeInstallation !== false,
+          imageUrl: addonImg,
+          supplierStockStatus: addonProd?.supplierStockStatus || "IN_STOCK",
+          supplierStockMessage:
+            lang === "es"
+              ? addonProd?.supplierStockMessageEs || undefined
+              : addonProd?.supplierStockMessageEn || undefined,
+          supplierLeadDaysMin: addonProd?.supplierLeadDaysMin || 7,
+          supplierLeadDaysMax: addonProd?.supplierLeadDaysMax || 21,
+        };
+      })
+      .filter((x): x is NonNullable<typeof x> => Boolean(x));
+  }, [product, selectedAddonOptions, lang]);
+
   const handleAddToCart = () => {
     if (!product) return;
     const isDeliveryOnly = product.installationAvailable === false || (product as any).installationAvailable === false;
@@ -889,28 +998,33 @@ export default function ProductDetailPage() {
       dualResolution.effectiveSupplierUrl ||
       selectedParametersList.find((p) => p.supplierUrl)?.supplierUrl;
 
-    addItem({
-      type: "PRODUCT",
-      id: product.id,
-      sku: product.id.toUpperCase(),
-      title: product.p_title,
-      brand: product.brand?.[0] || "Bikeman Performance",
-      comp: product.comp,
-      priceCRC: effectivePriceCRC,
-      basePriceCRC: product.price.T_price,
-      basePriceUSD: Number(product.price?.P_price_D || product.supplierLastPriceUSD || 0),
-      supplierUrl: variantSupplierUrl || product.supplierUrl || null,
-      selectedParameters: selectedParametersList,
-      installationPriceCRC: isDeliveryOnly ? 0 : (isIncluded ? 0 : (Number(product.price?.I_price?.I_price) || 0)),
-      withInstallation: isDeliveryOnly ? false : isIncluded,
-      freeInstallation: isDeliveryOnly ? false : isIncluded,
-      homeInstallation: isDeliveryOnly ? false : (product.homeInstallation !== false),
-      imageUrl: activeOptionImage || product.imgs?.[0] || "/images/logo.png",
-      supplierStockStatus: availability?.status || product.supplierStockStatus,
-      supplierStockMessage: lang === "es" ? availability?.messageEs : availability?.messageEn,
-      supplierLeadDaysMin: availability?.leadDaysMin || product.supplierLeadDaysMin,
-      supplierLeadDaysMax: availability?.leadDaysMax || product.supplierLeadDaysMax,
-    });
+    const addonItems = buildAddonCartItems();
+
+    addItem(
+      {
+        type: "PRODUCT",
+        id: product.id,
+        sku: product.id.toUpperCase(),
+        title: product.p_title,
+        brand: product.brand?.[0] || "Bikeman Performance",
+        comp: product.comp,
+        priceCRC: effectivePriceCRC,
+        basePriceCRC: product.price.T_price,
+        basePriceUSD: Number(product.price?.P_price_D || product.supplierLastPriceUSD || 0),
+        supplierUrl: variantSupplierUrl || product.supplierUrl || null,
+        selectedParameters: selectedParametersList,
+        installationPriceCRC: isDeliveryOnly ? 0 : (isIncluded ? 0 : (Number(product.price?.I_price?.I_price) || 0)),
+        withInstallation: isDeliveryOnly ? false : isIncluded,
+        freeInstallation: isDeliveryOnly ? false : isIncluded,
+        homeInstallation: isDeliveryOnly ? false : (product.homeInstallation !== false),
+        imageUrl: activeOptionImage || product.imgs?.[0] || "/images/logo.png",
+        supplierStockStatus: availability?.status || product.supplierStockStatus,
+        supplierStockMessage: lang === "es" ? availability?.messageEs : availability?.messageEn,
+        supplierLeadDaysMin: availability?.leadDaysMin || product.supplierLeadDaysMin,
+        supplierLeadDaysMax: availability?.leadDaysMax || product.supplierLeadDaysMax,
+      },
+      addonItems
+    );
   };
 
   // Solicitar Cotización de Reserva (Creates a #COT order and redirects or opens WhatsApp)
@@ -927,30 +1041,35 @@ export default function ProductDetailPage() {
       dualResolution.effectiveSupplierUrl ||
       selectedParametersList.find((p) => p.supplierUrl)?.supplierUrl;
 
+      const addonItems = buildAddonCartItems();
+
       // 1. Ensure item is in cart with OUT_OF_STOCK tag
       if (quantityInCart === 0) {
-        addItem({
-          type: "PRODUCT",
-          id: product.id,
-          sku: product.id.toUpperCase(),
-          title: product.p_title,
-          brand: product.brand?.[0] || "Bikeman Performance",
-          comp: product.comp,
-          priceCRC: effectivePriceCRC,
-          basePriceCRC: product.price.T_price,
-          basePriceUSD: Number(product.price?.P_price_D || product.supplierLastPriceUSD || 0),
-          supplierUrl: variantSupplierUrl || product.supplierUrl || null,
-          selectedParameters: selectedParametersList,
-          installationPriceCRC: isDeliveryOnly ? 0 : (isIncluded ? 0 : (Number(product.price?.I_price?.I_price) || 0)),
-          withInstallation: isDeliveryOnly ? false : isIncluded,
-          freeInstallation: isDeliveryOnly ? false : isIncluded,
-          homeInstallation: isDeliveryOnly ? false : (product.homeInstallation !== false),
-          imageUrl: activeOptionImage || product.imgs?.[0] || "/images/logo.png",
-          supplierStockStatus: "OUT_OF_STOCK",
-          supplierStockMessage: lang === "es" ? availability?.messageEs : availability?.messageEn,
-          supplierLeadDaysMin: availability?.leadDaysMin,
-          supplierLeadDaysMax: availability?.leadDaysMax,
-        });
+        addItem(
+          {
+            type: "PRODUCT",
+            id: product.id,
+            sku: product.id.toUpperCase(),
+            title: product.p_title,
+            brand: product.brand?.[0] || "Bikeman Performance",
+            comp: product.comp,
+            priceCRC: effectivePriceCRC,
+            basePriceCRC: product.price.T_price,
+            basePriceUSD: Number(product.price?.P_price_D || product.supplierLastPriceUSD || 0),
+            supplierUrl: variantSupplierUrl || product.supplierUrl || null,
+            selectedParameters: selectedParametersList,
+            installationPriceCRC: isDeliveryOnly ? 0 : (isIncluded ? 0 : (Number(product.price?.I_price?.I_price) || 0)),
+            withInstallation: isDeliveryOnly ? false : isIncluded,
+            freeInstallation: isDeliveryOnly ? false : isIncluded,
+            homeInstallation: isDeliveryOnly ? false : (product.homeInstallation !== false),
+            imageUrl: activeOptionImage || product.imgs?.[0] || "/images/logo.png",
+            supplierStockStatus: "OUT_OF_STOCK",
+            supplierStockMessage: lang === "es" ? availability?.messageEs : availability?.messageEn,
+            supplierLeadDaysMin: availability?.leadDaysMin,
+            supplierLeadDaysMax: availability?.leadDaysMax,
+          },
+          addonItems
+        );
       }
 
       // 2. Create quotation order #COT
@@ -1410,7 +1529,7 @@ export default function ProductDetailPage() {
                 </h1>
 
                 {/* Configurable Parameters & Options (Colors, Materials, Stages, etc.) */}
-                {product.parameters && product.parameters.length > 0 && (
+                {standardParameters.length > 0 && (
                   <div className="p-4 sm:p-5 rounded-3xl bg-gray-50 border border-gray-200/80 shadow-xs space-y-4">
                     <div className="flex items-center justify-between border-b border-gray-200/70 pb-2">
                       <span className="text-xs font-black uppercase tracking-wider text-gray-900 flex items-center gap-1.5">
@@ -1420,7 +1539,7 @@ export default function ProductDetailPage() {
                     </div>
 
                     <div className="space-y-3.5">
-                      {product.parameters.map((param) => {
+                      {standardParameters.map((param) => {
                         const isLinkedParam =
                           param.type === "product_linking" ||
                           param.type === "product_link" ||
@@ -1797,6 +1916,193 @@ export default function ProductDetailPage() {
                   </div>
                 ) : null}
 
+                {/* Cart Add-On Products Toggle Section (Placed strictly below the stock check, matching website UI) */}
+                {cartAddonParameters.length > 0 && (
+                  <div className="p-4 sm:p-5 rounded-3xl bg-gray-50 border border-gray-200/80 shadow-xs space-y-4">
+                    {cartAddonParameters.map((addonParam) => {
+                      const paramTitle =
+                        lang === "es"
+                          ? addonParam.nameEs || t.productCartAddonSectionTitle
+                          : addonParam.nameEn || addonParam.nameEs || t.productCartAddonSectionTitle;
+
+                      return (
+                        <div key={addonParam.id} className="space-y-3">
+                          <div className="flex items-center justify-between border-b border-gray-200/70 pb-2">
+                            <span className="text-xs font-black uppercase tracking-wider text-gray-900 flex items-center gap-1.5">
+                              <Plus className="w-4 h-4 text-[#C02030]" />
+                              <span>{paramTitle}</span>
+                            </span>
+                            {selectedAddonOptions.length > 0 && (
+                              <span className="px-2.5 py-0.5 rounded-full bg-[#C02030]/10 text-[#C02030] text-[10px] font-extrabold">
+                                {selectedAddonOptions.length}{" "}
+                                {lang === "es" ? "seleccionado(s)" : "selected"}
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="space-y-2.5">
+                            {(addonParam.options || []).map((opt) => {
+                              const isToggled = Boolean(selectedAddonIds[opt.id]);
+                              const addonProd = opt.addonProduct;
+                              const optTitle =
+                                lang === "es"
+                                  ? opt.labelEs || addonProd?.nameEs || addonProd?.p_title || ""
+                                  : opt.labelEn || opt.labelEs || addonProd?.nameEn || addonProd?.p_title || "";
+                              const optPriceCRC =
+                                addonProd?.price?.T_price ||
+                                addonProd?.priceCRC ||
+                                opt.priceDeltaCRC ||
+                                0;
+                              const optPriceFormatted =
+                                currency === "USD"
+                                  ? formatUSD(convertCRCToUSD(optPriceCRC, sellRate))
+                                  : formatCRC(optPriceCRC);
+                              const optThumb =
+                                addonProd?.imageUrl ||
+                                addonProd?.imgs?.[0] ||
+                                opt.imageUrl ||
+                                "/images/logo.png";
+                              const targetProductHref =
+                                addonProd?.slug ||
+                                opt.addonProductSlug ||
+                                addonProd?.id ||
+                                opt.addonProductId;
+
+                              return (
+                                <div
+                                  key={opt.id}
+                                  role="switch"
+                                  aria-checked={isToggled}
+                                  tabIndex={0}
+                                  onClick={() => toggleCartAddonOption(opt.id)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter" || e.key === " ") {
+                                      e.preventDefault();
+                                      toggleCartAddonOption(opt.id);
+                                    }
+                                  }}
+                                  className={`p-3 rounded-2xl border transition-all duration-200 flex items-center justify-between gap-3 cursor-pointer select-none ${
+                                    isToggled
+                                      ? "bg-white border-[#C02030] ring-2 ring-[#C02030]/15 shadow-sm"
+                                      : "bg-white/90 hover:bg-white border-gray-200 hover:border-gray-300 shadow-2xs"
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-3 min-w-0">
+                                    <div className="w-12 h-12 rounded-xl bg-gray-50 border border-gray-200/80 p-1 flex items-center justify-center shrink-0">
+                                      <img
+                                        src={optThumb}
+                                        alt={optTitle}
+                                        className="max-w-full max-h-full object-contain"
+                                      />
+                                    </div>
+                                    <div className="min-w-0 space-y-0.5">
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="text-xs sm:text-sm font-bold text-[#111827] truncate block">
+                                          {optTitle}
+                                        </span>
+                                        {targetProductHref && (
+                                          <Link
+                                            href={`/productos/${encodeURIComponent(targetProductHref)}`}
+                                            onClick={(e) => e.stopPropagation()}
+                                            className="text-gray-400 hover:text-[#C02030] transition-colors shrink-0 p-0.5"
+                                            title={lang === "es" ? "Ver detalles del producto" : "View product details"}
+                                          >
+                                            <ExternalLink className="w-3 h-3" />
+                                          </Link>
+                                        )}
+                                      </div>
+                                      <span className="text-xs font-mono font-extrabold text-[#C02030] block">
+                                        + {optPriceFormatted}
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  {/* Website-Styled Toggle Switch Button */}
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    <span
+                                      className={`hidden sm:inline-block text-[11px] font-bold transition-colors ${
+                                        isToggled ? "text-[#C02030]" : "text-gray-500"
+                                      }`}
+                                    >
+                                      {isToggled
+                                        ? t.productCartAddonToggleOn || (lang === "es" ? "Agregado" : "Added")
+                                        : t.productCartAddonToggleOff || (lang === "es" ? "Agregar" : "Add")}
+                                    </span>
+                                    <div
+                                      className={`w-11 h-6 rounded-full p-0.5 transition-colors duration-200 flex items-center ${
+                                        isToggled ? "bg-[#C02030]" : "bg-gray-200"
+                                      }`}
+                                    >
+                                      <div
+                                        className={`w-5 h-5 rounded-full bg-white shadow-sm transform transition-transform duration-200 flex items-center justify-center ${
+                                          isToggled ? "translate-x-5" : "translate-x-0"
+                                        }`}
+                                      >
+                                        {isToggled && (
+                                          <CheckCircle2 className="w-3.5 h-3.5 text-[#C02030]" />
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {/* Combined Total Summary when Add-ons are Toggled ON */}
+                    {selectedAddonOptions.length > 0 && (
+                      <div className="pt-2.5 border-t border-gray-200/80 space-y-2 text-xs">
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <span className="text-gray-600 font-semibold">
+                            +{selectedAddonOptions.length}{" "}
+                            {t.productCartAddonSelectedSummary ||
+                              (lang === "es"
+                                ? "complemento(s) para agregar junto al carrito"
+                                : "add-on(s) to add together to cart")}
+                          </span>
+                          <span className="font-mono font-black text-[#111827]">
+                            {lang === "es" ? "Total combinado:" : "Combined total:"}{" "}
+                            <span className="text-[#C02030]">
+                              {currency === "USD"
+                                ? formatUSD(
+                                    convertCRCToUSD(
+                                      effectivePriceCRC + totalAddonsPriceCRC,
+                                      sellRate
+                                    )
+                                  )
+                                : formatCRC(effectivePriceCRC + totalAddonsPriceCRC)}
+                            </span>
+                          </span>
+                        </div>
+                        {quantityInCart > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const addonItems = buildAddonCartItems();
+                              if (addonItems.length > 0) {
+                                const [firstAddon, ...restAddons] = addonItems;
+                                addItem(firstAddon, restAddons);
+                                setSelectedAddonIds({});
+                              }
+                            }}
+                            className="w-full py-2.5 px-4 rounded-xl bg-[#C02030] hover:bg-[#9A1624] text-white text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
+                          >
+                            <ShoppingCart className="w-3.5 h-3.5" />
+                            <span>
+                              {lang === "es"
+                                ? `Agregar ${selectedAddonOptions.length} complemento(s) seleccionado(s) al carrito`
+                                : `Add ${selectedAddonOptions.length} selected add-on(s) to cart`}
+                            </span>
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Requirements Notice if defined on product */}
                 {(product.requirements || (product.requiredProducts && product.requiredProducts.length > 0)) && (
                   <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-950 text-xs flex flex-col gap-2">
@@ -1920,7 +2226,12 @@ export default function ProductDetailPage() {
                         className="w-full sm:flex-1 py-4 px-6 rounded-full bg-[#1e40af] hover:bg-[#1d4ed8] text-white text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-sm hover:scale-[1.02] cursor-pointer"
                       >
                         <Calendar className="w-4 h-4" />
-                        <span>{lang === "es" ? "Reservar en Preventa" : "Pre-Order Reservation"}</span>
+                        <span>
+                          {lang === "es" ? "Reservar en Preventa" : "Pre-Order Reservation"}
+                          {selectedAddonOptions.length > 0
+                            ? ` (+${selectedAddonOptions.length})`
+                            : ""}
+                        </span>
                       </button>
                     ) : (
                       <button
@@ -1928,7 +2239,12 @@ export default function ProductDetailPage() {
                         className="w-full sm:flex-1 py-4 px-6 rounded-full bg-[#111827] hover:bg-[#C02030] text-white text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-sm hover:scale-[1.02] cursor-pointer"
                       >
                         <ShoppingCart className="w-4 h-4" />
-                        <span>{t.productsAddToCart}</span>
+                        <span>
+                          {t.productsAddToCart}
+                          {selectedAddonOptions.length > 0
+                            ? ` (+${selectedAddonOptions.length})`
+                            : ""}
+                        </span>
                       </button>
                     )
                   ) : (

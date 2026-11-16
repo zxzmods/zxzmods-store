@@ -740,7 +740,7 @@ export async function PATCH(
       }
 
       for (const p of paramsArr) {
-        const isPLink = p.type === "product_linking" || p.type === "product_link" || p.options?.some((o: any) => Boolean(o.linkedProductId));
+        const isPLink = p.type !== "cart_addon" && (p.type === "product_linking" || p.type === "product_link" || p.options?.some((o: any) => Boolean(o.linkedProductId)));
         if (!isPLink || !Array.isArray(p.options)) continue;
 
         // Find this product's self option
