@@ -752,8 +752,9 @@ export async function GET(request: Request) {
 
     const productSearchScoreMap = new Map<string, number>();
 
-    // Filter by text search (q), comp, vehicleModel, vehicle brand, distributor brand, inStock, discounted, and category
-    const filteredProducts = unifiedProducts.filter((product) => {
+    // Contextual Filter Evaluator: applies parameters 1 through 7 (excluding category itself)
+    // This allows us to calculate EXACT category counts and find only existing categories for the active vehicle/brand/search parameters
+    const matchesContextualFilters = (product: ProductItem): boolean => {
       // 1. Text Search (q) with brand disambiguation, unit exclusion, and relevance scoring
       if (q && q.trim()) {
         const searchRes = evaluateProductSearch(product, q, {
@@ -933,7 +934,42 @@ export async function GET(request: Request) {
         if (!hasDiscount) return false;
       }
 
-      // 8. Category filter
+      return true;
+    };
+
+    // Filter products matching all selected parameters (contextual scope)
+    const parameterMatchedProducts = unifiedProducts.filter(matchesContextualFilters);
+
+    // Dynamically compute categories and exact product counts strictly for the selected parameters:
+    const matchingCategorySet = new Set<string>();
+    const categoryCountsMap: Record<string, number> = {};
+
+    parameterMatchedProducts.forEach((p) => {
+      const seenForProduct = new Set<string>();
+      p.category.forEach((cat) => {
+        const c = cat.trim();
+        if (c) {
+          const cLower = c.toLowerCase();
+          if (!seenForProduct.has(cLower)) {
+            seenForProduct.add(cLower);
+            matchingCategorySet.add(c);
+            categoryCountsMap[cLower] = (categoryCountsMap[cLower] || 0) + 1;
+          }
+        }
+      });
+    });
+
+    // Only include categories that actually have matching products (count > 0) under selected parameters!
+    const categories = Array.from(matchingCategorySet)
+      .filter((cat) => (categoryCountsMap[cat.toLowerCase()] || 0) > 0)
+      .sort((a, b) => {
+        const countA = categoryCountsMap[a.toLowerCase()] || 0;
+        const countB = categoryCountsMap[b.toLowerCase()] || 0;
+        return countB - countA || a.localeCompare(b);
+      });
+
+    // 8. Apply Category filter to parameterMatchedProducts to get final product list:
+    const filteredProducts = parameterMatchedProducts.filter((product) => {
       if (category && category.toLowerCase() !== "all") {
         const targetCat = category.toLowerCase();
         const matchesCat = product.category.some((c) => {
@@ -945,27 +981,7 @@ export async function GET(request: Request) {
         });
         if (!matchesCat) return false;
       }
-
       return true;
-    });
-
-    // Dynamically compute categories that exist ONLY in active products with counts
-    const matchingCategorySet = new Set<string>();
-    const categoryCountsMap: Record<string, number> = {};
-    unifiedProducts.forEach((p) => {
-      p.category.forEach((cat) => {
-        const c = cat.trim();
-        if (c) {
-          matchingCategorySet.add(c);
-          categoryCountsMap[c.toLowerCase()] = (categoryCountsMap[c.toLowerCase()] || 0) + 1;
-        }
-      });
-    });
-    // Sort categories: most populated first, then alphabetically
-    const categories = Array.from(matchingCategorySet).sort((a, b) => {
-      const countA = categoryCountsMap[a.toLowerCase()] || 0;
-      const countB = categoryCountsMap[b.toLowerCase()] || 0;
-      return countB - countA || a.localeCompare(b);
     });
 
     // Sort

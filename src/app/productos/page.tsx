@@ -670,18 +670,23 @@ function ProductsContent() {
           setProducts(data.products);
 
           // Dynamic parameters strictly from backend response
-          if (Array.isArray(data.categories)) {
-            setAvailableCategories(data.categories);
-            if (
-              selectedCategory !== "all" &&
-              !data.categories.map((c: string) => c.toLowerCase()).includes(selectedCategory.toLowerCase())
-            ) {
-              setSelectedCategory("all");
-            }
-          }
-
+          const returnedCounts = data.categoryCounts && typeof data.categoryCounts === "object" ? data.categoryCounts : {};
           if (data.categoryCounts && typeof data.categoryCounts === "object") {
             setCategoryCounts(data.categoryCounts);
+          }
+
+          if (Array.isArray(data.categories)) {
+            setAvailableCategories(data.categories);
+            const lowerCat = selectedCategory.toLowerCase();
+            const existsInReturned = data.categories.map((c: string) => c.toLowerCase()).includes(lowerCat);
+            const count = returnedCounts[lowerCat];
+            if (
+              selectedCategory !== "all" &&
+              (!existsInReturned || (typeof count === "number" && count <= 0))
+            ) {
+              setSelectedCategory("all");
+              updateUrlParams({ category: null });
+            }
           }
 
           if (Array.isArray(data.availableVehicleBrands)) {
@@ -742,6 +747,14 @@ function ProductsContent() {
   };
 
   // Scroll helpers and state for categories carousel & drawer
+  // Only categories that strictly have matching products (count > 0) under the selected parameters
+  const validAvailableCategories = useMemo(() => {
+    return availableCategories.filter((cat) => {
+      const count = categoryCounts[cat.toLowerCase()];
+      return typeof count === "number" ? count > 0 : true;
+    });
+  }, [availableCategories, categoryCounts]);
+
   const checkCategoryScroll = useCallback(() => {
     const el = categoryScrollRef.current;
     if (!el) return;
@@ -760,7 +773,7 @@ function ProductsContent() {
       el.removeEventListener("scroll", checkCategoryScroll);
       window.removeEventListener("resize", checkCategoryScroll);
     };
-  }, [availableCategories, checkCategoryScroll]);
+  }, [validAvailableCategories, checkCategoryScroll]);
 
   // Center active category into view
   useEffect(() => {
@@ -796,13 +809,13 @@ function ProductsContent() {
   };
 
   const filteredAvailableCategories = useMemo(() => {
-    if (!categoryFilterQuery.trim()) return availableCategories;
+    if (!categoryFilterQuery.trim()) return validAvailableCategories;
     const q = categoryFilterQuery.toLowerCase().trim();
-    return availableCategories.filter((cat) => {
+    return validAvailableCategories.filter((cat) => {
       const label = getCategoryLabel(cat, lang).toLowerCase();
       return label.includes(q) || cat.toLowerCase().includes(q);
     });
-  }, [availableCategories, categoryFilterQuery, lang]);
+  }, [validAvailableCategories, categoryFilterQuery, lang]);
 
   // Add product to cart with selected parameters and effective price
   const handleAddToCart = (
@@ -1223,7 +1236,7 @@ function ProductsContent() {
                   {t.productsFilterCategory}
                 </span>
                 <span className="text-[10px] bg-gray-200/70 text-gray-700 px-1.5 py-0.5 rounded-full font-bold">
-                  {availableCategories.length} {t.productsCategoriesCount}
+                  {validAvailableCategories.length} {t.productsCategoriesCount}
                 </span>
                 {selectedCategory !== "all" && (
                   <span className="hidden sm:inline-flex items-center gap-1 text-[11px] text-[#C02030] font-bold pl-1">
@@ -1245,7 +1258,7 @@ function ProductsContent() {
                 <span>
                   {isCategoriesExpanded
                     ? t.productsCollapseCategories
-                    : `${t.productsViewAllCategories} (${availableCategories.length})`}
+                    : `${t.productsViewAllCategories} (${validAvailableCategories.length})`}
                 </span>
                 {isCategoriesExpanded ? (
                   <ChevronUp className="w-3 h-3" />
@@ -1376,7 +1389,7 @@ function ProductsContent() {
                     {t.productsAllCategories}
                   </button>
 
-                  {availableCategories.map((cat) => {
+                  {validAvailableCategories.map((cat) => {
                     const isSelected = selectedCategory.toLowerCase() === cat.toLowerCase();
                     const count = categoryCounts[cat.toLowerCase()];
                     return (
@@ -1421,11 +1434,11 @@ function ProductsContent() {
                   className="bg-transparent text-gray-900 font-bold outline-none cursor-pointer text-xs max-w-[150px] sm:max-w-none truncate"
                 >
                   <option value="all">
-                    {availableCategories.length === 0
+                    {validAvailableCategories.length === 0
                       ? t.productsAllCategories
-                      : `${t.productsAllCategories} (${availableCategories.length})`}
+                      : `${t.productsAllCategories} (${validAvailableCategories.length})`}
                   </option>
-                  {availableCategories.map((cat) => {
+                  {validAvailableCategories.map((cat) => {
                     const count = categoryCounts[cat.toLowerCase()];
                     return (
                       <option key={cat} value={cat}>
