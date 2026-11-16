@@ -7,6 +7,7 @@ import { useLanguage } from "@/context/LanguageContext";
 import { useAuth } from "@/context/AuthContext";
 import { X, CheckCircle2, Car, ShieldCheck, ArrowRight, Loader2 } from "lucide-react";
 import { sortVehicleModels, getModelFamilyName } from "@/lib/sxsBrands";
+import { CustomSelect } from "@/components/ui/CustomSelect";
 
 interface YMMData {
   years: number[];
@@ -160,21 +161,24 @@ export function GarageModal() {
               <label className="block text-xs font-semibold uppercase tracking-wider text-gray-600 mb-1.5">
                 {t.garageSelectYear}
               </label>
-              <select
-                value={selectedYear}
-                onChange={(e) => {
-                  setSelectedYear(e.target.value ? Number(e.target.value) : "");
+              <CustomSelect
+                value={selectedYear ? String(selectedYear) : ""}
+                onChange={(v) => {
+                  setSelectedYear(v ? Number(v) : "");
                   setSelectedModelSlug("");
                 }}
-                className="w-full bg-gray-50 border border-gray-300 focus:border-[#C02030] rounded-xl px-4 py-3 text-sm text-gray-900 focus:outline-none transition-colors"
-              >
-                <option value="">-- Seleccionar Año / Year --</option>
-                {ymmData?.years.map((y) => (
-                  <option key={y} value={y}>
-                    {y}
-                  </option>
-                ))}
-              </select>
+                placeholder="-- Seleccionar Año / Year --"
+                size="md"
+                className="w-full"
+                triggerClassName="w-full py-3 px-4 rounded-xl text-sm"
+                options={[
+                  { value: "", label: "-- Seleccionar Año / Year --" },
+                  ...(ymmData?.years || []).map((y) => ({
+                    value: String(y),
+                    label: String(y),
+                  })),
+                ]}
+              />
             </div>
 
             {/* Step 2: Select Brand */}
@@ -182,22 +186,25 @@ export function GarageModal() {
               <label className="block text-xs font-semibold uppercase tracking-wider text-gray-600 mb-1.5">
                 {t.garageSelectBrand}
               </label>
-              <select
+              <CustomSelect
                 disabled={!selectedYear}
                 value={selectedBrandSlug}
-                onChange={(e) => {
-                  setSelectedBrandSlug(e.target.value);
+                onChange={(v) => {
+                  setSelectedBrandSlug(v);
                   setSelectedModelSlug("");
                 }}
-                className="w-full bg-gray-50 border border-gray-300 focus:border-[#C02030] disabled:opacity-40 rounded-xl px-4 py-3 text-sm text-gray-900 focus:outline-none transition-colors"
-              >
-                <option value="">-- Seleccionar Marca / Make --</option>
-                {ymmData?.brands.map((b) => (
-                  <option key={b.slug} value={b.slug}>
-                    {b.name}
-                  </option>
-                ))}
-              </select>
+                placeholder="-- Seleccionar Marca / Make --"
+                size="md"
+                className="w-full"
+                triggerClassName="w-full py-3 px-4 rounded-xl text-sm"
+                options={[
+                  { value: "", label: "-- Seleccionar Marca / Make --" },
+                  ...(ymmData?.brands || []).map((b) => ({
+                    value: b.slug,
+                    label: b.name,
+                  })),
+                ]}
+              />
             </div>
 
             {/* Step 3: Select Model */}
@@ -205,31 +212,22 @@ export function GarageModal() {
               <label className="block text-xs font-semibold uppercase tracking-wider text-gray-600 mb-1.5">
                 {t.garageSelectModel}
               </label>
-              <select
+              <CustomSelect
                 disabled={!selectedBrandSlug}
                 value={selectedModelSlug}
-                onChange={(e) => setSelectedModelSlug(e.target.value)}
-                className="w-full bg-gray-50 border border-gray-300 focus:border-[#C02030] disabled:opacity-40 rounded-xl px-4 py-3 text-sm text-gray-900 focus:outline-none transition-colors"
-              >
-                <option value="">-- Seleccionar Modelo / Model --</option>
-                {groupedModels.length > 0 ? (
-                  groupedModels.map((grp) => (
-                    <optgroup key={grp.family} label={`Familia ${grp.family}`}>
-                      {grp.models.map((m) => (
-                        <option key={m.slug} value={m.slug}>
-                          {m.name} ({m.category})
-                        </option>
-                      ))}
-                    </optgroup>
-                  ))
-                ) : (
-                  availableModels?.map((m) => (
-                    <option key={m.slug} value={m.slug}>
-                      {m.name} ({m.category})
-                    </option>
-                  ))
-                )}
-              </select>
+                onChange={setSelectedModelSlug}
+                placeholder="-- Seleccionar Modelo / Model --"
+                size="md"
+                className="w-full"
+                triggerClassName="w-full py-3 px-4 rounded-xl text-sm"
+                options={[
+                  { value: "", label: "-- Seleccionar Modelo / Model --" },
+                  ...(availableModels || []).map((m) => ({
+                    value: m.slug,
+                    label: `${m.name} (${m.category})`,
+                  })),
+                ]}
+              />
             </div>
 
             {/* Actions */}

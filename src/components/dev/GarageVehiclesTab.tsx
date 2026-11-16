@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback, useMemo } from "react";
 import Image from "next/image";
 import { useLanguage } from "@/context/LanguageContext";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { CustomSelect } from "@/components/ui/CustomSelect";
 import {
   Car,
   Plus,
@@ -836,49 +837,38 @@ export function GarageVehiclesTab({ userRole }: GarageVehiclesTabProps) {
 
             <div className="flex items-center gap-2 w-full sm:w-auto">
               {/* Brand Filter */}
-              <select
+              <CustomSelect
                 value={selectedBrandFilter}
-                onChange={(e) => setSelectedBrandFilter(e.target.value)}
-                className="px-3 py-2 rounded-lg border border-slate-200 bg-white text-xs text-slate-700 font-medium focus:outline-none focus:border-slate-900 transition w-full sm:w-auto"
-              >
-                <option value="all">{t.backdoorVehiclesFilterAllBrands}</option>
-                {brands.map((b) => (
-                  <option key={b.id} value={b.slug}>
-                    {b.name}
-                  </option>
-                ))}
-              </select>
+                onChange={setSelectedBrandFilter}
+                triggerClassName="px-3 py-2 rounded-lg border border-slate-200 bg-white text-xs text-slate-700 font-medium"
+                options={[
+                  { value: "all", label: t.backdoorVehiclesFilterAllBrands },
+                  ...brands.map((b) => ({ value: b.slug, label: b.name })),
+                ]}
+              />
 
               {/* Category Filter */}
-              <select
+              <CustomSelect
                 value={selectedCategoryFilter}
-                onChange={(e) => setSelectedCategoryFilter(e.target.value)}
-                className="px-3 py-2 rounded-lg border border-slate-200 bg-white text-xs text-slate-700 font-medium focus:outline-none focus:border-slate-900 transition w-full sm:w-auto"
-              >
-                <option value="all">{t.backdoorVehiclesFilterAllCategories}</option>
-                {CATEGORY_OPTIONS.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
+                onChange={setSelectedCategoryFilter}
+                triggerClassName="px-3 py-2 rounded-lg border border-slate-200 bg-white text-xs text-slate-700 font-medium"
+                options={[
+                  { value: "all", label: t.backdoorVehiclesFilterAllCategories },
+                  ...CATEGORY_OPTIONS.map((c) => ({ value: c, label: c })),
+                ]}
+              />
 
               {/* Brand Model Category Filter */}
               {availableModelCategories.length > 0 && (
-                <select
+                <CustomSelect
                   value={selectedModelCategoryFilter}
-                  onChange={(e) => setSelectedModelCategoryFilter(e.target.value)}
-                  className="px-3 py-2 rounded-lg border border-slate-200 bg-white text-xs text-slate-700 font-medium focus:outline-none focus:border-slate-900 transition w-full sm:w-auto"
-                >
-                  <option value="all">
-                    {lang === "es" ? "Todas las Familias en Marca" : "All Model Categories"}
-                  </option>
-                  {availableModelCategories.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setSelectedModelCategoryFilter}
+                  triggerClassName="px-3 py-2 rounded-lg border border-slate-200 bg-white text-xs text-slate-700 font-medium"
+                  options={[
+                    { value: "all", label: lang === "es" ? "Todas las Familias en Marca" : "All Model Categories" },
+                    ...availableModelCategories.map((c) => ({ value: c, label: c })),
+                  ]}
+                />
               )}
             </div>
           </div>

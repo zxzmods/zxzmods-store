@@ -11,6 +11,7 @@ import { Footer } from "@/components/layout/Footer";
 import { useGarage } from "@/context/GarageContext";
 import { useLanguage } from "@/context/LanguageContext";
 import { getWhatsAppUrl } from "@/config/company";
+import { CustomSelect } from "@/components/ui/CustomSelect";
 import {
   Car,
   MessageCircle,
@@ -189,22 +190,24 @@ export default function CotizarPage() {
                 <label className="block text-xs font-semibold uppercase text-gray-600 mb-1.5">
                   {t.quoteYearLabel}
                 </label>
-                <select
-                  value={selectedYear}
-                  onChange={(e) => {
-                    setSelectedYear(e.target.value ? Number(e.target.value) : "");
+                <CustomSelect
+                  value={selectedYear ? String(selectedYear) : ""}
+                  onChange={(v) => {
+                    setSelectedYear(v ? Number(v) : "");
                     setSelectedModelSlug("");
                   }}
-                  className="w-full bg-gray-50 border border-gray-300 focus:border-[#C02030] rounded-xl px-4 py-3 text-sm text-gray-900 focus:outline-none"
-                  required
-                >
-                  <option value="">{t.quoteSelectYear}</option>
-                  {ymmData?.years.map((y) => (
-                    <option key={y} value={y}>
-                      {y}
-                    </option>
-                  ))}
-                </select>
+                  placeholder={t.quoteSelectYear}
+                  size="md"
+                  className="w-full"
+                  triggerClassName="w-full py-3 px-4 rounded-xl text-sm"
+                  options={[
+                    { value: "", label: t.quoteSelectYear },
+                    ...(ymmData?.years || []).map((y) => ({
+                      value: String(y),
+                      label: String(y),
+                    })),
+                  ]}
+                />
               </div>
 
               {/* Brand (CFMOTO is first!) */}
@@ -212,22 +215,24 @@ export default function CotizarPage() {
                 <label className="block text-xs font-semibold uppercase text-gray-600 mb-1.5">
                   {t.quoteMakeLabel}
                 </label>
-                <select
+                <CustomSelect
                   value={selectedBrandSlug}
-                  onChange={(e) => {
-                    setSelectedBrandSlug(e.target.value);
+                  onChange={(v) => {
+                    setSelectedBrandSlug(v);
                     setSelectedModelSlug("");
                   }}
-                  className="w-full bg-gray-50 border border-gray-300 focus:border-[#C02030] rounded-xl px-4 py-3 text-sm text-gray-900 focus:outline-none"
-                  required
-                >
-                  <option value="">{t.quoteSelectMake}</option>
-                  {ymmData?.brands.map((b) => (
-                    <option key={b.slug} value={b.slug}>
-                      {b.name} {b.slug === "cfmoto" ? (lang === "es" ? "★ (Especialidad ZxZ)" : "★ (ZxZ Specialty)") : ""}
-                    </option>
-                  ))}
-                </select>
+                  placeholder={t.quoteSelectMake}
+                  size="md"
+                  className="w-full"
+                  triggerClassName="w-full py-3 px-4 rounded-xl text-sm"
+                  options={[
+                    { value: "", label: t.quoteSelectMake },
+                    ...(ymmData?.brands || []).map((b) => ({
+                      value: b.slug,
+                      label: `${b.name} ${b.slug === "cfmoto" ? (lang === "es" ? "★ (Especialidad ZxZ)" : "★ (ZxZ Specialty)") : ""}`,
+                    })),
+                  ]}
+                />
               </div>
 
               {/* Model */}
@@ -235,19 +240,21 @@ export default function CotizarPage() {
                 <label className="block text-xs font-semibold uppercase text-gray-600 mb-1.5">
                   {t.quoteModelLabel}
                 </label>
-                <select
+                <CustomSelect
                   value={selectedModelSlug}
-                  onChange={(e) => setSelectedModelSlug(e.target.value)}
-                  className="w-full bg-gray-50 border border-gray-300 focus:border-[#C02030] rounded-xl px-4 py-3 text-sm text-gray-900 focus:outline-none"
-                  required
-                >
-                  <option value="">{t.quoteSelectModel}</option>
-                  {availableModels?.map((m) => (
-                    <option key={m.slug} value={m.slug}>
-                      {m.name}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setSelectedModelSlug}
+                  placeholder={t.quoteSelectModel}
+                  size="md"
+                  className="w-full"
+                  triggerClassName="w-full py-3 px-4 rounded-xl text-sm"
+                  options={[
+                    { value: "", label: t.quoteSelectModel },
+                    ...(availableModels || []).map((m) => ({
+                      value: m.slug,
+                      label: m.name,
+                    })),
+                  ]}
+                />
               </div>
             </div>
           </div>

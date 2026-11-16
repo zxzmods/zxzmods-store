@@ -17,6 +17,7 @@ import { getWhatsAppUrl } from "@/config/company";
 import { formatCRC, getCategoryLabel } from "@/lib/i18n";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { CatalogPagination } from "@/components/ui/CatalogPagination";
+import { CustomSelect } from "@/components/ui/CustomSelect";
 import { motion, AnimatePresence } from "framer-motion";
 import { ProductItem, normalizeBrandList, isPlatformOrVehicleMatch, detectVehiclePlatform, isUniversalFit, SelectedParameterItem } from "@/lib/products";
 import { getSxsBrandBySlug, getBrandLogo } from "@/lib/sxsBrands";
@@ -1426,78 +1427,67 @@ function ProductsContent() {
           <div className="space-y-2.5 pt-1 text-xs">
             <div className="flex flex-wrap items-center gap-2">
               {/* Category Dropdown Selector for instant lookup */}
-              <div className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-xl px-3 py-1.5 shadow-xs max-w-full">
-                <span className="text-gray-500 font-medium shrink-0">{t.productsFilterCategory}:</span>
-                <select
-                  value={selectedCategory}
-                  onChange={(e) => handleCategorySelect(e.target.value)}
-                  className="bg-transparent text-gray-900 font-bold outline-none cursor-pointer text-xs max-w-[150px] sm:max-w-none truncate"
-                >
-                  <option value="all">
-                    {validAvailableCategories.length === 0
-                      ? t.productsAllCategories
-                      : `${t.productsAllCategories} (${validAvailableCategories.length})`}
-                  </option>
-                  {validAvailableCategories.map((cat) => {
-                    const count = categoryCounts[cat.toLowerCase()];
-                    return (
-                      <option key={cat} value={cat}>
-                        {getCategoryLabel(cat, lang)} {typeof count === "number" ? `(${count})` : ""}
-                      </option>
-                    );
-                  })}
-                </select>
-              </div>
+              <CustomSelect
+                value={selectedCategory}
+                onChange={handleCategorySelect}
+                labelPrefix={`${t.productsFilterCategory}:`}
+                options={[
+                  {
+                    value: "all",
+                    label: t.productsAllCategories,
+                    count: validAvailableCategories.length,
+                  },
+                  ...validAvailableCategories.map((cat) => ({
+                    value: cat,
+                    label: getCategoryLabel(cat, lang),
+                    count: categoryCounts[cat.toLowerCase()],
+                  })),
+                ]}
+              />
 
               {/* 1. Vehicle Brand Selector (SxS Platform Brand - e.g. CFMOTO, Can-Am, Polaris, Kawasaki...) */}
-              <div className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-xl px-3 py-1.5 shadow-xs max-w-full">
-                <span className="text-gray-500 font-medium shrink-0">{t.productsFilterVehicleBrand}:</span>
-                <select
-                  value={selectedVehicleBrand}
-                  onChange={(e) => {
-                    const newVb = e.target.value;
-                    setSelectedVehicleBrand(newVb);
-                    updateUrlParams({ vehicleBrand: newVb, sxs: null });
-                  }}
-                  className="bg-transparent text-gray-900 font-bold outline-none cursor-pointer text-xs max-w-[150px] sm:max-w-none truncate"
-                >
-                  <option value="all">
-                    {availableVehicleBrands.length === 0
-                      ? t.productsAllVehicleBrands
-                      : `${t.productsAllVehicleBrands} (${availableVehicleBrands.length})`}
-                  </option>
-                  {availableVehicleBrands.map((vb) => (
-                    <option key={vb.slug} value={vb.slug}>
-                      {vb.title} ({vb.count})
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <CustomSelect
+                value={selectedVehicleBrand}
+                onChange={(newVb) => {
+                  setSelectedVehicleBrand(newVb);
+                  updateUrlParams({ vehicleBrand: newVb, sxs: null });
+                }}
+                labelPrefix={`${t.productsFilterVehicleBrand}:`}
+                options={[
+                  {
+                    value: "all",
+                    label: t.productsAllVehicleBrands,
+                    count: availableVehicleBrands.length,
+                  },
+                  ...availableVehicleBrands.map((vb) => ({
+                    value: vb.slug,
+                    label: vb.title,
+                    count: vb.count,
+                  })),
+                ]}
+              />
 
               {/* 2. Distributor / Parts Manufacturer Brand Selector (e.g. EVP, Shock Therapy, Bikeman...) */}
-              <div className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-xl px-3 py-1.5 shadow-xs max-w-full">
-                <span className="text-gray-500 font-medium shrink-0">{t.productsFilterDistributorBrand}:</span>
-                <select
-                  value={selectedDistributorBrand}
-                  onChange={(e) => {
-                    const newDb = e.target.value;
-                    setSelectedDistributorBrand(newDb);
-                    updateUrlParams({ distributorBrand: newDb, brand: null, marca: null });
-                  }}
-                  className="bg-transparent text-gray-900 font-bold outline-none cursor-pointer text-xs max-w-[150px] sm:max-w-none truncate"
-                >
-                  <option value="all">
-                    {availableDistributorBrands.length === 0
-                      ? t.productsAllDistributorBrands
-                      : `${t.productsAllDistributorBrands} (${availableDistributorBrands.length})`}
-                  </option>
-                  {availableDistributorBrands.map((db) => (
-                    <option key={db.name} value={db.name}>
-                      {db.name} ({db.count})
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <CustomSelect
+                value={selectedDistributorBrand}
+                onChange={(newDb) => {
+                  setSelectedDistributorBrand(newDb);
+                  updateUrlParams({ distributorBrand: newDb, brand: null, marca: null });
+                }}
+                labelPrefix={`${t.productsFilterDistributorBrand}:`}
+                options={[
+                  {
+                    value: "all",
+                    label: t.productsAllDistributorBrands,
+                    count: availableDistributorBrands.length,
+                  },
+                  ...availableDistributorBrands.map((db) => ({
+                    value: db.name,
+                    label: db.name,
+                    count: db.count,
+                  })),
+                ]}
+              />
 
               {/* 3. In Stock Filter Toggle Button (Strictly only shown if in-stock products exist or filter active) */}
               {(hasInStock || inStockOnly) && (
@@ -1563,23 +1553,21 @@ function ProductsContent() {
                   {displayedProducts.length} {t.productsCount}
                 </span>
 
-                <div className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-xl px-2.5 py-1.5 shadow-xs">
-                  <ArrowUpDown className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-                  <select
-                    value={sortBy}
-                    onChange={(e) => {
-                      const newSort = e.target.value as any;
-                      setSortBy(newSort);
-                      updateUrlParams({ sort: newSort !== "relevant" ? newSort : null });
-                    }}
-                    className="bg-transparent text-gray-900 font-semibold outline-none cursor-pointer text-xs"
-                  >
-                    <option value="relevant">{t.productsSortRelevant}</option>
-                    <option value="price-asc">{t.productsSortPriceAsc}</option>
-                    <option value="price-desc">{t.productsSortPriceDesc}</option>
-                    <option value="stars">{t.productsSortRating}</option>
-                  </select>
-                </div>
+                <CustomSelect
+                  value={sortBy}
+                  onChange={(newSort) => {
+                    setSortBy(newSort as any);
+                    updateUrlParams({ sort: newSort !== "relevant" ? newSort : null });
+                  }}
+                  icon={<ArrowUpDown className="w-3.5 h-3.5" />}
+                  align="right"
+                  options={[
+                    { value: "relevant", label: t.productsSortRelevant },
+                    { value: "price-asc", label: t.productsSortPriceAsc },
+                    { value: "price-desc", label: t.productsSortPriceDesc },
+                    { value: "stars", label: t.productsSortRating },
+                  ]}
+                />
               </div>
             </div>
 

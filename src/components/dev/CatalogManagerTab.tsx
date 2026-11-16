@@ -70,6 +70,7 @@ import {
   ComboUniqueProductField,
   SUSPENSION_ADJUST_UNIQUE_PRODUCT_TEMPLATE
 } from "@/lib/products";
+import { CustomSelect } from "@/components/ui/CustomSelect";
 import { uploadMediaDirect } from "@/lib/clientDirectUpload";
 import { isVehicleBrand, computeAutoProductSku } from "@/lib/dealerBrands";
 import {
@@ -11868,70 +11869,64 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       <div className="bg-white p-3.5 sm:p-4 rounded-xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2.5">
           {/* Category Parameter Dropdown (Zero Mock Data: strictly present categories only) */}
-          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs">
-            <Layers className="w-3.5 h-3.5 text-blue-600" />
-            <span className="font-bold text-slate-700">{t.productsFilterCategory || (lang === "es" ? "Categoría" : "Category")}:</span>
-            <select
-              value={backdoorCategory}
-              onChange={(e) => setBackdoorCategory(e.target.value)}
-              className="bg-transparent font-semibold text-slate-900 outline-none cursor-pointer text-xs"
-            >
-              <option value="all">
-                {availableCategories.length === 0
-                  ? (t.productsAllCategories || (lang === "es" ? "Todas las Categorías" : "All Categories"))
-                  : `${t.productsAllCategories || (lang === "es" ? "Todas las Categorías" : "All Categories")} (${availableCategories.length})`}
-              </option>
-              {availableCategories.map((c) => (
-                <option key={c.slug} value={c.slug}>
-                  {c.title} ({c.count})
-                </option>
-              ))}
-            </select>
-          </div>
+          <CustomSelect
+            value={backdoorCategory}
+            onChange={setBackdoorCategory}
+            icon={<Layers className="w-3.5 h-3.5 text-blue-600" />}
+            labelPrefix={`${t.productsFilterCategory || (lang === "es" ? "Categoría" : "Category")}:`}
+            options={[
+              {
+                value: "all",
+                label: t.productsAllCategories || (lang === "es" ? "Todas las Categorías" : "All Categories"),
+                count: availableCategories.length,
+              },
+              ...availableCategories.map((c) => ({
+                value: c.slug,
+                label: c.title,
+                count: c.count,
+              })),
+            ]}
+          />
 
           {/* Vehicle Brand Parameter Dropdown (Zero Mock Data: strictly present brands only) */}
-          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs">
-            <Car className="w-3.5 h-3.5 text-[#C02030]" />
-            <span className="font-bold text-slate-700">{t.productsFilterVehicleBrand || (lang === "es" ? "Marca de Vehículo" : "Vehicle Brand")}:</span>
-            <select
-              value={backdoorVehicleBrand}
-              onChange={(e) => setBackdoorVehicleBrand(e.target.value)}
-              className="bg-transparent font-semibold text-slate-900 outline-none cursor-pointer text-xs"
-            >
-              <option value="all">
-                {availableVehicleBrands.length === 0
-                  ? (t.productsAllVehicleBrands || (lang === "es" ? "Todos los Vehículos" : "All Vehicles"))
-                  : `${t.productsAllVehicleBrands || (lang === "es" ? "Todos los Vehículos" : "All Vehicles")} (${availableVehicleBrands.length})`}
-              </option>
-              {availableVehicleBrands.map((vb) => (
-                <option key={vb.slug} value={vb.slug}>
-                  {vb.title} ({vb.count})
-                </option>
-              ))}
-            </select>
-          </div>
+          <CustomSelect
+            value={backdoorVehicleBrand}
+            onChange={setBackdoorVehicleBrand}
+            icon={<Car className="w-3.5 h-3.5 text-[#C02030]" />}
+            labelPrefix={`${t.productsFilterVehicleBrand || (lang === "es" ? "Marca de Vehículo" : "Vehicle Brand")}:`}
+            options={[
+              {
+                value: "all",
+                label: t.productsAllVehicleBrands || (lang === "es" ? "Todos los Vehículos" : "All Vehicles"),
+                count: availableVehicleBrands.length,
+              },
+              ...availableVehicleBrands.map((vb) => ({
+                value: vb.slug,
+                label: vb.title,
+                count: vb.count,
+              })),
+            ]}
+          />
 
           {/* Distributor Brand Parameter Dropdown (Zero Mock Data: strictly present brands only) */}
-          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs">
-            <Tag className="w-3.5 h-3.5 text-slate-500" />
-            <span className="font-bold text-slate-700">{t.productsFilterDistributorBrand || (lang === "es" ? "Marca Fabricante" : "Dealer Brand")}:</span>
-            <select
-              value={backdoorDistributorBrand}
-              onChange={(e) => setBackdoorDistributorBrand(e.target.value)}
-              className="bg-transparent font-semibold text-slate-900 outline-none cursor-pointer text-xs"
-            >
-              <option value="all">
-                {availableDistributorBrands.length === 0
-                  ? (t.productsAllDistributorBrands || (lang === "es" ? "Todas las Marcas" : "All Brands"))
-                  : `${t.productsAllDistributorBrands || (lang === "es" ? "Todas las Marcas" : "All Brands")} (${availableDistributorBrands.length})`}
-              </option>
-              {availableDistributorBrands.map((db) => (
-                <option key={db.name} value={db.name}>
-                  {db.name} ({db.count})
-                </option>
-              ))}
-            </select>
-          </div>
+          <CustomSelect
+            value={backdoorDistributorBrand}
+            onChange={setBackdoorDistributorBrand}
+            icon={<Tag className="w-3.5 h-3.5 text-slate-500" />}
+            labelPrefix={`${t.productsFilterDistributorBrand || (lang === "es" ? "Marca Fabricante" : "Dealer Brand")}:`}
+            options={[
+              {
+                value: "all",
+                label: t.productsAllDistributorBrands || (lang === "es" ? "Todas las Marcas" : "All Brands"),
+                count: availableDistributorBrands.length,
+              },
+              ...availableDistributorBrands.map((db) => ({
+                value: db.name,
+                label: db.name,
+                count: db.count,
+              })),
+            ]}
+          />
 
           {/* In Stock Toggle Parameter */}
           <button

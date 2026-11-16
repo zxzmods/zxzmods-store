@@ -15,6 +15,7 @@ import { useGarage } from "@/context/GarageContext";
 import { useLanguage } from "@/context/LanguageContext";
 import { useAuth } from "@/context/AuthContext";
 import { sortVehicleModels, getModelFamilyName } from "@/lib/sxsBrands";
+import { CustomSelect } from "@/components/ui/CustomSelect";
 import {
   ArrowLeft,
   AlertCircle,
@@ -317,20 +318,21 @@ export default function RegisterVehiclePage() {
                   <label className="block text-xs font-bold uppercase tracking-wider text-gray-700 mb-2">
                     {t.garageYearLabel} <span className="text-[#C02030]">*</span>
                   </label>
-                  <select
-                    value={selectedYear}
-                    onChange={(e) =>
-                      handleYearChange(e.target.value ? Number(e.target.value) : "")
-                    }
-                    className="w-full bg-gray-50 border border-gray-300 focus:border-[#C02030] rounded-xl px-4 py-3 text-sm text-gray-900 focus:outline-none transition-colors shadow-sm"
-                  >
-                    <option value="">{t.garageSelectPlaceholder}</option>
-                    {ymmData?.years.map((y) => (
-                      <option key={y} value={y}>
-                        {y} {y === 2027 ? "🔥 (2027)" : ""}
-                      </option>
-                    ))}
-                  </select>
+                  <CustomSelect
+                    value={selectedYear ? String(selectedYear) : ""}
+                    onChange={(v) => handleYearChange(v ? Number(v) : "")}
+                    placeholder={t.garageSelectPlaceholder}
+                    size="md"
+                    className="w-full"
+                    triggerClassName="w-full py-3 px-4 rounded-xl text-sm"
+                    options={[
+                      { value: "", label: t.garageSelectPlaceholder },
+                      ...(ymmData?.years || []).map((y) => ({
+                        value: String(y),
+                        label: `${y} ${y === 2027 ? "🔥 (2027)" : ""}`,
+                      })),
+                    ]}
+                  />
                 </div>
 
                 {/* 2. Brand / Make */}
@@ -338,19 +340,22 @@ export default function RegisterVehiclePage() {
                   <label className="block text-xs font-bold uppercase tracking-wider text-gray-700 mb-2">
                     {t.garageBrandLabel} <span className="text-[#C02030]">*</span>
                   </label>
-                  <select
+                  <CustomSelect
                     disabled={!selectedYear}
                     value={selectedBrandSlug}
-                    onChange={(e) => handleBrandChange(e.target.value)}
-                    className="w-full bg-gray-50 border border-gray-300 focus:border-[#C02030] disabled:opacity-40 rounded-xl px-4 py-3 text-sm text-gray-900 focus:outline-none transition-colors shadow-sm"
-                  >
-                    <option value="">{t.garageSelectPlaceholder}</option>
-                    {ymmData?.brands.map((b) => (
-                      <option key={b.slug} value={b.slug}>
-                        {b.name}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={handleBrandChange}
+                    placeholder={t.garageSelectPlaceholder}
+                    size="md"
+                    className="w-full"
+                    triggerClassName="w-full py-3 px-4 rounded-xl text-sm"
+                    options={[
+                      { value: "", label: t.garageSelectPlaceholder },
+                      ...(ymmData?.brands || []).map((b) => ({
+                        value: b.slug,
+                        label: b.name,
+                      })),
+                    ]}
+                  />
                 </div>
 
                 {/* 3. Model (Filtered strictly by selected year) */}
@@ -358,31 +363,22 @@ export default function RegisterVehiclePage() {
                   <label className="block text-xs font-bold uppercase tracking-wider text-gray-700 mb-2">
                     {t.garageModelLabel} <span className="text-[#C02030]">*</span>
                   </label>
-                  <select
+                  <CustomSelect
                     disabled={!selectedBrandSlug}
                     value={selectedModelSlug}
-                    onChange={(e) => setSelectedModelSlug(e.target.value)}
-                    className="w-full bg-gray-50 border border-gray-300 focus:border-[#C02030] disabled:opacity-40 rounded-xl px-4 py-3 text-sm text-gray-900 focus:outline-none transition-colors shadow-sm"
-                  >
-                    <option value="">{t.garageSelectPlaceholder}</option>
-                    {groupedModels.length > 0 ? (
-                      groupedModels.map((grp) => (
-                        <optgroup key={grp.family} label={`Familia ${grp.family}`}>
-                          {grp.models.map((m) => (
-                            <option key={m.slug} value={m.slug}>
-                              {m.name} ({m.category})
-                            </option>
-                          ))}
-                        </optgroup>
-                      ))
-                    ) : (
-                      availableModels?.map((m) => (
-                        <option key={m.slug} value={m.slug}>
-                          {m.name} ({m.category})
-                        </option>
-                      ))
-                    )}
-                  </select>
+                    onChange={setSelectedModelSlug}
+                    placeholder={t.garageSelectPlaceholder}
+                    size="md"
+                    className="w-full"
+                    triggerClassName="w-full py-3 px-4 rounded-xl text-sm"
+                    options={[
+                      { value: "", label: t.garageSelectPlaceholder },
+                      ...(availableModels || []).map((m) => ({
+                        value: m.slug,
+                        label: `${m.name} (${m.category})`,
+                      })),
+                    ]}
+                  />
                 </div>
               </div>
 

@@ -12,6 +12,7 @@ import { CartDrawer } from "@/components/cart/CartDrawer";
 import { FloatingConcierge } from "@/components/home/FloatingConcierge";
 import { Footer } from "@/components/layout/Footer";
 import { CatalogPagination } from "@/components/ui/CatalogPagination";
+import { CustomSelect } from "@/components/ui/CustomSelect";
 import { useLanguage } from "@/context/LanguageContext";
 import { useCart } from "@/context/CartContext";
 import { useGarage } from "@/context/GarageContext";
@@ -535,46 +536,42 @@ export default function CombosPage() {
           <div className="space-y-2.5 pt-2 border-t border-gray-100 text-xs">
             <div className="flex flex-wrap items-center gap-2">
               {/* 1. Vehicle Brand Selector (Strictly only brands present in combos) */}
-              <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5 shadow-xs max-w-full">
-                <span className="text-gray-500 font-medium shrink-0">{t.productsFilterVehicleBrand}:</span>
-                <select
-                  value={selectedVehicleBrand}
-                  onChange={(e) => setSelectedVehicleBrand(e.target.value)}
-                  className="bg-transparent text-gray-900 font-bold outline-none cursor-pointer text-xs max-w-[150px] sm:max-w-none truncate"
-                >
-                  <option value="all">
-                    {availableVehicleBrands.length === 0
-                      ? t.productsAllVehicleBrands
-                      : `${t.productsAllVehicleBrands} (${availableVehicleBrands.length})`}
-                  </option>
-                  {availableVehicleBrands.map((vb) => (
-                    <option key={vb.slug} value={vb.slug}>
-                      {vb.title} ({vb.count})
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <CustomSelect
+                value={selectedVehicleBrand}
+                onChange={setSelectedVehicleBrand}
+                labelPrefix={`${t.productsFilterVehicleBrand}:`}
+                options={[
+                  {
+                    value: "all",
+                    label: t.productsAllVehicleBrands,
+                    count: availableVehicleBrands.length,
+                  },
+                  ...availableVehicleBrands.map((vb) => ({
+                    value: vb.slug,
+                    label: vb.title,
+                    count: vb.count,
+                  })),
+                ]}
+              />
 
               {/* 2. Distributor Brand Selector (Strictly only distributor brands present in combos) */}
-              <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5 shadow-xs max-w-full">
-                <span className="text-gray-500 font-medium shrink-0">{t.productsFilterDistributorBrand}:</span>
-                <select
-                  value={selectedDistributorBrand}
-                  onChange={(e) => setSelectedDistributorBrand(e.target.value)}
-                  className="bg-transparent text-gray-900 font-bold outline-none cursor-pointer text-xs max-w-[150px] sm:max-w-none truncate"
-                >
-                  <option value="all">
-                    {availableDistributorBrands.length === 0
-                      ? t.productsAllDistributorBrands
-                      : `${t.productsAllDistributorBrands} (${availableDistributorBrands.length})`}
-                  </option>
-                  {availableDistributorBrands.map((db) => (
-                    <option key={db.name} value={db.name}>
-                      {db.name} ({db.count})
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <CustomSelect
+                value={selectedDistributorBrand}
+                onChange={setSelectedDistributorBrand}
+                labelPrefix={`${t.productsFilterDistributorBrand}:`}
+                options={[
+                  {
+                    value: "all",
+                    label: t.productsAllDistributorBrands,
+                    count: availableDistributorBrands.length,
+                  },
+                  ...availableDistributorBrands.map((db) => ({
+                    value: db.name,
+                    label: db.name,
+                    count: db.count,
+                  })),
+                ]}
+              />
 
               {/* 3. In Stock Filter Toggle */}
               {(hasInStock || inStockOnly) && (

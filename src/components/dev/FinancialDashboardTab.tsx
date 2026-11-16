@@ -35,6 +35,7 @@ import {
   LineChartDatum,
 } from "./BackdoorAnimatedPrimitives";
 import { FinancialDashboardSkeleton } from "./FinancialDashboardSkeleton";
+import { CustomSelect } from "@/components/ui/CustomSelect";
 
 export interface TransactionItem {
   id: string;
@@ -471,36 +472,28 @@ export function FinancialDashboardTab({
           {/* MonthYearSelector Component */}
           <div className="flex flex-wrap items-center gap-2.5">
             {/* Month Dropdown */}
-            <div className="relative">
-              <select
-                value={selectedMonth}
-                onChange={(e) => setSelectedMonth(parseInt(e.target.value, 10))}
-                className="h-10 pl-3 pr-8 rounded-full bg-[#F6F6F8] border border-black/[0.05] text-xs font-semibold text-[#141414] appearance-none cursor-pointer hover:bg-neutral-100 transition focus:outline-hidden focus:ring-2 focus:ring-[#141414]"
-              >
-                {(lang === "es" ? MONTH_NAMES_ES : MONTH_NAMES_EN).map((name, idx) => (
-                  <option key={name} value={idx + 1}>
-                    {name}
-                  </option>
-                ))}
-              </select>
-              <Calendar className="w-3.5 h-3.5 text-[#71717A] absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-            </div>
+            <CustomSelect
+              value={String(selectedMonth)}
+              onChange={(v) => setSelectedMonth(parseInt(v, 10))}
+              icon={<Calendar className="w-3.5 h-3.5 text-[#71717A]" />}
+              triggerClassName="h-10 rounded-full bg-[#F6F6F8] border border-black/[0.05] text-xs font-semibold text-[#141414]"
+              options={(lang === "es" ? MONTH_NAMES_ES : MONTH_NAMES_EN).map((name, idx) => ({
+                value: String(idx + 1),
+                label: name,
+              }))}
+            />
 
             {/* Year Dropdown */}
-            <div className="relative">
-              <select
-                value={selectedYear}
-                onChange={(e) => setSelectedYear(parseInt(e.target.value, 10))}
-                className="h-10 pl-3 pr-8 rounded-full bg-[#F6F6F8] border border-black/[0.05] text-xs font-semibold text-[#141414] appearance-none cursor-pointer hover:bg-neutral-100 transition focus:outline-hidden focus:ring-2 focus:ring-[#141414]"
-              >
-                {[2024, 2025, 2026, 2027].map((yr) => (
-                  <option key={yr} value={yr}>
-                    {yr}
-                  </option>
-                ))}
-              </select>
-              <Calendar className="w-3.5 h-3.5 text-[#71717A] absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-            </div>
+            <CustomSelect
+              value={String(selectedYear)}
+              onChange={(v) => setSelectedYear(parseInt(v, 10))}
+              icon={<Calendar className="w-3.5 h-3.5 text-[#71717A]" />}
+              triggerClassName="h-10 rounded-full bg-[#F6F6F8] border border-black/[0.05] text-xs font-semibold text-[#141414]"
+              options={[2024, 2025, 2026, 2027].map((yr) => ({
+                value: String(yr),
+                label: String(yr),
+              }))}
+            />
 
             {/* Quick "Current Month" button */}
             <button
