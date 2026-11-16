@@ -949,12 +949,24 @@ export async function GET(request: Request) {
       return true;
     });
 
-    // Dynamically compute categories that exist ONLY in active products
+    // Dynamically compute categories that exist ONLY in active products with counts
     const matchingCategorySet = new Set<string>();
+    const categoryCountsMap: Record<string, number> = {};
     unifiedProducts.forEach((p) => {
-      p.category.forEach((cat) => matchingCategorySet.add(cat.trim()));
+      p.category.forEach((cat) => {
+        const c = cat.trim();
+        if (c) {
+          matchingCategorySet.add(c);
+          categoryCountsMap[c.toLowerCase()] = (categoryCountsMap[c.toLowerCase()] || 0) + 1;
+        }
+      });
     });
-    const categories = Array.from(matchingCategorySet);
+    // Sort categories: most populated first, then alphabetically
+    const categories = Array.from(matchingCategorySet).sort((a, b) => {
+      const countA = categoryCountsMap[a.toLowerCase()] || 0;
+      const countB = categoryCountsMap[b.toLowerCase()] || 0;
+      return countB - countA || a.localeCompare(b);
+    });
 
     // Sort
     const filtered = [...filteredProducts];
@@ -977,6 +989,7 @@ export async function GET(request: Request) {
       products: filtered,
       total: filtered.length,
       categories,
+      categoryCounts: categoryCountsMap,
       brands: availableDistributorBrands.map((b) => b.name),
       availableVehicleBrands,
       availableDistributorBrands,

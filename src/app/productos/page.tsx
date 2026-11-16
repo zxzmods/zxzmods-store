@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef, Suspense, useMemo } from "react";
+import React, { useState, useEffect, useRef, Suspense, useMemo, useCallback } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
@@ -37,6 +37,13 @@ import {
   Volume2,
   Percent,
   ArrowUpDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronDown,
+  ChevronUp,
+  LayoutGrid,
+  Layers,
+  Tag,
 } from "lucide-react";
 
 // Stars component - displays empty stars if no reviews submitted
@@ -406,6 +413,12 @@ function ProductsContent() {
   const [sortBy, setSortBy] = useState<"relevant" | "price-asc" | "price-desc" | "stars">("relevant");
 
   const [availableCategories, setAvailableCategories] = useState<string[]>([]);
+  const [categoryCounts, setCategoryCounts] = useState<Record<string, number>>({});
+  const [isCategoriesExpanded, setIsCategoriesExpanded] = useState(false);
+  const [categoryFilterQuery, setCategoryFilterQuery] = useState("");
+  const categoryScrollRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
   const [availableVehicleBrands, setAvailableVehicleBrands] = useState<
     Array<{
       slug: string;
@@ -667,6 +680,10 @@ function ProductsContent() {
             }
           }
 
+          if (data.categoryCounts && typeof data.categoryCounts === "object") {
+            setCategoryCounts(data.categoryCounts);
+          }
+
           if (Array.isArray(data.availableVehicleBrands)) {
             setAvailableVehicleBrands(data.availableVehicleBrands);
           }
@@ -723,6 +740,69 @@ function ProductsContent() {
     setSortBy("relevant");
     router.replace("/productos", { scroll: false });
   };
+
+  // Scroll helpers and state for categories carousel & drawer
+  const checkCategoryScroll = useCallback(() => {
+    const el = categoryScrollRef.current;
+    if (!el) return;
+    const { scrollLeft, scrollWidth, clientWidth } = el;
+    setCanScrollLeft(scrollLeft > 4);
+    setCanScrollRight(scrollLeft + clientWidth < scrollWidth - 4);
+  }, []);
+
+  useEffect(() => {
+    const el = categoryScrollRef.current;
+    if (!el) return;
+    checkCategoryScroll();
+    el.addEventListener("scroll", checkCategoryScroll, { passive: true });
+    window.addEventListener("resize", checkCategoryScroll);
+    return () => {
+      el.removeEventListener("scroll", checkCategoryScroll);
+      window.removeEventListener("resize", checkCategoryScroll);
+    };
+  }, [availableCategories, checkCategoryScroll]);
+
+  // Center active category into view
+  useEffect(() => {
+    if (!categoryScrollRef.current || isCategoriesExpanded) return;
+    const activeBtn = categoryScrollRef.current.querySelector<HTMLElement>('[data-active="true"]');
+    if (activeBtn) {
+      activeBtn.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+    }
+    const timer = setTimeout(checkCategoryScroll, 300);
+    return () => clearTimeout(timer);
+  }, [selectedCategory, isCategoriesExpanded, checkCategoryScroll]);
+
+  const scrollCategories = (direction: "left" | "right") => {
+    const el = categoryScrollRef.current;
+    if (!el) return;
+    const scrollAmount = direction === "left" ? -280 : 280;
+    el.scrollBy({ left: scrollAmount, behavior: "smooth" });
+  };
+
+  const handleCategoryWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    const el = categoryScrollRef.current;
+    if (!el) return;
+    if (Math.abs(e.deltaX) < Math.abs(e.deltaY)) {
+      if (el.scrollWidth > el.clientWidth) {
+        el.scrollLeft += e.deltaY;
+      }
+    }
+  };
+
+  const handleCategorySelect = (category: string) => {
+    setSelectedCategory(category);
+    updateUrlParams({ category: category === "all" ? null : category });
+  };
+
+  const filteredAvailableCategories = useMemo(() => {
+    if (!categoryFilterQuery.trim()) return availableCategories;
+    const q = categoryFilterQuery.toLowerCase().trim();
+    return availableCategories.filter((cat) => {
+      const label = getCategoryLabel(cat, lang).toLowerCase();
+      return label.includes(q) || cat.toLowerCase().includes(q);
+    });
+  }, [availableCategories, categoryFilterQuery, lang]);
 
   // Add product to cart with selected parameters and effective price
   const handleAddToCart = (
@@ -1133,39 +1213,229 @@ function ProductsContent() {
             </button>
           </form>
 
-          {/* Thinner Category Slide Bar (Always present below search input) */}
-          <div className="relative w-full border-t border-b border-gray-200/60 py-1.5">
-            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar scroll-smooth">
-              <button
-                onClick={() => setSelectedCategory("all")}
-                className={`px-3 py-1 rounded-full text-[11px] font-semibold whitespace-nowrap transition-all border ${
-                  selectedCategory === "all"
-                    ? "bg-[#C02030] text-white border-[#C02030] shadow-xs"
-                    : "bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:text-black"
-                }`}
-              >
-                {t.productsAllCategories}
-              </button>
+          {/* Dual-Mode Category Navigation (Horizontal Carousel + Expandable Grid) */}
+          <div className="relative w-full border-t border-b border-gray-200/80 py-2 bg-gradient-to-r from-gray-50/40 via-white to-gray-50/40 rounded-xl">
+            {/* Header row: Category count info & Expand/Collapse toggle */}
+            <div className="flex items-center justify-between px-1 pb-1.5 text-xs">
+              <div className="flex items-center gap-1.5 text-gray-500 font-semibold">
+                <Tag className="w-3.5 h-3.5 text-[#C02030]" />
+                <span className="uppercase tracking-wider text-[11px] font-bold text-gray-700">
+                  {t.productsFilterCategory}
+                </span>
+                <span className="text-[10px] bg-gray-200/70 text-gray-700 px-1.5 py-0.5 rounded-full font-bold">
+                  {availableCategories.length} {t.productsCategoriesCount}
+                </span>
+                {selectedCategory !== "all" && (
+                  <span className="hidden sm:inline-flex items-center gap-1 text-[11px] text-[#C02030] font-bold pl-1">
+                    • {getCategoryLabel(selectedCategory, lang)}
+                  </span>
+                )}
+              </div>
 
-              {availableCategories.map((cat) => (
-                <button
-                  key={cat}
-                  onClick={() => setSelectedCategory(cat)}
-                  className={`px-2.5 py-1 rounded-full text-[11px] font-medium whitespace-nowrap transition-all border ${
-                    selectedCategory.toLowerCase() === cat.toLowerCase()
-                      ? "bg-[#C02030] text-white border-[#C02030] shadow-xs"
-                      : "bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:text-black"
-                  }`}
-                >
-                  {getCategoryLabel(cat, lang)}
-                </button>
-              ))}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsCategoriesExpanded(!isCategoriesExpanded);
+                  if (isCategoriesExpanded) setCategoryFilterQuery("");
+                }}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold text-gray-700 hover:text-[#C02030] hover:bg-gray-100 transition-colors cursor-pointer border border-gray-200 bg-white shadow-2xs"
+                title={isCategoriesExpanded ? t.productsCollapseCategories : t.productsViewAllCategories}
+              >
+                <LayoutGrid className="w-3 h-3 text-gray-500" />
+                <span>
+                  {isCategoriesExpanded
+                    ? t.productsCollapseCategories
+                    : `${t.productsViewAllCategories} (${availableCategories.length})`}
+                </span>
+                {isCategoriesExpanded ? (
+                  <ChevronUp className="w-3 h-3" />
+                ) : (
+                  <ChevronDown className="w-3 h-3" />
+                )}
+              </button>
             </div>
+
+            {/* EXPANDED VIEW: Multi-row wrap with instant category search filter */}
+            {isCategoriesExpanded ? (
+              <div className="pt-2 pb-1 space-y-2.5">
+                <div className="relative max-w-xs">
+                  <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="text"
+                    value={categoryFilterQuery}
+                    onChange={(e) => setCategoryFilterQuery(e.target.value)}
+                    placeholder={t.productsSearchCategory}
+                    className="w-full pl-8 pr-7 py-1 text-xs bg-white border border-gray-200 rounded-lg outline-none focus:border-[#C02030] transition-colors"
+                  />
+                  {categoryFilterQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setCategoryFilterQuery("")}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-0.5"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap items-center gap-1.5 max-h-56 overflow-y-auto pr-1">
+                  <button
+                    type="button"
+                    onClick={() => handleCategorySelect("all")}
+                    className={`px-3 py-1 rounded-full text-[11px] font-semibold whitespace-nowrap transition-all border cursor-pointer ${
+                      selectedCategory === "all"
+                        ? "bg-[#C02030] text-white border-[#C02030] shadow-xs"
+                        : "bg-white text-gray-700 border-gray-200 hover:border-gray-400 hover:text-black hover:bg-gray-50"
+                    }`}
+                  >
+                    {t.productsAllCategories}
+                  </button>
+
+                  {filteredAvailableCategories.map((cat) => {
+                    const isSelected = selectedCategory.toLowerCase() === cat.toLowerCase();
+                    const count = categoryCounts[cat.toLowerCase()];
+                    return (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => handleCategorySelect(cat)}
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium whitespace-nowrap transition-all border cursor-pointer ${
+                          isSelected
+                            ? "bg-[#C02030] text-white border-[#C02030] shadow-xs font-bold"
+                            : "bg-white text-gray-700 border-gray-200 hover:border-gray-400 hover:text-black hover:bg-gray-50"
+                        }`}
+                      >
+                        <span>{getCategoryLabel(cat, lang)}</span>
+                        {typeof count === "number" && (
+                          <span
+                            className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                              isSelected ? "bg-white/25 text-white" : "bg-gray-100 text-gray-600"
+                            }`}
+                          >
+                            {count}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                  {filteredAvailableCategories.length === 0 && (
+                    <span className="text-xs text-gray-400 italic py-1">
+                      {lang === "es" ? "No se encontraron categorías" : "No categories found"}
+                    </span>
+                  )}
+                </div>
+              </div>
+            ) : (
+              /* CAROUSEL VIEW: Smooth scroll strip with left/right buttons and gradient edge masks */
+              <div className="relative group">
+                {/* Left scroll chevron button & gradient fade */}
+                {canScrollLeft && (
+                  <div className="absolute left-0 top-0 bottom-0 z-10 flex items-center pr-4 bg-gradient-to-r from-[#F8F9FA] via-[#F8F9FA]/90 to-transparent">
+                    <button
+                      type="button"
+                      onClick={() => scrollCategories("left")}
+                      className="p-1 rounded-full bg-white border border-gray-300 shadow-md text-gray-700 hover:text-[#C02030] hover:border-[#C02030] hover:scale-110 transition-all cursor-pointer"
+                      title={t.productsScrollCategoriesLeft}
+                      aria-label={t.productsScrollCategoriesLeft}
+                    >
+                      <ChevronLeft className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+
+                {/* Right scroll chevron button & gradient fade */}
+                {canScrollRight && (
+                  <div className="absolute right-0 top-0 bottom-0 z-10 flex items-center pl-4 bg-gradient-to-l from-[#F8F9FA] via-[#F8F9FA]/90 to-transparent">
+                    <button
+                      type="button"
+                      onClick={() => scrollCategories("right")}
+                      className="p-1 rounded-full bg-white border border-gray-300 shadow-md text-gray-700 hover:text-[#C02030] hover:border-[#C02030] hover:scale-110 transition-all cursor-pointer"
+                      title={t.productsScrollCategoriesRight}
+                      aria-label={t.productsScrollCategoriesRight}
+                    >
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+
+                <div
+                  ref={categoryScrollRef}
+                  onWheel={handleCategoryWheel}
+                  className="flex items-center gap-1.5 overflow-x-auto no-scrollbar scroll-smooth px-1 py-0.5"
+                >
+                  <button
+                    type="button"
+                    data-active={selectedCategory === "all"}
+                    onClick={() => handleCategorySelect("all")}
+                    className={`px-3 py-1 rounded-full text-[11px] font-semibold whitespace-nowrap transition-all border shrink-0 cursor-pointer ${
+                      selectedCategory === "all"
+                        ? "bg-[#C02030] text-white border-[#C02030] shadow-xs"
+                        : "bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:text-black"
+                    }`}
+                  >
+                    {t.productsAllCategories}
+                  </button>
+
+                  {availableCategories.map((cat) => {
+                    const isSelected = selectedCategory.toLowerCase() === cat.toLowerCase();
+                    const count = categoryCounts[cat.toLowerCase()];
+                    return (
+                      <button
+                        key={cat}
+                        type="button"
+                        data-active={isSelected}
+                        onClick={() => handleCategorySelect(cat)}
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium whitespace-nowrap transition-all border shrink-0 cursor-pointer ${
+                          isSelected
+                            ? "bg-[#C02030] text-white border-[#C02030] shadow-xs font-bold"
+                            : "bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:text-black"
+                        }`}
+                      >
+                        <span>{getCategoryLabel(cat, lang)}</span>
+                        {typeof count === "number" && (
+                          <span
+                            className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                              isSelected ? "bg-white/25 text-white" : "bg-gray-100 text-gray-600"
+                            }`}
+                          >
+                            {count}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Secondary Controls: Separated Filter Parameters (Vehicle Brand, Distributor Brand, In Stock, Discounted) & Sorting */}
+          {/* Secondary Controls: Separated Filter Parameters (Category, Vehicle Brand, Distributor Brand, In Stock, Discounted) & Sorting */}
           <div className="space-y-2.5 pt-1 text-xs">
             <div className="flex flex-wrap items-center gap-2">
+              {/* Category Dropdown Selector for instant lookup */}
+              <div className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-xl px-3 py-1.5 shadow-xs max-w-full">
+                <span className="text-gray-500 font-medium shrink-0">{t.productsFilterCategory}:</span>
+                <select
+                  value={selectedCategory}
+                  onChange={(e) => handleCategorySelect(e.target.value)}
+                  className="bg-transparent text-gray-900 font-bold outline-none cursor-pointer text-xs max-w-[150px] sm:max-w-none truncate"
+                >
+                  <option value="all">
+                    {availableCategories.length === 0
+                      ? t.productsAllCategories
+                      : `${t.productsAllCategories} (${availableCategories.length})`}
+                  </option>
+                  {availableCategories.map((cat) => {
+                    const count = categoryCounts[cat.toLowerCase()];
+                    return (
+                      <option key={cat} value={cat}>
+                        {getCategoryLabel(cat, lang)} {typeof count === "number" ? `(${count})` : ""}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+
               {/* 1. Vehicle Brand Selector (SxS Platform Brand - e.g. CFMOTO, Can-Am, Polaris, Kawasaki...) */}
               <div className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-xl px-3 py-1.5 shadow-xs max-w-full">
                 <span className="text-gray-500 font-medium shrink-0">{t.productsFilterVehicleBrand}:</span>
@@ -1494,14 +1764,14 @@ function ProductsContent() {
 
                 {/* Category Pill */}
                 {selectedCategory !== "all" && (
-                  <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-gray-700 text-white text-[11px] font-semibold shadow-xs">
-                    <span>{getCategoryLabel(selectedCategory, lang)}</span>
+                  <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#111827] text-white text-[11px] font-semibold shadow-xs">
+                    <span>
+                      {t.productsFilterCategory}:{" "}
+                      <strong className="text-white">{getCategoryLabel(selectedCategory, lang)}</strong>
+                    </span>
                     <button
                       type="button"
-                      onClick={() => {
-                        setSelectedCategory("all");
-                        updateUrlParams({ category: null });
-                      }}
+                      onClick={() => handleCategorySelect("all")}
                       className="p-0.5 hover:bg-white/20 rounded-full transition cursor-pointer"
                     >
                       <X className="w-3 h-3 text-white" />

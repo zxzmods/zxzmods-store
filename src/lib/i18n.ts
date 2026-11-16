@@ -572,6 +572,12 @@ export interface Translations {
   productsSubtitle: string;
   productsSearchPlaceholder: string;
   productsAllCategories: string;
+  productsViewAllCategories: string;
+  productsCollapseCategories: string;
+  productsSearchCategory: string;
+  productsCategoriesCount: string;
+  productsScrollCategoriesLeft: string;
+  productsScrollCategoriesRight: string;
   productsAllBrands: string;
   productsAllVehicles: string;
   productsFilterCategory: string;
@@ -2606,6 +2612,12 @@ export const translations: Record<Language, Translations> = {
     productsSubtitle: "Piezas de alto rendimiento probadas en Costa Rica con garantía de taller mecánico y soporte de instalación profesional.",
     productsSearchPlaceholder: "Buscar por pieza, categoría, marca o modelo SXS...",
     productsAllCategories: "Todas las Categorías",
+    productsViewAllCategories: "Ver todas las categorías",
+    productsCollapseCategories: "Ver menos",
+    productsSearchCategory: "Buscar categoría...",
+    productsCategoriesCount: "categorías",
+    productsScrollCategoriesLeft: "Desplazar a la izquierda",
+    productsScrollCategoriesRight: "Desplazar a la derecha",
     productsAllBrands: "Todas las Marcas",
     productsAllVehicles: "Todos los Modelos SXS",
     productsFilterCategory: "Categoría",
@@ -4634,6 +4646,12 @@ export const translations: Record<Language, Translations> = {
     productsSubtitle: "High-performance parts tested in Costa Rica with mechanical workshop warranty and professional installation support.",
     productsSearchPlaceholder: "Search parts by name, category, brand or SXS model...",
     productsAllCategories: "All Categories",
+    productsViewAllCategories: "View all categories",
+    productsCollapseCategories: "Show less",
+    productsSearchCategory: "Search category...",
+    productsCategoriesCount: "categories",
+    productsScrollCategoriesLeft: "Scroll left",
+    productsScrollCategoriesRight: "Scroll right",
     productsAllBrands: "All Brands",
     productsAllVehicles: "All SXS Models",
     productsFilterCategory: "Category",
@@ -6139,34 +6157,87 @@ export const categoryTranslations: Record<string, { es: string; en: string }> = 
   "air & fuel": { es: "Aire & Combustible", en: "Air & Fuel" },
   air: { es: "Aire", en: "Air" },
   fuel: { es: "Combustible", en: "Fuel" },
+  combustible: { es: "Combustible", en: "Fuel" },
   audio: { es: "Audio & Sonido", en: "Audio" },
+  "audio & sonido": { es: "Audio & Sonido", en: "Audio & Sound" },
+  "audio-sonido": { es: "Audio & Sonido", en: "Audio & Sound" },
   "skit plates": { es: "Placas Protectoras", en: "Skid Plates" },
   "skid plates": { es: "Placas Protectoras", en: "Skid Plates" },
   clutch: { es: "Clutch & Fajas", en: "Clutch & Belts" },
+  "clutch-belts": { es: "Clutch & Fajas", en: "Clutch & Belts" },
+  "clutch_belts": { es: "Clutch & Fajas", en: "Clutch & Belts" },
+  "clutch & belts": { es: "Clutch & Fajas", en: "Clutch & Belts" },
   drivetrain: { es: "Tren Motriz", en: "Drivetrain" },
   exhaust: { es: "Escapes", en: "Exhaust" },
+  escapes: { es: "Escapes", en: "Exhaust" },
   performance: { es: "Rendimiento", en: "Performance" },
+  rendimiento: { es: "Rendimiento", en: "Performance" },
   protection: { es: "Protección", en: "Protection" },
+  proteccion: { es: "Protección", en: "Protection" },
+  "proteccion-del-motor": { es: "Protección de Motor", en: "Engine Protection" },
+  "proteccion_del_motor": { es: "Protección de Motor", en: "Engine Protection" },
+  "engine protection": { es: "Protección de Motor", en: "Engine Protection" },
   recovery: { es: "Rescate & Winches", en: "Recovery & Winches" },
   suspension: { es: "Suspensión", en: "Suspension" },
+  "suspension-brakes": { es: "Suspensión & Frenos", en: "Suspension & Brakes" },
+  "suspension_brakes": { es: "Suspensión & Frenos", en: "Suspension & Brakes" },
+  "suspension & brakes": { es: "Suspensión & Frenos", en: "Suspension & Brakes" },
   wheels: { es: "Aros & Llantas", en: "Wheels & Tires" },
   tires: { es: "Llantas", en: "Tires" },
+  llantas: { es: "Llantas", en: "Tires" },
   windshield: { es: "Parabrisas", en: "Windshields" },
   windshields: { es: "Parabrisas", en: "Windshields" },
   doors: { es: "Puertas", en: "Doors" },
+  puertas: { es: "Puertas", en: "Doors" },
   roof: { es: "Techos", en: "Roofs" },
   roofs: { es: "Techos", en: "Roofs" },
+  techos: { es: "Techos", en: "Roofs" },
   bumpers: { es: "Defensas", en: "Bumpers" },
+  defensas: { es: "Defensas", en: "Bumpers" },
   cooling: { es: "Enfriamiento", en: "Cooling" },
+  enfriamiento: { es: "Enfriamiento", en: "Cooling" },
   engine: { es: "Motor", en: "Engine" },
+  motor: { es: "Motor", en: "Engine" },
   accessories: { es: "Accesorios", en: "Accessories" },
+  accesorios: { es: "Accesorios", en: "Accessories" },
   brakes: { es: "Frenos", en: "Brakes" },
+  frenos: { es: "Frenos", en: "Brakes" },
+  herramientas: { es: "Herramientas", en: "Tools" },
+  tools: { es: "Herramientas", en: "Tools" },
+  almacenamiento: { es: "Almacenamiento", en: "Storage" },
+  storage: { es: "Almacenamiento", en: "Storage" },
+  admision: { es: "Admisión", en: "Intake" },
+  intake: { es: "Admisión", en: "Intake" },
+  "lighting-electrical": { es: "Iluminación & Eléctrico", en: "Lighting & Electrical" },
+  "lighting_electrical": { es: "Iluminación & Eléctrico", en: "Lighting & Electrical" },
+  "lighting & electrical": { es: "Iluminación & Eléctrico", en: "Lighting & Electrical" },
+  interior: { es: "Interior", en: "Interior" },
+  exterior: { es: "Exterior", en: "Exterior" },
+  seguridad: { es: "Seguridad", en: "Safety" },
+  safety: { es: "Seguridad", en: "Safety" },
+  mantenimiento: { es: "Mantenimiento", en: "Maintenance" },
+  maintenance: { es: "Mantenimiento", en: "Maintenance" },
 };
 
 export function getCategoryLabel(categoryKey: string, lang: Language = "es"): string {
+  if (!categoryKey || typeof categoryKey !== "string") return "";
   const normalized = categoryKey.toLowerCase().trim();
-  const found = categoryTranslations[normalized];
-  if (found) return found[lang];
-  return categoryKey.charAt(0).toUpperCase() + categoryKey.slice(1);
+  const direct = categoryTranslations[normalized];
+  if (direct) return direct[lang];
+
+  // Try replacing hyphens/underscores with spaces
+  const withSpaces = normalized.replace(/[-_]+/g, " ");
+  if (categoryTranslations[withSpaces]) return categoryTranslations[withSpaces][lang];
+
+  // Try slugified with hyphens
+  const slugified = normalized.replace(/[\s_]+/g, "-");
+  if (categoryTranslations[slugified]) return categoryTranslations[slugified][lang];
+
+  // Elegant fallback: remove hyphens/underscores and capitalize words cleanly
+  return withSpaces
+    .split(" ")
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
 }
 
