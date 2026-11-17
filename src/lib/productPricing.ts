@@ -29,6 +29,8 @@ export interface ProductPricingInput {
   installationPriceCRC?: number | null;
   isInstallationIncluded?: boolean | null;
   discountPercent?: number | null;
+  dealerDiscountPercent?: number | null;
+  supplierLastPriceUSD?: number | null;
   ivaPercent?: number | null;
   price?: {
     P_price_D?: number;
@@ -115,12 +117,6 @@ export function computeProductLivePricing(
     Number(product.priceCRC ?? product.price?.T_price ?? 0) || 0
   );
 
-  const pPriceUSD = Number(
-    (
-      Number(product.processingPriceD ?? product.price?.P_price_D ?? 0) || 0
-    ).toFixed(2)
-  );
-
   const rawSavedPPriceCRC = Math.round(
     Number(product.processingPriceCRC ?? product.price?.P_price ?? 0) || 0
   );
@@ -128,14 +124,55 @@ export function computeProductLivePricing(
     Number(product.shippingPriceCRC ?? product.price?.S_price ?? 0) || 0
   );
 
+  const rawPPriceUSD = Number(
+    Number(product.processingPriceD ?? product.price?.P_price_D ?? 0) || 0
+  );
+  const rawSupplierUSD = Number(product.supplierLastPriceUSD ?? 0) || 0;
+  const dealerDisc = Math.max(
+    0,
+    Math.min(100, Number(product.dealerDiscountPercent) || 0)
+  );
+  const explicitLockedRate =
+    Number(product.lockedExchangeRate) && Number(product.lockedExchangeRate) > 300
+      ? Number(product.lockedExchangeRate)
+      : 0;
+
+  let resolvedPPriceUSD = rawPPriceUSD;
+  if (
+    dealerDisc > 0 &&
+    rawSupplierUSD > 0 &&
+    (rawPPriceUSD <= 0 || Math.abs(rawPPriceUSD - rawSupplierUSD) < 0.05)
+  ) {
+    // Apply dealer discount if processingPriceD was left at or overwritten with undiscounted retail price
+    resolvedPPriceUSD = Number(
+      (rawSupplierUSD * (1 - dealerDisc / 100)).toFixed(2)
+    );
+  } else if (
+    rawSupplierUSD > 0 &&
+    Math.abs(rawPPriceUSD - rawSupplierUSD) < 0.05 &&
+    explicitLockedRate > 300 &&
+    rawSavedPPriceCRC > 0
+  ) {
+    // If background availability sync overwrote processingPriceD with retail supplierLastPriceUSD
+    // while processingPriceCRC was locked at a dealer-discounted USD cost, recover the true discounted USD cost
+    const impliedLockedUSD = Number(
+      (rawSavedPPriceCRC / explicitLockedRate).toFixed(2)
+    );
+    if (impliedLockedUSD > 0 && impliedLockedUSD < rawSupplierUSD * 0.98) {
+      resolvedPPriceUSD = impliedLockedUSD;
+    }
+  }
+
+  const pPriceUSD = Number(resolvedPPriceUSD.toFixed(2));
+
   const sPriceUSD = resolveShippingUSD(
     product.shippingPriceD ?? product.price?.S_price_D,
     rawSavedSPriceCRC
   );
 
   const inferredLockedRate =
-    Number(product.lockedExchangeRate) && Number(product.lockedExchangeRate) > 300
-      ? Number(product.lockedExchangeRate)
+    explicitLockedRate > 300
+      ? explicitLockedRate
       : pPriceUSD > 0 && rawSavedPPriceCRC > 0
       ? Number((rawSavedPPriceCRC / pPriceUSD).toFixed(2))
       : LEGACY_SHIPPING_CONVERSION_RATE;

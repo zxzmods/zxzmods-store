@@ -4341,6 +4341,10 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
             body: JSON.stringify({
               url: trimmed,
               saveToProductId: editingProduct?.id,
+              dealerDiscountPercent:
+                Number(productForm.dealerDiscountPercent) ||
+                getDealerBrandDiscount(productForm.brandName) ||
+                0,
             }),
           }),
           refreshLiveExchangeRate(),
@@ -4560,6 +4564,12 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
         P_price_D = discountedCostUSD;
       }
     }
+    setEditingProduct({
+      ...prod,
+      processingPriceD: P_price_D,
+      dealerDiscountPercent: effectiveDealerDiscount,
+      price: { ...(prod.price as any), P_price_D },
+    });
     const rawSPriceCRC = Number(prod.price?.S_price ?? prod.shippingPriceCRC ?? 0);
     const S_price_D = resolveShippingUSD(prod.shippingPriceD ?? prod.price?.S_price_D, rawSPriceCRC);
     const P_price = P_price_D > 0 ? Math.round(P_price_D * activeRate) : (prod.price?.P_price ?? prod.processingPriceCRC ?? 0);
@@ -9269,7 +9279,18 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
 
                 {/* Live Profit Fluctuation Status when editing an existing product */}
                 {editingProduct && (() => {
-                  const liveInfo = computeProductLivePricing(editingProduct, liveExchangeRate);
+                  const effectiveEditDiscount =
+                    Number(productForm.dealerDiscountPercent) ||
+                    getDealerBrandDiscount(productForm.brandName) ||
+                    Number(editingProduct.dealerDiscountPercent) ||
+                    0;
+                  const liveInfo = computeProductLivePricing(
+                    {
+                      ...editingProduct,
+                      dealerDiscountPercent: effectiveEditDiscount,
+                    },
+                    liveExchangeRate
+                  );
                   return (
                     <div
                       className={`p-4 rounded-2xl border space-y-2.5 ${
@@ -12397,10 +12418,21 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       {activeCatalogType === "products" && (() => {
         const activeList = products.filter((p) => !p.isArchived);
         const alertedProducts = activeList
-          .map((p) => ({
-            product: p,
-            live: computeProductLivePricing(p, liveExchangeRate),
-          }))
+          .map((p) => {
+            const resolvedDisc =
+              Number(p.dealerDiscountPercent) ||
+              getDealerBrandDiscount(
+                p.brandName || (Array.isArray(p.brand) ? p.brand[0] : "")
+              ) ||
+              0;
+            return {
+              product: p,
+              live: computeProductLivePricing(
+                { ...p, dealerDiscountPercent: resolvedDisc },
+                liveExchangeRate
+              ),
+            };
+          })
           .filter((item) => item.live.hasProfitAlert);
 
         return (
@@ -12463,7 +12495,10 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                   >
                     <div className="space-y-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="font-mono font-extrabold text-xs text-slate-900 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                        <span
+                          className="font-mono font-extrabold text-xs text-slate-900 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 max-w-[190px] truncate shrink-0"
+                          title={prod.sku}
+                        >
                           {prod.sku}
                         </span>
                         <span className="text-xs font-bold text-slate-900 truncate">
@@ -12536,7 +12571,16 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredProducts.map((prod) => {
-                const liveInfo = computeProductLivePricing(prod, liveExchangeRate);
+                const resolvedDisc =
+                  Number(prod.dealerDiscountPercent) ||
+                  getDealerBrandDiscount(
+                    prod.brandName || (Array.isArray(prod.brand) ? prod.brand[0] : "")
+                  ) ||
+                  0;
+                const liveInfo = computeProductLivePricing(
+                  { ...prod, dealerDiscountPercent: resolvedDisc },
+                  liveExchangeRate
+                );
                 return (
                 <tr key={prod.id} className={`hover:bg-slate-50/70 transition ${liveInfo.hasProfitAlert ? "bg-rose-50/30" : ""}`}>
                   <td className="p-3.5">

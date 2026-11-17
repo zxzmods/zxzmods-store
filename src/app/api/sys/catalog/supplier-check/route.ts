@@ -85,8 +85,36 @@ export async function POST(request: Request) {
     // Inspect live availability from US website
     const result = await fetchLiveSupplierAvailability(url);
 
-    // Optionally save to product (and auto-sync processingPriceD when supplierPriceUSD is found)
+    // Optionally save to product (and auto-sync processingPriceD with dealerDiscountPercent applied when supplierPriceUSD is found)
     if ((save || Boolean(saveToProductId)) && targetProductId) {
+      const existingProd = await prisma.product.findUnique({
+        where: { id: targetProductId },
+        select: {
+          dealerDiscountPercent: true,
+          brandName: true,
+          supplierLastPriceUSD: true,
+          processingPriceD: true,
+        },
+      });
+
+      let effectiveDiscount =
+        body.dealerDiscountPercent !== undefined && body.dealerDiscountPercent !== null
+          ? Math.max(0, Math.min(100, Number(body.dealerDiscountPercent) || 0))
+          : Math.max(0, Math.min(100, Number(existingProd?.dealerDiscountPercent) || 0));
+
+      if (effectiveDiscount === 0 && existingProd?.brandName) {
+        const dbDealer = await prisma.dealerBrand.findFirst({
+          where: {
+            name: { equals: existingProd.brandName.trim() },
+            isActive: true,
+          },
+          select: { dealerDiscountPercent: true },
+        });
+        if (dbDealer && Number(dbDealer.dealerDiscountPercent) > 0) {
+          effectiveDiscount = Math.max(0, Math.min(100, Number(dbDealer.dealerDiscountPercent)));
+        }
+      }
+
       const updateData: any = {
         supplierUrl: result.url,
         supplierPlatform: result.platform,
@@ -97,11 +125,26 @@ export async function POST(request: Request) {
         supplierStockCheckedAt: new Date(),
         supplierLeadDaysMin: result.leadDaysMin || 7,
         supplierLeadDaysMax: result.leadDaysMax || 21,
+        ...(effectiveDiscount > 0 ? { dealerDiscountPercent: effectiveDiscount } : {}),
         updatedAt: new Date(),
       };
       if (result.supplierPriceUSD && result.supplierPriceUSD > 0) {
         updateData.supplierLastPriceUSD = result.supplierPriceUSD;
-        updateData.processingPriceD = result.supplierPriceUSD;
+        if (effectiveDiscount > 0) {
+          updateData.processingPriceD = Number(
+            (result.supplierPriceUSD * (1 - effectiveDiscount / 100)).toFixed(2)
+          );
+        } else if (
+          existingProd?.supplierLastPriceUSD &&
+          Math.abs(result.supplierPriceUSD - existingProd.supplierLastPriceUSD) < 0.05 &&
+          existingProd.processingPriceD &&
+          existingProd.processingPriceD > 0 &&
+          existingProd.processingPriceD < result.supplierPriceUSD * 0.98
+        ) {
+          updateData.processingPriceD = existingProd.processingPriceD;
+        } else {
+          updateData.processingPriceD = result.supplierPriceUSD;
+        }
       }
 
       const updated = await prisma.product.update({

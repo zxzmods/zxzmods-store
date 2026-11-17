@@ -42,6 +42,8 @@ export async function GET(request: Request) {
           profitCRC: true,
           processingPriceD: true,
           processingPriceCRC: true,
+          supplierLastPriceUSD: true,
+          dealerDiscountPercent: true,
           shippingPriceD: true,
           shippingPriceCRC: true,
           lockedExchangeRate: true,

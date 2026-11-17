@@ -162,7 +162,23 @@ export async function PATCH(
     if (hasPricingPayload) {
       updateData.lockedExchangeRate = activeRate;
       if (body.recalculateLockedPrice === true) {
-        const effPD = updateData.processingPriceD ?? existingProduct.processingPriceD ?? 0;
+        let effPD = updateData.processingPriceD ?? existingProduct.processingPriceD ?? 0;
+        const supUSD = existingProduct.supplierLastPriceUSD ?? 0;
+        let effDisc = Math.max(0, Math.min(100, Number(existingProduct.dealerDiscountPercent) || 0));
+        if (effDisc === 0 && existingProduct.brandName) {
+          const dbDealer = await prisma.dealerBrand.findFirst({
+            where: { name: { equals: existingProduct.brandName.trim() }, isActive: true },
+            select: { dealerDiscountPercent: true },
+          });
+          if (dbDealer && Number(dbDealer.dealerDiscountPercent) > 0) {
+            effDisc = Math.max(0, Math.min(100, Number(dbDealer.dealerDiscountPercent)));
+          }
+        }
+        if (effDisc > 0 && supUSD > 0 && Math.abs(effPD - supUSD) < 0.05) {
+          effPD = Number((supUSD * (1 - effDisc / 100)).toFixed(2));
+          updateData.processingPriceD = effPD;
+          updateData.dealerDiscountPercent = effDisc;
+        }
         const effSD = updateData.shippingPriceD ?? (existingProduct as any).shippingPriceD ?? 0;
         if (effPD > 0) updateData.processingPriceCRC = Math.round(effPD * activeRate);
         if (effSD > 0) updateData.shippingPriceCRC = Math.round(effSD * activeRate);

@@ -734,6 +734,40 @@ export async function syncProductAvailability(
     const live = await fetchLiveSupplierAvailability(product.supplierUrl);
 
     if (live.success) {
+      let effectiveDiscount = Math.max(0, Math.min(100, Number(product.dealerDiscountPercent) || 0));
+      if (effectiveDiscount === 0 && product.brandName) {
+        const dbDealer = await prisma.dealerBrand.findFirst({
+          where: {
+            name: { equals: product.brandName.trim() },
+            isActive: true,
+          },
+          select: { dealerDiscountPercent: true },
+        });
+        if (dbDealer && Number(dbDealer.dealerDiscountPercent) > 0) {
+          effectiveDiscount = Math.max(0, Math.min(100, Number(dbDealer.dealerDiscountPercent)));
+        }
+      }
+
+      let nextProcessingPriceD: number | undefined = undefined;
+      if (live.supplierPriceUSD && live.supplierPriceUSD > 0) {
+        if (effectiveDiscount > 0) {
+          nextProcessingPriceD = Number(
+            (live.supplierPriceUSD * (1 - effectiveDiscount / 100)).toFixed(2)
+          );
+        } else if (
+          product.supplierLastPriceUSD &&
+          Math.abs(live.supplierPriceUSD - product.supplierLastPriceUSD) < 0.05 &&
+          product.processingPriceD &&
+          product.processingPriceD > 0 &&
+          product.processingPriceD < live.supplierPriceUSD * 0.98
+        ) {
+          // Preserve custom discounted P_price_D if supplier retail price did not change
+          nextProcessingPriceD = product.processingPriceD;
+        } else {
+          nextProcessingPriceD = live.supplierPriceUSD;
+        }
+      }
+
       const updated = await prisma.product.update({
         where: { id: product.id },
         data: {
@@ -746,8 +780,9 @@ export async function syncProductAvailability(
           supplierLeadDaysMin: live.leadDaysMin,
           supplierLeadDaysMax: live.leadDaysMax,
           supplierLastPriceUSD: live.supplierPriceUSD || product.supplierLastPriceUSD,
-          ...(live.supplierPriceUSD && live.supplierPriceUSD > 0
-            ? { processingPriceD: live.supplierPriceUSD }
+          ...(effectiveDiscount > 0 ? { dealerDiscountPercent: effectiveDiscount } : {}),
+          ...(nextProcessingPriceD && nextProcessingPriceD > 0
+            ? { processingPriceD: nextProcessingPriceD }
             : {}),
           updatedAt: new Date(),
         },
@@ -811,11 +846,27 @@ export async function syncAllCatalogAvailability(forceAll = false): Promise<{
   results: Array<{ slug: string; status: string; updated: boolean }>;
 }> {
   try {
-    const products = await prisma.product.findMany({
-      where: {
-        supplierUrl: { not: null },
-        isArchived: false,
-      },
+    const [products, dealerBrands] = await Promise.all([
+      prisma.product.findMany({
+        where: {
+          supplierUrl: { not: null },
+          isArchived: false,
+        },
+      }),
+      prisma.dealerBrand.findMany({
+        where: { isActive: true },
+        select: { name: true, dealerDiscountPercent: true },
+      }),
+    ]);
+
+    const brandDiscountMap: Record<string, number> = {};
+    dealerBrands.forEach((db) => {
+      if (db.name && Number(db.dealerDiscountPercent) > 0) {
+        brandDiscountMap[db.name.trim().toLowerCase()] = Math.max(
+          0,
+          Math.min(100, Number(db.dealerDiscountPercent))
+        );
+      }
     });
 
     const results: Array<{ slug: string; status: string; updated: boolean }> = [];
@@ -828,6 +879,31 @@ export async function syncAllCatalogAvailability(forceAll = false): Promise<{
       if (forceAll || isStale) {
         const live = await fetchLiveSupplierAvailability(prod.supplierUrl);
         if (live.success) {
+          const prodDisc = Math.max(0, Math.min(100, Number(prod.dealerDiscountPercent) || 0));
+          const brandDisc = prod.brandName
+            ? brandDiscountMap[prod.brandName.trim().toLowerCase()] || 0
+            : 0;
+          const effectiveDiscount = prodDisc > 0 ? prodDisc : brandDisc;
+
+          let nextProcessingPriceD: number | undefined = undefined;
+          if (live.supplierPriceUSD && live.supplierPriceUSD > 0) {
+            if (effectiveDiscount > 0) {
+              nextProcessingPriceD = Number(
+                (live.supplierPriceUSD * (1 - effectiveDiscount / 100)).toFixed(2)
+              );
+            } else if (
+              prod.supplierLastPriceUSD &&
+              Math.abs(live.supplierPriceUSD - prod.supplierLastPriceUSD) < 0.05 &&
+              prod.processingPriceD &&
+              prod.processingPriceD > 0 &&
+              prod.processingPriceD < live.supplierPriceUSD * 0.98
+            ) {
+              nextProcessingPriceD = prod.processingPriceD;
+            } else {
+              nextProcessingPriceD = live.supplierPriceUSD;
+            }
+          }
+
           await prisma.product.update({
             where: { id: prod.id },
             data: {
@@ -840,8 +916,9 @@ export async function syncAllCatalogAvailability(forceAll = false): Promise<{
               supplierLeadDaysMin: live.leadDaysMin,
               supplierLeadDaysMax: live.leadDaysMax,
               supplierLastPriceUSD: live.supplierPriceUSD || prod.supplierLastPriceUSD,
-              ...(live.supplierPriceUSD && live.supplierPriceUSD > 0
-                ? { processingPriceD: live.supplierPriceUSD }
+              ...(effectiveDiscount > 0 ? { dealerDiscountPercent: effectiveDiscount } : {}),
+              ...(nextProcessingPriceD && nextProcessingPriceD > 0
+                ? { processingPriceD: nextProcessingPriceD }
                 : {}),
             },
           });

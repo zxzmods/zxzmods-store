@@ -60,6 +60,8 @@ export async function syncMonthlyClosure(month: number, year: number, persist = 
         profitCRC: true,
         processingPriceD: true,
         processingPriceCRC: true,
+        supplierLastPriceUSD: true,
+        dealerDiscountPercent: true,
         shippingPriceD: true,
         shippingPriceCRC: true,
         lockedExchangeRate: true,

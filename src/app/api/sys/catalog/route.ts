@@ -59,6 +59,26 @@ export async function GET() {
       console.warn("[SYS_CATALOG_JSON_READ_WARN]:", e);
     }
 
+    const brandDiscountMap: Record<string, number> = {};
+    dealerBrands.forEach((db: any) => {
+      if (db.name && Number(db.dealerDiscountPercent) > 0) {
+        brandDiscountMap[db.name.trim().toLowerCase()] = Math.max(
+          0,
+          Math.min(100, Number(db.dealerDiscountPercent))
+        );
+      }
+    });
+    brands.forEach((b: any) => {
+      if (b.name && Number(b.dealerDiscountPercent) > 0 && !brandDiscountMap[b.name.trim().toLowerCase()]) {
+        brandDiscountMap[b.name.trim().toLowerCase()] = Math.max(
+          0,
+          Math.min(100, Number(b.dealerDiscountPercent))
+        );
+      }
+    });
+
+    const healPromises: Promise<any>[] = [];
+
     const enrichedProducts = products.map((p) => {
       const jsonP = productsJsonMap[p.sku.toLowerCase()] || productsJsonMap[p.slug.toLowerCase()] || null;
 
@@ -166,17 +186,45 @@ export async function GET() {
         year_compatability = jsonP.modelYearCompatibility;
       }
 
+      const primaryBrandName = (p.brandName || brand[0] || "").trim().toLowerCase();
+      const brandDiscount = primaryBrandName ? brandDiscountMap[primaryBrandName] || 0 : 0;
+      const prodDiscount = Math.max(0, Math.min(100, Number(p.dealerDiscountPercent) || 0));
+      const effectiveDealerDiscount = prodDiscount > 0 ? prodDiscount : brandDiscount;
+
       const livePricing = computeProductLivePricing(
         {
           ...p,
+          dealerDiscountPercent: effectiveDealerDiscount,
           shippingPriceD: (p as any).shippingPriceD ?? jsonP?.price?.S_price_D,
           lockedExchangeRate: (p as any).lockedExchangeRate,
         },
         sellRate
       );
 
+      // Self-heal database row if processingPriceD was previously overwritten with undiscounted supplierLastPriceUSD
+      if (
+        livePricing.pPriceUSD > 0 &&
+        p.processingPriceD &&
+        Math.abs(p.processingPriceD - livePricing.pPriceUSD) >= 0.05
+      ) {
+        healPromises.push(
+          prisma.product
+            .update({
+              where: { id: p.id },
+              data: {
+                processingPriceD: livePricing.pPriceUSD,
+                ...(effectiveDealerDiscount > 0
+                  ? { dealerDiscountPercent: effectiveDealerDiscount }
+                  : {}),
+              },
+            })
+            .catch(() => {})
+        );
+      }
+
       return {
         ...p,
+        processingPriceD: livePricing.pPriceUSD,
         shippingPriceD: livePricing.sPriceUSD,
         lockedExchangeRate: livePricing.lockedExchangeRate,
         shippingCalcMode: p.shippingCalcMode ?? jsonP?.shippingCalcMode ?? "MANUAL",
@@ -184,7 +232,7 @@ export async function GET() {
         shippingVolumeCuFt: p.shippingVolumeCuFt ?? jsonP?.shippingVolumeCuFt ?? null,
         distributorShippingUSD: p.distributorShippingUSD ?? jsonP?.distributorShippingUSD ?? 0,
         distributorTaxUSD: p.distributorTaxUSD ?? jsonP?.distributorTaxUSD ?? 0,
-        dealerDiscountPercent: p.dealerDiscountPercent ?? 0,
+        dealerDiscountPercent: effectiveDealerDiscount,
         installationAvailable: p.installationAvailable ?? true,
         livePricing,
         effectiveProfitCRC: livePricing.effectiveProfitCRC,
@@ -266,6 +314,10 @@ export async function GET() {
         })(),
       };
     });
+
+    if (healPromises.length > 0) {
+      await Promise.allSettled(healPromises);
+    }
 
     const enrichedCombos = combos.map((c) => {
       const availability = calculateComboAvailability(c.itemsJson, products);
