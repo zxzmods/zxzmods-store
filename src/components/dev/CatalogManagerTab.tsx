@@ -3783,6 +3783,12 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
     badgeEn: "SPECIAL COMBO",
     descriptionEs: "",
     descriptionEn: "",
+    P_price: 0,
+    S_price: 0,
+    profit: 0,
+    ivaPercent: 13,
+    ivaCRC: 0,
+    T_price: 0,
     priceCRC: 0,
     originalPriceCRC: 0,
     installationPriceCRC: 0,
@@ -4603,7 +4609,13 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
     const computedIvaCRC = calculateIvaAmount(P_price, S_price, profit, I_price, I_price_includes, discountPercent, ivaPercent);
     const computedTPrice = recalculateTPrice(P_price, S_price, profit, I_price, I_price_includes, discountPercent, ivaPercent);
     const computedOriginalPrice = getProductOriginalPriceWithIVA(P_price, S_price, profit, I_price, I_price_includes, ivaPercent);
-    const T_price = computedTPrice > 0 ? computedTPrice : (prod.price?.T_price ?? prod.priceCRC ?? 0);
+    const savedTPrice = Math.round(Number(prod.price?.T_price ?? prod.priceCRC ?? 0) || 0);
+    const hasExactManualTPrice = savedTPrice > 0 && Math.abs(savedTPrice - computedTPrice) <= 5 && savedTPrice !== computedTPrice;
+    isManualProductTPriceRef.current = hasExactManualTPrice;
+    const T_price = hasExactManualTPrice ? savedTPrice : (computedTPrice > 0 ? computedTPrice : savedTPrice);
+    const initialIvaCRC = hasExactManualTPrice
+      ? Math.max(0, savedTPrice - Math.round(savedTPrice / (1 + (Number(ivaPercent) || 13) / 100)))
+      : computedIvaCRC;
     const T_price_D = String(prod.price?.T_price_D ?? prod.totalPriceD ?? "calculate in checkout with the selling value of dolar to colones");
 
     // 7. Year range extraction
@@ -4699,7 +4711,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       I_price,
       profit,
       ivaPercent,
-      ivaCRC: computedIvaCRC,
+      ivaCRC: initialIvaCRC,
       T_price,
       T_price_D,
       imageUrl: imgsList[0] || prod.imageUrl || "",
@@ -4757,6 +4769,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
 
   // OPEN CREATE PRODUCT: LEAVE EVERYTHING READY FOR INPUT
   const handleOpenCreateProduct = () => {
+    isManualProductTPriceRef.current = false;
     setEditingProduct(null);
     setValidationErrors([]);
     setIsSkuManuallyEdited(false);
@@ -5026,8 +5039,54 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
     return Math.round(base * (1 + rate / 100));
   };
 
+  // Track when T_price was directly edited by user so 13% IVA rounding doesn't shift the typed T_price by 1 colón
+  const isManualProductTPriceRef = useRef<boolean>(false);
+
+  // Inverse calculation: Given a target T_price (with IVA included), calculate exact profit and IVA while keeping P_price and S_price untouched
+  const computeProfitAndIvaFromTPrice = (
+    targetTPriceCRC: number,
+    pCRC: number,
+    sCRC: number,
+    iPriceCRC: number,
+    includes: boolean,
+    discountPct: number = 0,
+    ivaRate: number = 13
+  ) => {
+    const p = Math.round(Number(pCRC) || 0);
+    const s = Math.round(Number(sCRC) || 0);
+    const inst = includes ? Math.round(Number(iPriceCRC) || 0) : 0;
+    const costFloor = p + s + inst;
+    const minTPriceCRC = costFloor;
+    const minTPriceWithIvaCRC = recalculateTPrice(p, s, 0, iPriceCRC, includes, discountPct, ivaRate);
+
+    const rate = Math.max(0, Number(ivaRate) || 0);
+    const pct = Math.max(0, Math.min(99, Math.round(Number(discountPct) || 0)));
+    const safeTarget = Math.max(0, Math.round(Number(targetTPriceCRC) || 0));
+
+    const discountedSubtotalCRC = rate > 0
+      ? Math.round(safeTarget / (1 + rate / 100))
+      : safeTarget;
+    const ivaCRC = Math.max(0, safeTarget - discountedSubtotalCRC);
+
+    const baseSubtotalCRC = pct > 0
+      ? Math.round(discountedSubtotalCRC / (1 - pct / 100))
+      : discountedSubtotalCRC;
+
+    const profitCRC = Math.max(0, baseSubtotalCRC - costFloor);
+
+    return {
+      profitCRC,
+      ivaCRC,
+      baseSubtotalCRC,
+      discountedSubtotalCRC,
+      minTPriceCRC,
+      minTPriceWithIvaCRC,
+    };
+  };
+
   // AUTO CALCULATE TOTAL SELLING PRICE (T_price)
   const handleAutoCalculateTotal = () => {
+    isManualProductTPriceRef.current = false;
     const total = recalculateTPrice(
       productForm.P_price,
       productForm.S_price,
@@ -5067,6 +5126,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
     const calculatedSPriceUSD = Number((baseUSD + distShipping + distTax).toFixed(2));
 
     if (Number(productForm.S_price_D) !== calculatedSPriceUSD) {
+      isManualProductTPriceRef.current = false;
       setProductForm((prev) => ({
         ...prev,
         S_price_D: calculatedSPriceUSD,
@@ -5094,6 +5154,15 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
 
     const translatedPPrice = pPriceUSD > 0 ? Math.round(pPriceUSD * activeRate) : 0;
     const translatedSPrice = sPriceUSD > 0 ? Math.round(sPriceUSD * activeRate) : 0;
+
+    // If P_price or S_price changed from USD translation while manual T_price was set, reset manual flag so T_price auto-updates
+    if (productForm.P_price !== translatedPPrice || productForm.S_price !== translatedSPrice) {
+      isManualProductTPriceRef.current = false;
+    }
+
+    if (isManualProductTPriceRef.current) {
+      return;
+    }
 
     const total = recalculateTPrice(
       translatedPPrice,
@@ -5318,9 +5387,9 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
         };
       });
 
-    // Recalculate true price with 13% IVA guaranteed
+    // Recalculate true price with 13% IVA guaranteed (while preserving exact manual T_price if edited directly)
     const finalIvaRate = Math.max(0, Number(productForm.ivaPercent ?? 13));
-    const finalIvaCRC = calculateIvaAmount(
+    const computedIvaCRC = calculateIvaAmount(
       productForm.P_price,
       productForm.S_price,
       productForm.profit,
@@ -5329,7 +5398,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       productForm.discountPercent,
       finalIvaRate
     );
-    const finalTPrice = recalculateTPrice(
+    const computedTPrice = recalculateTPrice(
       productForm.P_price,
       productForm.S_price,
       productForm.profit,
@@ -5338,14 +5407,30 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       productForm.discountPercent,
       finalIvaRate
     );
-    const finalOriginalPrice = getProductOriginalPriceWithIVA(
-      productForm.P_price,
-      productForm.S_price,
-      productForm.profit,
-      productForm.I_price,
-      productForm.I_price_includes,
-      finalIvaRate
-    );
+    const costFloorCRC =
+      Math.round(Number(productForm.P_price) || 0) +
+      Math.round(Number(productForm.S_price) || 0) +
+      (productForm.I_price_includes ? Math.round(Number(productForm.I_price) || 0) : 0);
+    const manualTPriceCRC = Math.round(Number(productForm.T_price) || 0);
+    const useExactManualTPrice =
+      isManualProductTPriceRef.current &&
+      manualTPriceCRC >= costFloorCRC &&
+      manualTPriceCRC > 0;
+    const finalTPrice = useExactManualTPrice ? manualTPriceCRC : computedTPrice;
+    const finalIvaCRC = useExactManualTPrice
+      ? Math.max(0, Math.round(Number(productForm.ivaCRC) || 0))
+      : computedIvaCRC;
+    const finalOriginalPrice =
+      useExactManualTPrice && (Number(productForm.discountPercent) || 0) === 0
+        ? finalTPrice
+        : getProductOriginalPriceWithIVA(
+            productForm.P_price,
+            productForm.S_price,
+            productForm.profit,
+            productForm.I_price,
+            productForm.I_price_includes,
+            finalIvaRate
+          );
 
     const payload = {
       sku: productForm.sku.trim(),
@@ -5584,6 +5669,61 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
     }
   };
 
+  // Helper to compute summed P_price, S_price, Profit, and T_price across a list of combo products
+  const computeComboProductsPricing = useCallback(
+    (productList: any[]) => {
+      const activeRate = liveExchangeRate > 300 ? liveExchangeRate : 455.21;
+      let sumPPriceCRC = 0;
+      let sumSPriceCRC = 0;
+      let sumProductsProfitCRC = 0;
+      let sumProductsTPriceCRC = 0;
+      let sumPPriceUSD = 0;
+      let sumSPriceUSD = 0;
+
+      (productList || []).forEach((p: any) => {
+        const pD = Number(p?.processingPriceD ?? p?.price?.P_price_D ?? 0) || 0;
+        const sD = Number(p?.shippingPriceD ?? p?.price?.S_price_D ?? 0) || 0;
+        const pCRC = Math.round(
+          Number(p?.processingPriceCRC ?? p?.price?.P_price ?? (pD > 0 ? pD * activeRate : 0)) || 0
+        );
+        const sCRC = Math.round(
+          Number(p?.shippingPriceCRC ?? p?.price?.S_price ?? (sD > 0 ? sD * activeRate : 0)) || 0
+        );
+        const tCRC = Math.round(Number(p?.priceCRC ?? p?.price?.T_price ?? 0) || 0);
+        const rawProfCRC = Math.round(Number(p?.profitCRC ?? p?.price?.profit ?? 0) || 0);
+        // If product has T_price but 0 recorded P_price/S_price/profit, infer pre-IVA profit
+        const inferredProfCRC =
+          rawProfCRC > 0
+            ? rawProfCRC
+            : tCRC > 0
+            ? Math.max(0, Math.round(tCRC / 1.13) - (pCRC + sCRC))
+            : 0;
+
+        sumPPriceCRC += pCRC;
+        sumSPriceCRC += sCRC;
+        sumProductsProfitCRC += inferredProfCRC;
+        sumProductsTPriceCRC += tCRC;
+        sumPPriceUSD += pD;
+        sumSPriceUSD += sD;
+      });
+
+      const minCostFloorCRC = sumPPriceCRC + sumSPriceCRC;
+      const minTPriceWithIvaCRC = Math.round(minCostFloorCRC * 1.13);
+
+      return {
+        sumPPriceCRC,
+        sumSPriceCRC,
+        sumProductsProfitCRC,
+        sumProductsTPriceCRC,
+        sumPPriceUSD: Number(sumPPriceUSD.toFixed(2)),
+        sumSPriceUSD: Number(sumSPriceUSD.toFixed(2)),
+        minCostFloorCRC,
+        minTPriceWithIvaCRC,
+      };
+    },
+    [liveExchangeRate]
+  );
+
   // Combo Actions (User Requirement: Dedicated Edit/Create Screen with Linked Included Products)
   const handleOpenEditCombo = (combo: Combo) => {
     setEditingCombo(combo);
@@ -5672,6 +5812,17 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       };
     })();
 
+    const pricingSum = computeComboProductsPricing(matchedProducts);
+    const savedTPrice = Math.round(Number(combo.priceCRC) || 0);
+    const preIvaSub = savedTPrice > 0 ? Math.round(savedTPrice / 1.13) : (pricingSum.minCostFloorCRC + pricingSum.sumProductsProfitCRC);
+    const initialComboProfit = savedTPrice > 0
+      ? Math.max(0, preIvaSub - pricingSum.minCostFloorCRC)
+      : pricingSum.sumProductsProfitCRC;
+    const initialComboIva = savedTPrice > 0
+      ? Math.max(0, savedTPrice - preIvaSub)
+      : Math.round(preIvaSub * 0.13);
+    const resolvedTPrice = savedTPrice > 0 ? savedTPrice : (preIvaSub + initialComboIva);
+
     setComboSelectedProducts(matchedProducts);
     setComboProductSearch("");
     setComboForm({
@@ -5683,8 +5834,14 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       badgeEn: combo.badgeEn || "SPECIAL COMBO",
       descriptionEs: extractAndCleanDescription((combo as any).description, "es", combo.descriptionEs),
       descriptionEn: extractAndCleanDescription((combo as any).description, "en", combo.descriptionEn),
-      priceCRC: combo.priceCRC,
-      originalPriceCRC: combo.originalPriceCRC,
+      P_price: pricingSum.sumPPriceCRC,
+      S_price: pricingSum.sumSPriceCRC,
+      profit: initialComboProfit,
+      ivaPercent: 13,
+      ivaCRC: initialComboIva,
+      T_price: resolvedTPrice,
+      priceCRC: resolvedTPrice,
+      originalPriceCRC: combo.originalPriceCRC || pricingSum.sumProductsTPriceCRC,
       installationPriceCRC: effectiveComboInstall,
       installLabourCostCRC: comboLabour,
       installProfitCRC: comboProfit,
@@ -5755,6 +5912,12 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       badgeEn: "SPECIAL COMBO",
       descriptionEs: "",
       descriptionEn: "",
+      P_price: 0,
+      S_price: 0,
+      profit: 0,
+      ivaPercent: 13,
+      ivaCRC: 0,
+      T_price: 0,
       priceCRC: 0,
       originalPriceCRC: 0,
       installationPriceCRC: 0,
@@ -5822,7 +5985,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       });
       const data = await res.json();
       if (res.ok && data.success && data.product) {
-        setComboSelectedProducts((prev) => [...prev, data.product]);
+        applyComboSelectedProductsChange([...comboSelectedProducts, data.product]);
         setIsQuickProductModalOpen(false);
         setQuickProductNameEs("");
         setQuickProductNameEn("");
@@ -6660,6 +6823,41 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       totalDuration: totalDuration || 60,
     };
   }, [comboSelectedProducts]);
+
+  const comboPricingSummary = useMemo(() => {
+    return computeComboProductsPricing(comboSelectedProducts);
+  }, [comboSelectedProducts, computeComboProductsPricing]);
+
+  const applyComboSelectedProductsChange = useCallback(
+    (nextProducts: any[]) => {
+      setComboSelectedProducts(nextProducts);
+      const sumInfo = computeComboProductsPricing(nextProducts);
+      setComboForm((prev) => {
+        const ivaRate = prev.ivaPercent ?? 13;
+        const nextProfit = sumInfo.sumProductsProfitCRC;
+        const baseSub = sumInfo.minCostFloorCRC + nextProfit;
+        const nextIva = Math.round(baseSub * (ivaRate / 100));
+        const nextTPrice = baseSub + nextIva;
+        const nextOrig = sumInfo.sumProductsTPriceCRC > 0 ? sumInfo.sumProductsTPriceCRC : nextTPrice;
+        const nextDisc =
+          nextOrig > nextTPrice
+            ? Math.max(0, Math.round(((nextOrig - nextTPrice) / nextOrig) * 100))
+            : 0;
+        return {
+          ...prev,
+          P_price: sumInfo.sumPPriceCRC,
+          S_price: sumInfo.sumSPriceCRC,
+          profit: nextProfit,
+          ivaCRC: nextIva,
+          T_price: nextTPrice,
+          priceCRC: nextTPrice,
+          originalPriceCRC: nextOrig,
+          discountPercent: nextDisc,
+        };
+      });
+    },
+    [computeComboProductsPricing]
+  );
 
   // Filtered lists
   const normalizeSearchStr = (val: any) =>
@@ -9251,7 +9449,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                     <span>{t.devPriceBreakdownTitle}</span>
                   </span>
                   <span className="text-xs font-mono font-bold text-[#C02030]">
-                    {lang === "es" ? "Total Tienda" : "Store Total"}: {formatCRC(recalculateTPrice(productForm.P_price, productForm.S_price, productForm.profit, productForm.I_price, productForm.I_price_includes, productForm.discountPercent, productForm.ivaPercent ?? 13))}
+                    {lang === "es" ? "Total Tienda" : "Store Total"}: {formatCRC(productForm.T_price)}
                   </span>
                 </div>
 
@@ -9773,7 +9971,8 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                       min="0"
                       value={productForm.profit}
                       onChange={(e) => {
-                        const val = parseInt(e.target.value) || 0;
+                        isManualProductTPriceRef.current = false;
+                        const val = Math.max(0, parseInt(e.target.value) || 0);
                         setProductForm((prev) => {
                           const ivaRate = prev.ivaPercent ?? 13;
                           return {
@@ -10005,6 +10204,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                           max="99"
                           value={productForm.discountPercent || ""}
                           onChange={(e) => {
+                            isManualProductTPriceRef.current = false;
                             const val = Math.max(0, Math.min(99, parseInt(e.target.value) || 0));
                             setProductForm((prev) => {
                               const ivaRate = prev.ivaPercent ?? 13;
@@ -10030,6 +10230,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                         <button
                           type="button"
                           onClick={() => {
+                            isManualProductTPriceRef.current = false;
                             setProductForm((prev) => {
                               const ivaRate = prev.ivaPercent ?? 13;
                               return {
@@ -10055,6 +10256,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                           key={pct}
                           type="button"
                           onClick={() => {
+                            isManualProductTPriceRef.current = false;
                             setProductForm((prev) => {
                               const ivaRate = prev.ivaPercent ?? 13;
                               return {
@@ -10087,7 +10289,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                       <span>{t.devProductIvaTitle || "IVA (13% - Impuesto sobre el Valor Agregado)"}</span>
                     </label>
                     <span className="text-xs font-extrabold font-mono text-blue-900 bg-blue-100 border border-blue-300 px-2 py-0.5 rounded-full">
-                      +{formatCRC(calculateIvaAmount(productForm.P_price, productForm.S_price, productForm.profit, productForm.I_price, productForm.I_price_includes, productForm.discountPercent, productForm.ivaPercent ?? 13))}
+                      +{formatCRC(productForm.ivaCRC)}
                     </span>
                   </div>
 
@@ -10107,6 +10309,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                           max="100"
                           value={productForm.ivaPercent ?? 13}
                           onChange={(e) => {
+                            isManualProductTPriceRef.current = false;
                             const val = Math.max(0, parseInt(e.target.value) || 0);
                             setProductForm((prev) => ({
                               ...prev,
@@ -10129,92 +10332,233 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                         Monto de IVA Calculado (₡):
                       </label>
                       <div className="w-full bg-blue-100/60 border border-blue-200 rounded-xl p-2 text-xs font-mono font-extrabold text-blue-900 flex items-center justify-between">
-                        <span>{formatCRC(calculateIvaAmount(productForm.P_price, productForm.S_price, productForm.profit, productForm.I_price, productForm.I_price_includes, productForm.discountPercent, productForm.ivaPercent ?? 13))}</span>
+                        <span>{formatCRC(productForm.ivaCRC)}</span>
                         <span className="text-[10px] text-blue-700 font-bold uppercase tracking-wider">Incluido</span>
                       </div>
                     </div>
                   </div>
                 </div>
 
-                {/* T_price (Total Selling Price in CRC - Calculated Automatically, NOT editable directly per User Rule) */}
-                <div className="p-5 bg-slate-900 text-white rounded-2xl shadow-sm space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <span className="text-xs font-extrabold uppercase tracking-wider text-red-300 block">
-                        {t.devPriceTotalCRC} (<span className="font-mono">T_price</span>)
-                      </span>
-                      <span className="text-[10px] text-slate-400">
-                        {productForm.discountPercent > 0
-                          ? `Precio final con ${productForm.discountPercent}% de descuento y ${productForm.ivaPercent ?? 13}% de IVA incluido`
-                          : `Precio final con ${productForm.ivaPercent ?? 13}% de IVA incluido`}
-                      </span>
-                    </div>
-                    <span className="text-xl font-black font-mono text-emerald-400">
-                      {formatCRC(recalculateTPrice(productForm.P_price, productForm.S_price, productForm.profit, productForm.I_price, productForm.I_price_includes, productForm.discountPercent, productForm.ivaPercent ?? 13))}
-                    </span>
-                  </div>
+                {/* T_price (Total Selling Price in CRC - Auto-updates with P_price, S_price, Profit & IVA, and Editable directly to adjust only Profit) */}
+                {(() => {
+                  const minProductCostFloorCRC =
+                    (Math.round(Number(productForm.P_price) || 0)) +
+                    (Math.round(Number(productForm.S_price) || 0)) +
+                    (productForm.I_price_includes ? Math.round(Number(productForm.I_price) || 0) : 0);
+                  const minProductTPriceWithIvaCRC = recalculateTPrice(
+                    productForm.P_price,
+                    productForm.S_price,
+                    0,
+                    productForm.I_price,
+                    productForm.I_price_includes,
+                    productForm.discountPercent,
+                    productForm.ivaPercent ?? 13
+                  );
 
-                  {/* Formula Breakdown Display */}
-                  <div className="p-3 bg-slate-800/90 rounded-xl border border-slate-700 text-xs font-mono space-y-1.5 text-slate-300">
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span>Hardware (P_price_D: ${Number(productForm.P_price_D || 0).toFixed(2)} USD):</span>
-                      <span className="font-bold text-white">{formatCRC(productForm.P_price)}</span>
-                    </div>
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span>Flete/Aduana (S_price: ${Number(productForm.S_price_D || 0).toFixed(2)} USD):</span>
-                      <span className="font-bold text-white">{formatCRC(productForm.S_price)}</span>
-                    </div>
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span>Margen de Ganancia Inicial (profit):</span>
-                      <span className="font-bold text-white">{formatCRC(productForm.profit)}</span>
-                    </div>
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span>Instalación ({productForm.I_price_includes ? "Incluida en precio" : "No incluida"}):</span>
-                      <span className="font-bold text-white">
-                        {productForm.I_price_includes ? formatCRC(productForm.I_price) : "₡0"}
-                      </span>
-                    </div>
-                    <div className="pt-1.5 border-t border-slate-700 flex items-center justify-between text-slate-300 text-[11px]">
-                      <span>Subtotal Base (sin IVA):</span>
-                      <span className="font-bold text-white font-mono">
-                        {formatCRC(getProductBasePrice(productForm.P_price, productForm.S_price, productForm.profit, productForm.I_price, productForm.I_price_includes))}
-                      </span>
-                    </div>
-                    {productForm.discountPercent > 0 && (
-                      <div className="flex items-center justify-between text-emerald-400 font-bold text-[11px]">
-                        <span className="flex items-center gap-1">
-                          <Tag className="w-3 h-3 text-emerald-400" />
-                          <span>{t.devProductDiscountAmount || "Descuento Aplicado"} ({productForm.discountPercent}% OFF):</span>
-                        </span>
-                        <span className="font-mono">
-                          -{formatCRC(
-                            Math.round(
-                              getProductBasePrice(productForm.P_price, productForm.S_price, productForm.profit, productForm.I_price, productForm.I_price_includes) * (productForm.discountPercent / 100)
-                            )
-                          )}
+                  return (
+                    <div className="p-5 bg-slate-900 text-white rounded-2xl shadow-sm space-y-3.5">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div>
+                          <span className="text-xs font-extrabold uppercase tracking-wider text-red-300 block">
+                            {t.devEditableTPriceLabel || t.devPriceTotalCRC} (<span className="font-mono">T_price</span>)
+                          </span>
+                          <span className="text-[10px] text-slate-400">
+                            {productForm.discountPercent > 0
+                              ? `Precio final con ${productForm.discountPercent}% de descuento y ${productForm.ivaPercent ?? 13}% de IVA incluido`
+                              : `Precio final con ${productForm.ivaPercent ?? 13}% de IVA incluido`}
+                          </span>
+                        </div>
+                        <span className="text-xl font-black font-mono text-emerald-400">
+                          {formatCRC(productForm.T_price)}
                         </span>
                       </div>
-                    )}
-                    <div className="flex items-center justify-between text-blue-400 font-bold text-[11px]">
-                      <span className="flex items-center gap-1">
-                        <Receipt className="w-3 h-3 text-blue-400" />
-                        <span>IVA ({productForm.ivaPercent ?? 13}% Incluido):</span>
-                      </span>
-                      <span className="font-mono">
-                        +{formatCRC(calculateIvaAmount(productForm.P_price, productForm.S_price, productForm.profit, productForm.I_price, productForm.I_price_includes, productForm.discountPercent, productForm.ivaPercent ?? 13))}
-                      </span>
+
+                      {/* Interactive Editable T_price Input */}
+                      <div className="p-3.5 bg-slate-800/95 rounded-xl border border-emerald-500/40 space-y-2">
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                          <label className="text-[11px] font-bold text-emerald-300 flex items-center gap-1.5">
+                            <Calculator className="w-3.5 h-3.5 text-emerald-400" />
+                            <span>{t.devEditableTPriceLabel}</span>
+                          </label>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-[10px] font-mono text-slate-300 bg-slate-900/90 px-2 py-0.5 rounded-md border border-slate-700">
+                              {t.devEditableTPriceMinFloorLabel}: <strong className="text-amber-300">{formatCRC(minProductCostFloorCRC)}</strong>
+                            </span>
+                            {minProductTPriceWithIvaCRC > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  isManualProductTPriceRef.current = false;
+                                  const ivaRate = productForm.ivaPercent ?? 13;
+                                  const nextIva = calculateIvaAmount(
+                                    productForm.P_price,
+                                    productForm.S_price,
+                                    0,
+                                    productForm.I_price,
+                                    productForm.I_price_includes,
+                                    productForm.discountPercent,
+                                    ivaRate
+                                  );
+                                  const nextTotal = recalculateTPrice(
+                                    productForm.P_price,
+                                    productForm.S_price,
+                                    0,
+                                    productForm.I_price,
+                                    productForm.I_price_includes,
+                                    productForm.discountPercent,
+                                    ivaRate
+                                  );
+                                  setProductForm((prev) => ({
+                                    ...prev,
+                                    profit: 0,
+                                    ivaCRC: nextIva,
+                                    T_price: nextTotal,
+                                    priceCRC: nextTotal,
+                                  }));
+                                }}
+                                className="text-[10px] font-bold text-emerald-300 hover:text-white bg-emerald-950/80 hover:bg-emerald-800 border border-emerald-700/70 px-2 py-0.5 rounded-md transition cursor-pointer"
+                              >
+                                {t.devEditableTPriceSetMinBtn} ({formatCRC(minProductTPriceWithIvaCRC)})
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="relative">
+                          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-black font-mono text-emerald-400">
+                            ₡
+                          </span>
+                          <input
+                            type="number"
+                            min={minProductCostFloorCRC}
+                            step="100"
+                            value={productForm.T_price || ""}
+                            onChange={(e) => {
+                              isManualProductTPriceRef.current = true;
+                              const rawVal = e.target.value;
+                              const typedTPrice = Math.max(0, Math.round(Number(rawVal) || 0));
+                              setProductForm((prev) => {
+                                const ivaRate = prev.ivaPercent ?? 13;
+                                const inv = computeProfitAndIvaFromTPrice(
+                                  typedTPrice,
+                                  prev.P_price,
+                                  prev.S_price,
+                                  prev.I_price,
+                                  prev.I_price_includes,
+                                  prev.discountPercent,
+                                  ivaRate
+                                );
+                                return {
+                                  ...prev,
+                                  T_price: typedTPrice,
+                                  priceCRC: typedTPrice,
+                                  profit: inv.profitCRC,
+                                  ivaCRC: inv.ivaCRC,
+                                };
+                              });
+                            }}
+                            onBlur={() => {
+                              setProductForm((prev) => {
+                                const minFloor =
+                                  Math.round(Number(prev.P_price) || 0) +
+                                  Math.round(Number(prev.S_price) || 0) +
+                                  (prev.I_price_includes ? Math.round(Number(prev.I_price) || 0) : 0);
+                                const curT = Math.round(Number(prev.T_price) || 0);
+                                if (curT < minFloor && minFloor > 0) {
+                                  const ivaRate = prev.ivaPercent ?? 13;
+                                  const inv = computeProfitAndIvaFromTPrice(
+                                    minFloor,
+                                    prev.P_price,
+                                    prev.S_price,
+                                    prev.I_price,
+                                    prev.I_price_includes,
+                                    prev.discountPercent,
+                                    ivaRate
+                                  );
+                                  return {
+                                    ...prev,
+                                    T_price: minFloor,
+                                    priceCRC: minFloor,
+                                    profit: inv.profitCRC,
+                                    ivaCRC: inv.ivaCRC,
+                                  };
+                                }
+                                return prev;
+                              });
+                            }}
+                            placeholder="0"
+                            className="w-full bg-slate-950 border border-emerald-500/60 focus:border-emerald-400 rounded-xl pl-8 pr-16 py-2.5 text-sm font-mono font-black text-emerald-400 focus:outline-none transition"
+                          />
+                          <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[10px] font-bold font-mono text-slate-400">
+                            CRC
+                          </span>
+                        </div>
+
+                        <p className="text-[10px] text-slate-300 leading-relaxed">
+                          {t.devEditableTPriceHelp}
+                        </p>
+                      </div>
+
+                      {/* Formula Breakdown Display */}
+                      <div className="p-3 bg-slate-800/90 rounded-xl border border-slate-700 text-xs font-mono space-y-1.5 text-slate-300">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span>Hardware (P_price_D: ${Number(productForm.P_price_D || 0).toFixed(2)} USD):</span>
+                          <span className="font-bold text-white">{formatCRC(productForm.P_price)}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span>Flete/Aduana (S_price: ${Number(productForm.S_price_D || 0).toFixed(2)} USD):</span>
+                          <span className="font-bold text-white">{formatCRC(productForm.S_price)}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span>Margen de Ganancia Inicial (profit):</span>
+                          <span className="font-bold text-emerald-400">{formatCRC(productForm.profit)}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span>Instalación ({productForm.I_price_includes ? "Incluida en precio" : "No incluida"}):</span>
+                          <span className="font-bold text-white">
+                            {productForm.I_price_includes ? formatCRC(productForm.I_price) : "₡0"}
+                          </span>
+                        </div>
+                        <div className="pt-1.5 border-t border-slate-700 flex items-center justify-between text-slate-300 text-[11px]">
+                          <span>Subtotal Base (sin IVA):</span>
+                          <span className="font-bold text-white font-mono">
+                            {formatCRC(getProductBasePrice(productForm.P_price, productForm.S_price, productForm.profit, productForm.I_price, productForm.I_price_includes))}
+                          </span>
+                        </div>
+                        {productForm.discountPercent > 0 && (
+                          <div className="flex items-center justify-between text-emerald-400 font-bold text-[11px]">
+                            <span className="flex items-center gap-1">
+                              <Tag className="w-3 h-3 text-emerald-400" />
+                              <span>{t.devProductDiscountAmount || "Descuento Aplicado"} ({productForm.discountPercent}% OFF):</span>
+                            </span>
+                            <span className="font-mono">
+                              -{formatCRC(
+                                Math.round(
+                                  getProductBasePrice(productForm.P_price, productForm.S_price, productForm.profit, productForm.I_price, productForm.I_price_includes) * (productForm.discountPercent / 100)
+                                )
+                              )}
+                            </span>
+                          </div>
+                        )}
+                        <div className="flex items-center justify-between text-blue-400 font-bold text-[11px]">
+                          <span className="flex items-center gap-1">
+                            <Receipt className="w-3 h-3 text-blue-400" />
+                            <span>IVA ({productForm.ivaPercent ?? 13}% Incluido):</span>
+                          </span>
+                          <span className="font-mono">
+                            +{formatCRC(productForm.ivaCRC)}
+                          </span>
+                        </div>
+                        <div className="pt-1.5 border-t border-slate-700 flex items-center justify-between font-bold text-emerald-400 text-xs">
+                          <span>Total Verdadero con IVA (T_price):</span>
+                          <span className="text-sm font-mono">
+                            {formatCRC(productForm.T_price)}
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                    <div className="pt-1.5 border-t border-slate-700 flex items-center justify-between font-bold text-emerald-400 text-xs">
-                      <span>Total Verdadero con IVA (T_price):</span>
-                      <span className="text-sm font-mono">
-                        {formatCRC(recalculateTPrice(productForm.P_price, productForm.S_price, productForm.profit, productForm.I_price, productForm.I_price_includes, productForm.discountPercent, productForm.ivaPercent ?? 13))}
-                      </span>
-                    </div>
-                  </div>
-                  <p className="text-[10px] text-slate-400 italic">
-                    ℹ️ El precio final de venta al público se calcula directamente a partir de la suma de sus componentes menos el descuento porcentual configurado.
-                  </p>
-                </div>
+                  );
+                })()}
               </div>
 
               {/* CONFIGURABLE PARAMETERS & VARIANTS */}
@@ -10980,7 +11324,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                         <div
                           key={prod.id}
                           onClick={() => {
-                            setComboSelectedProducts((prev) => [...prev, prod]);
+                            applyComboSelectedProductsChange([...comboSelectedProducts, prod]);
                             setComboProductSearch("");
                             setIsComboSearchDropdownOpen(false);
                           }}
@@ -11142,7 +11486,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                         <button
                           type="button"
                           onClick={() => {
-                            setComboSelectedProducts((prev) => prev.filter((_, i) => i !== idx));
+                            applyComboSelectedProductsChange(comboSelectedProducts.filter((_, i) => i !== idx));
                           }}
                           className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition"
                           title="Eliminar del combo"
@@ -11589,7 +11933,105 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                 <span>Precios y Beneficios del Combo</span>
               </h3>
 
-              <div className="space-y-3 text-xs">
+              <div className="space-y-3.5 text-xs">
+                {/* Auto-calculated P_price, S_price, and Profit from Included Products */}
+                <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <span className="text-[11px] font-extrabold text-slate-800 flex items-center gap-1.5">
+                      <Calculator className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>{t.devComboCostBreakdownTitle}</span>
+                    </span>
+                    {comboSelectedProducts.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => applyComboSelectedProductsChange(comboSelectedProducts)}
+                        className="text-[10px] font-bold text-blue-700 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2 py-0.5 rounded-lg flex items-center gap-1 transition cursor-pointer"
+                      >
+                        <RefreshCw className="w-2.5 h-2.5" />
+                        <span>{t.devComboSyncProductsProfitBtn}</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {/* P_price & S_price Grid (Auto-summed from Included Products) */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="bg-white border border-slate-200 rounded-xl p-2.5">
+                      <span className="text-[9px] font-bold text-slate-400 uppercase block">
+                        {t.devComboSumPPriceLabel}
+                      </span>
+                      <span className="text-xs font-mono font-extrabold text-slate-900 block mt-0.5">
+                        {formatCRC(comboPricingSummary.sumPPriceCRC)}
+                      </span>
+                      {comboPricingSummary.sumPPriceUSD > 0 && (
+                        <span className="text-[9px] font-mono text-slate-400 block">
+                          (${comboPricingSummary.sumPPriceUSD.toFixed(2)} USD)
+                        </span>
+                      )}
+                    </div>
+                    <div className="bg-white border border-slate-200 rounded-xl p-2.5">
+                      <span className="text-[9px] font-bold text-slate-400 uppercase block">
+                        {t.devComboSumSPriceLabel}
+                      </span>
+                      <span className="text-xs font-mono font-extrabold text-slate-900 block mt-0.5">
+                        {formatCRC(comboPricingSummary.sumSPriceCRC)}
+                      </span>
+                      {comboPricingSummary.sumSPriceUSD > 0 && (
+                        <span className="text-[9px] font-mono text-slate-400 block">
+                          (${comboPricingSummary.sumSPriceUSD.toFixed(2)} USD)
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="text-[10px] font-mono text-slate-500 flex items-center justify-between px-0.5">
+                    <span>{t.devEditableTPriceMinFloorLabel}:</span>
+                    <strong className="text-slate-800">{formatCRC(comboPricingSummary.minCostFloorCRC)}</strong>
+                  </div>
+
+                  {/* Combo Profit Input (Auto-updates T_price when edited) */}
+                  <div className="pt-2 border-t border-slate-200/80 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-bold text-slate-800">
+                        {t.devComboProfitLabel}:
+                      </label>
+                      <span className="text-xs font-bold font-mono text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200">
+                        {formatCRC(comboForm.profit)}
+                      </span>
+                    </div>
+                    <input
+                      type="number"
+                      min="0"
+                      value={comboForm.profit}
+                      onChange={(e) => {
+                        const nextProfit = Math.max(0, Math.round(Number(e.target.value) || 0));
+                        setComboForm((prev) => {
+                          const ivaRate = prev.ivaPercent ?? 13;
+                          const baseSub = comboPricingSummary.minCostFloorCRC + nextProfit;
+                          const nextIva = Math.round(baseSub * (ivaRate / 100));
+                          const nextTPrice = baseSub + nextIva;
+                          const origPrice = prev.originalPriceCRC || totalIncludedPrice || nextTPrice;
+                          const nextDisc =
+                            origPrice > nextTPrice
+                              ? Math.max(0, Math.round(((origPrice - nextTPrice) / origPrice) * 100))
+                              : 0;
+                          return {
+                            ...prev,
+                            P_price: comboPricingSummary.sumPPriceCRC,
+                            S_price: comboPricingSummary.sumSPriceCRC,
+                            profit: nextProfit,
+                            ivaCRC: nextIva,
+                            T_price: nextTPrice,
+                            priceCRC: nextTPrice,
+                            discountPercent: nextDisc,
+                          };
+                        });
+                      }}
+                      placeholder="0"
+                      className="w-full bg-white border border-slate-300 rounded-xl p-2 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-emerald-600"
+                    />
+                  </div>
+                </div>
+
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="text-[11px] font-bold text-slate-700">
@@ -11633,43 +12075,157 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                   />
                 </div>
 
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-[11px] font-bold text-slate-700">
-                      Precio Final del Combo (₡): <span className="text-red-500">*</span>
+                {/* Editable Combo T_price Input (Changes only Profit, minimum P_price + S_price) */}
+                <div className="p-4 bg-slate-900 text-white rounded-2xl space-y-2.5 shadow-xs">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <label className="text-[11px] font-extrabold text-emerald-300 uppercase tracking-wider">
+                      {t.devComboTPriceInputLabel} <span className="text-red-400">*</span>
                     </label>
-                    {comboForm.originalPriceCRC > 0 && comboForm.discountPercent > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const discounted = Math.round(
-                            comboForm.originalPriceCRC * (1 - comboForm.discountPercent / 100)
-                          );
-                          setComboForm((prev) => ({ ...prev, priceCRC: discounted }));
-                        }}
-                        className="text-[10px] font-bold text-emerald-700 hover:text-emerald-900 underline"
-                      >
-                        Aplicar {comboForm.discountPercent}% OFF
-                      </button>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {comboPricingSummary.minTPriceWithIvaCRC > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const minT = comboPricingSummary.minTPriceWithIvaCRC;
+                            const minIva = Math.max(0, minT - comboPricingSummary.minCostFloorCRC);
+                            setComboForm((prev) => {
+                              const orig = prev.originalPriceCRC || totalIncludedPrice || minT;
+                              return {
+                                ...prev,
+                                P_price: comboPricingSummary.sumPPriceCRC,
+                                S_price: comboPricingSummary.sumSPriceCRC,
+                                profit: 0,
+                                ivaCRC: minIva,
+                                T_price: minT,
+                                priceCRC: minT,
+                                discountPercent:
+                                  orig > minT ? Math.max(0, Math.round(((orig - minT) / orig) * 100)) : 0,
+                              };
+                            });
+                          }}
+                          className="text-[10px] font-bold text-emerald-300 hover:text-white bg-emerald-950/80 hover:bg-emerald-800 border border-emerald-700/70 px-2 py-0.5 rounded-md transition cursor-pointer"
+                        >
+                          {t.devEditableTPriceSetMinBtn}
+                        </button>
+                      )}
+                      {comboForm.originalPriceCRC > 0 && comboForm.discountPercent > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const discounted = Math.max(
+                              comboPricingSummary.minCostFloorCRC,
+                              Math.round(comboForm.originalPriceCRC * (1 - comboForm.discountPercent / 100))
+                            );
+                            const ivaRate = comboForm.ivaPercent ?? 13;
+                            const preIva = ivaRate > 0 ? Math.round(discounted / (1 + ivaRate / 100)) : discounted;
+                            const nextIva = Math.max(0, discounted - preIva);
+                            const nextProfit = Math.max(0, preIva - comboPricingSummary.minCostFloorCRC);
+                            setComboForm((prev) => ({
+                              ...prev,
+                              P_price: comboPricingSummary.sumPPriceCRC,
+                              S_price: comboPricingSummary.sumSPriceCRC,
+                              profit: nextProfit,
+                              ivaCRC: nextIva,
+                              T_price: discounted,
+                              priceCRC: discounted,
+                            }));
+                          }}
+                          className="text-[10px] font-bold text-amber-300 hover:text-amber-200 underline cursor-pointer"
+                        >
+                          Aplicar {comboForm.discountPercent}% OFF
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <input
-                    type="number"
-                    value={comboForm.priceCRC || ""}
-                    onChange={(e) => {
-                      const pr = Math.round(Number(e.target.value) || 0);
-                      setComboForm({
-                        ...comboForm,
-                        priceCRC: pr,
-                        discountPercent:
-                          comboForm.originalPriceCRC > 0
-                            ? Math.max(0, Math.round(((comboForm.originalPriceCRC - pr) / comboForm.originalPriceCRC) * 100))
-                            : comboForm.discountPercent,
-                      });
-                    }}
-                    placeholder="0"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-sm font-mono font-black text-emerald-700 focus:outline-none focus:border-slate-900"
-                  />
+
+                  <div className="relative">
+                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-black font-mono text-emerald-400">
+                      ₡
+                    </span>
+                    <input
+                      type="number"
+                      min={comboPricingSummary.minCostFloorCRC}
+                      step="100"
+                      value={comboForm.priceCRC || ""}
+                      onChange={(e) => {
+                        const pr = Math.max(0, Math.round(Number(e.target.value) || 0));
+                        setComboForm((prev) => {
+                          const ivaRate = prev.ivaPercent ?? 13;
+                          const preIvaSub = ivaRate > 0 ? Math.round(pr / (1 + ivaRate / 100)) : pr;
+                          const nextIva = Math.max(0, pr - preIvaSub);
+                          const nextProfit = Math.max(0, preIvaSub - comboPricingSummary.minCostFloorCRC);
+                          const orig = prev.originalPriceCRC || totalIncludedPrice || 0;
+                          return {
+                            ...prev,
+                            P_price: comboPricingSummary.sumPPriceCRC,
+                            S_price: comboPricingSummary.sumSPriceCRC,
+                            profit: nextProfit,
+                            ivaCRC: nextIva,
+                            T_price: pr,
+                            priceCRC: pr,
+                            discountPercent:
+                              orig > pr
+                                ? Math.max(0, Math.round(((orig - pr) / orig) * 100))
+                                : prev.discountPercent,
+                          };
+                        });
+                      }}
+                      onBlur={() => {
+                        setComboForm((prev) => {
+                          const minFloor = comboPricingSummary.minCostFloorCRC;
+                          const curT = Math.round(Number(prev.priceCRC) || 0);
+                          if (curT < minFloor && minFloor > 0) {
+                            const ivaRate = prev.ivaPercent ?? 13;
+                            const preIvaSub = ivaRate > 0 ? Math.round(minFloor / (1 + ivaRate / 100)) : minFloor;
+                            const nextIva = Math.max(0, minFloor - preIvaSub);
+                            return {
+                              ...prev,
+                              P_price: comboPricingSummary.sumPPriceCRC,
+                              S_price: comboPricingSummary.sumSPriceCRC,
+                              profit: 0,
+                              ivaCRC: nextIva,
+                              T_price: minFloor,
+                              priceCRC: minFloor,
+                            };
+                          }
+                          return prev;
+                        });
+                      }}
+                      placeholder="0"
+                      className="w-full bg-slate-950 border border-emerald-500/60 focus:border-emerald-400 rounded-xl pl-8 pr-16 py-2.5 text-sm font-mono font-black text-emerald-400 focus:outline-none transition"
+                    />
+                    <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[10px] font-bold font-mono text-slate-400">
+                      CRC
+                    </span>
+                  </div>
+
+                  {/* Mini Combo Price Formula Summary */}
+                  <div className="p-2.5 bg-slate-800/90 rounded-xl border border-slate-700 text-[10px] font-mono space-y-1 text-slate-300">
+                    <div className="flex items-center justify-between">
+                      <span>P_price (Productos):</span>
+                      <span className="text-white font-bold">{formatCRC(comboPricingSummary.sumPPriceCRC)}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>S_price (Envío):</span>
+                      <span className="text-white font-bold">{formatCRC(comboPricingSummary.sumSPriceCRC)}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>Profit Combo:</span>
+                      <span className="text-emerald-400 font-bold">{formatCRC(comboForm.profit)}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-blue-400">
+                      <span>IVA ({comboForm.ivaPercent ?? 13}% Incluido):</span>
+                      <span className="font-bold">+{formatCRC(comboForm.ivaCRC)}</span>
+                    </div>
+                    <div className="pt-1 border-t border-slate-700 flex items-center justify-between text-emerald-400 font-bold text-[11px]">
+                      <span>T_price Final:</span>
+                      <span>{formatCRC(comboForm.priceCRC)}</span>
+                    </div>
+                  </div>
+
+                  <p className="text-[10px] text-slate-400 leading-snug">
+                    {t.devEditableTPriceHelp}
+                  </p>
                 </div>
 
                 <div>
@@ -11679,7 +12235,31 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                   <input
                     type="number"
                     value={comboForm.discountPercent || ""}
-                    onChange={(e) => setComboForm({ ...comboForm, discountPercent: Number(e.target.value) || 0 })}
+                    onChange={(e) => {
+                      const pct = Math.max(0, Math.min(99, Number(e.target.value) || 0));
+                      setComboForm((prev) => {
+                        const orig = prev.originalPriceCRC || totalIncludedPrice || 0;
+                        if (orig > 0) {
+                          const targetT = Math.max(
+                            comboPricingSummary.minCostFloorCRC,
+                            Math.round(orig * (1 - pct / 100))
+                          );
+                          const ivaRate = prev.ivaPercent ?? 13;
+                          const preIva = ivaRate > 0 ? Math.round(targetT / (1 + ivaRate / 100)) : targetT;
+                          const nextIva = Math.max(0, targetT - preIva);
+                          const nextProfit = Math.max(0, preIva - comboPricingSummary.minCostFloorCRC);
+                          return {
+                            ...prev,
+                            discountPercent: pct,
+                            profit: nextProfit,
+                            ivaCRC: nextIva,
+                            T_price: targetT,
+                            priceCRC: targetT,
+                          };
+                        }
+                        return { ...prev, discountPercent: pct };
+                      });
+                    }}
                     placeholder="10"
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-slate-900"
                   />

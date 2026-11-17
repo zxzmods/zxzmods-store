@@ -151,21 +151,42 @@ export function detectSupplierPlatform(urlStr: string): SupplierPlatform {
 /**
  * Extracts price from HTML string using Schema.org JSON-LD or meta tags
  */
-function extractPriceFromHtml(html: string): number | null {
-  const jsonLdMatches = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/gi);
+function parseJsonLdSafely(rawJson: string): any | null {
+  try {
+    return JSON.parse(rawJson);
+  } catch {
+    try {
+      const sanitized = rawJson.replace(/[\u0000-\u001F]+/g, " ");
+      return JSON.parse(sanitized);
+    } catch {
+      return null;
+    }
+  }
+}
+
+function extractPriceFromHtml(html: string, requestedVariantId?: string | null): number | null {
+  const jsonLdMatches = html.match(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi);
   if (jsonLdMatches) {
     for (const block of jsonLdMatches) {
       try {
         const rawJson = block.replace(/<script[^>]*>/i, "").replace(/<\/script>/i, "").trim();
-        const parsed = JSON.parse(rawJson);
+        const parsed = parseJsonLdSafely(rawJson);
+        if (!parsed) continue;
         const offers = parsed?.offers || (Array.isArray(parsed?.["@graph"]) ? parsed["@graph"].find((i: any) => i?.offers)?.offers : null);
 
         if (offers) {
+          const offerList = Array.isArray(offers) ? offers : [offers];
+          const matchedOffer =
+            (requestedVariantId
+              ? offerList.find((o: any) => typeof o?.url === "string" && o.url.includes(`variant=${requestedVariantId}`))
+              : null) || offerList[0];
+
           const rawOfferPrice =
+            matchedOffer?.price ??
+            matchedOffer?.lowPrice ??
+            matchedOffer?.priceSpecification?.price ??
             offers.price ??
             offers.lowPrice ??
-            offers?.[0]?.price ??
-            offers?.[0]?.lowPrice ??
             offers?.priceSpecification?.price;
           if (rawOfferPrice !== undefined && rawOfferPrice !== null) {
             const numP = Number(String(rawOfferPrice).replace(/[^0-9.]/g, ""));
@@ -400,97 +421,169 @@ export async function fetchLiveSupplierAvailability(
   }
 
   // 3. Check for Shopify endpoint (.js / .json)
+  let requestedVariantId: string | null = null;
+  try {
+    requestedVariantId = new URL(url).searchParams.get("variant");
+  } catch {}
+
   const isShopifyPattern = url.includes("/products/");
   if (isShopifyPattern) {
     try {
-      const cleanPath = url.replace(/\/$/, "");
-      const shopifyJsUrl = `${cleanPath}.js?currency=USD`;
+      const parsedShopifyUrl = new URL(url);
+      const cleanPathname = parsedShopifyUrl.pathname
+        .replace(/\/$/, "")
+        .replace(/\.(js|json)$/i, "");
+      const baseProductUrl = `${parsedShopifyUrl.origin}${cleanPathname}`;
 
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 6000);
+      const candidateUrls = [
+        { endpointUrl: `${baseProductUrl}.js?currency=USD`, isDotJson: false },
+        { endpointUrl: `${baseProductUrl}.js`, isDotJson: false },
+        { endpointUrl: `${baseProductUrl}.json`, isDotJson: true },
+      ];
 
-      const shopifyRes = await fetch(shopifyJsUrl, {
-        headers: { ...commonHeaders, Accept: "application/json" },
-        signal: controller.signal,
-        cache: "no-store",
-      }).catch(() => null);
+      const parseShopifyPriceValue = (rawVal: any, fromDotJson: boolean): number | null => {
+        if (typeof rawVal === "number" && rawVal > 0) {
+          return fromDotJson ? Number(rawVal.toFixed(2)) : Number((rawVal / 100).toFixed(2));
+        }
+        if (typeof rawVal === "string" && rawVal.trim()) {
+          const trimmed = rawVal.trim();
+          const num = parseFloat(trimmed);
+          if (!isNaN(num) && num > 0) {
+            if (trimmed.includes(".") || fromDotJson) {
+              return Number(num.toFixed(2));
+            }
+            return Number((num / 100).toFixed(2));
+          }
+        }
+        return null;
+      };
 
-      clearTimeout(timeoutId);
+      for (const cand of candidateUrls) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 6000);
 
-      if (shopifyRes && shopifyRes.ok) {
-        const text = await shopifyRes.text();
-        if (text.trim().startsWith("{")) {
-          const json = JSON.parse(text);
+        const shopifyRes = await fetch(cand.endpointUrl, {
+          headers: { ...commonHeaders, Accept: "application/json" },
+          signal: controller.signal,
+          cache: "no-store",
+        }).catch(() => null);
 
-          const title = json.title || extractTitleFromUrl(url);
-          const variants = Array.isArray(json.variants) ? json.variants : [];
-          let price: number | null = null;
-          if (typeof json.price === "number" && json.price > 0) {
-            price = Number((json.price / 100).toFixed(2));
-          } else if (variants.length > 0) {
-            const vPrice = variants[0]?.price;
-            if (typeof vPrice === "number" && vPrice > 0) {
-              price = Number((vPrice / 100).toFixed(2));
-            } else if (typeof vPrice === "string" && parseFloat(vPrice) > 0) {
-              price = Number(parseFloat(vPrice).toFixed(2));
+        clearTimeout(timeoutId);
+
+        if (shopifyRes && shopifyRes.ok) {
+          const text = await shopifyRes.text();
+          if (text.trim().startsWith("{")) {
+            const rawJson = JSON.parse(text);
+            const isWrappedProductJson = Boolean(rawJson?.product && typeof rawJson.product === "object");
+            const prodData = isWrappedProductJson ? rawJson.product : rawJson;
+            const fromDotJson = cand.isDotJson || isWrappedProductJson;
+
+            const title = prodData.title || extractTitleFromUrl(url);
+            const variants = Array.isArray(prodData.variants) ? prodData.variants : [];
+            const matchedVariant = requestedVariantId
+              ? variants.find((v: any) => String(v?.id) === String(requestedVariantId))
+              : null;
+            const primaryVariant = matchedVariant || variants[0] || null;
+
+            let price: number | null = null;
+            if (matchedVariant) {
+              price = parseShopifyPriceValue(matchedVariant.price, fromDotJson);
+            }
+            if (price === null && prodData.price !== undefined) {
+              price = parseShopifyPriceValue(prodData.price, fromDotJson);
+            }
+            if (price === null && primaryVariant) {
+              price = parseShopifyPriceValue(primaryVariant.price, fromDotJson);
+            }
+            if (price === null && variants.length > 0) {
+              for (const v of variants) {
+                const vp = parseShopifyPriceValue(v?.price, fromDotJson);
+                if (vp !== null) {
+                  price = vp;
+                  break;
+                }
+              }
+            }
+
+            let anyAvailable = false;
+            if (matchedVariant && typeof matchedVariant.available === "boolean") {
+              anyAvailable = matchedVariant.available;
+            } else if (variants.some((v: any) => typeof v?.available === "boolean")) {
+              anyAvailable = variants.some((v: any) => v.available === true);
+            } else if (typeof prodData.available === "boolean") {
+              anyAvailable = prodData.available;
+            } else if (variants.length > 0) {
+              // In .json format where `available` boolean may be omitted on variants
+              anyAvailable = variants.some((v: any) => {
+                if (typeof v?.inventory_quantity === "number" && v?.inventory_management) {
+                  return v.inventory_quantity > 0 || v.inventory_policy === "continue";
+                }
+                return true;
+              });
+            }
+
+            // Detect Pre-Order tags or inventory policies
+            const tagsArr = Array.isArray(prodData.tags)
+              ? prodData.tags
+              : typeof prodData.tags === "string"
+              ? prodData.tags.split(",")
+              : [];
+            const fullTextLower = `${title} ${prodData.description || prodData.body_html || ""} ${tagsArr.join(" ")}`.toLowerCase();
+            const hasPreOrderTag =
+              fullTextLower.includes("pre-order") ||
+              fullTextLower.includes("preorder") ||
+              fullTextLower.includes("preventa") ||
+              fullTextLower.includes("backorder");
+
+            const isInventoryManaged = variants.some((v: any) => v.inventory_management);
+            const totalStock = variants.reduce((sum: number, v: any) => {
+              if (typeof v.inventory_quantity === "number") {
+                return sum + Math.max(0, v.inventory_quantity);
+              }
+              return sum;
+            }, 0);
+
+            let status: SupplierStockStatus = "IN_STOCK";
+            let msgEs = "Disponible para entrega o importación inmediata";
+            let msgEn = "In stock ready for immediate delivery or import";
+
+            if (hasPreOrderTag) {
+              status = "PRE_ORDER";
+              msgEs = "Disponible en Preventa (Reserva prioritaria)";
+              msgEn = "Available for Pre-Order (Priority reservation)";
+            } else if (!anyAvailable) {
+              status = "OUT_OF_STOCK";
+              msgEs = "Agotado temporalmente (Disponible para cotización de reserva)";
+              msgEn = "Temporarily out of stock (Available for reservation quote)";
+            } else if (isInventoryManaged && totalStock > 0 && totalStock <= 3) {
+              status = "LOW_STOCK";
+              msgEs = `Últimas ${totalStock} unidades en proveedor`;
+              msgEn = `Only ${totalStock} left at supplier`;
+            }
+
+            if (price !== null || variants.length > 0) {
+              return {
+                success: true,
+                url,
+                platform: "SHOPIFY",
+                status,
+                available: anyAvailable || status === "PRE_ORDER",
+                stockCount: totalStock > 0 ? totalStock : null,
+                supplierPriceUSD: price,
+                title,
+                messageEs: msgEs,
+                messageEn: msgEn,
+                leadDaysMin: status === "PRE_ORDER" ? 14 : 7,
+                leadDaysMax: status === "PRE_ORDER" ? 28 : 21,
+                checkedAt: nowIso,
+                rawDetails: {
+                  platformIdentified: fromDotJson ? "Shopify Product API (.json)" : "Shopify Product API (.js)",
+                  variantsCount: variants.length,
+                  isPreOrderTagged: hasPreOrderTag,
+                },
+              };
             }
           }
-          const anyAvailable = variants.some((v: any) => v.available === true) || json.available === true;
-
-          // Detect Pre-Order tags or inventory policies
-          const fullTextLower = `${title} ${json.description || ""} ${(json.tags || []).join(" ")}`.toLowerCase();
-          const hasPreOrderTag =
-            fullTextLower.includes("pre-order") ||
-            fullTextLower.includes("preorder") ||
-            fullTextLower.includes("preventa") ||
-            fullTextLower.includes("backorder");
-
-          const isInventoryManaged = variants.some((v: any) => v.inventory_management);
-          const totalStock = variants.reduce((sum: number, v: any) => {
-            if (typeof v.inventory_quantity === "number") {
-              return sum + Math.max(0, v.inventory_quantity);
-            }
-            return sum;
-          }, 0);
-
-          let status: SupplierStockStatus = "IN_STOCK";
-          let msgEs = "Disponible para entrega o importación inmediata";
-          let msgEn = "In stock ready for immediate delivery or import";
-
-          if (hasPreOrderTag) {
-            status = "PRE_ORDER";
-            msgEs = "Disponible en Preventa (Reserva prioritaria)";
-            msgEn = "Available for Pre-Order (Priority reservation)";
-          } else if (!anyAvailable) {
-            status = "OUT_OF_STOCK";
-            msgEs = "Agotado temporalmente (Disponible para cotización de reserva)";
-            msgEn = "Temporarily out of stock (Available for reservation quote)";
-          } else if (isInventoryManaged && totalStock > 0 && totalStock <= 3) {
-            status = "LOW_STOCK";
-            msgEs = `Últimas ${totalStock} unidades en proveedor`;
-            msgEn = `Only ${totalStock} left at supplier`;
-          }
-
-          return {
-            success: true,
-            url,
-            platform: "SHOPIFY",
-            status,
-            available: anyAvailable || status === "PRE_ORDER",
-            stockCount: totalStock > 0 ? totalStock : null,
-            supplierPriceUSD: price,
-            title,
-            messageEs: msgEs,
-            messageEn: msgEn,
-            leadDaysMin: status === "PRE_ORDER" ? 14 : 7,
-            leadDaysMax: status === "PRE_ORDER" ? 28 : 21,
-            checkedAt: nowIso,
-            rawDetails: {
-              platformIdentified: "Shopify Product API (.js)",
-              variantsCount: variants.length,
-              isPreOrderTagged: hasPreOrderTag,
-            },
-          };
         }
       }
     } catch (shopifyErr) {
@@ -559,10 +652,13 @@ export async function fetchLiveSupplierAvailability(
     }
 
     const html = await htmlRes.text();
-    const htmlLower = html.toLowerCase();
+    const htmlWithoutScripts = html
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ");
+    const htmlLower = htmlWithoutScripts.toLowerCase();
 
     // Check Schema.org JSON-LD tags
-    const jsonLdMatches = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/gi);
+    const jsonLdMatches = html.match(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi);
     let schemaAvailability: string | null = null;
     let schemaPrice: number | null = null;
     let schemaTitle: string | null = null;
@@ -571,21 +667,29 @@ export async function fetchLiveSupplierAvailability(
       for (const block of jsonLdMatches) {
         try {
           const rawJson = block.replace(/<script[^>]*>/i, "").replace(/<\/script>/i, "").trim();
-          const parsed = JSON.parse(rawJson);
+          const parsed = parseJsonLdSafely(rawJson);
+          if (!parsed) continue;
           const offers = parsed?.offers || (Array.isArray(parsed?.["@graph"]) ? parsed["@graph"].find((i: any) => i?.offers)?.offers : null);
 
-          if (parsed?.name && typeof parsed.name === "string") {
+          if (parsed?.name && typeof parsed.name === "string" && parsed?.["@type"] !== "Organization") {
             schemaTitle = parsed.name.trim();
           }
 
           if (offers) {
-            const avail = typeof offers.availability === "string" ? offers.availability : offers?.[0]?.availability;
+            const offerList = Array.isArray(offers) ? offers : [offers];
+            const matchedOffer =
+              (requestedVariantId
+                ? offerList.find((o: any) => typeof o?.url === "string" && o.url.includes(`variant=${requestedVariantId}`))
+                : null) || offerList[0];
+
+            const avail = typeof matchedOffer?.availability === "string" ? matchedOffer.availability : typeof offers.availability === "string" ? offers.availability : null;
             if (avail) schemaAvailability = avail;
             const rawOfferPrice =
+              matchedOffer?.price ??
+              matchedOffer?.lowPrice ??
+              matchedOffer?.priceSpecification?.price ??
               offers.price ??
               offers.lowPrice ??
-              offers?.[0]?.price ??
-              offers?.[0]?.lowPrice ??
               offers?.priceSpecification?.price;
             if (rawOfferPrice !== undefined && rawOfferPrice !== null) {
               const numP = Number(String(rawOfferPrice).replace(/[^0-9.]/g, ""));
@@ -599,7 +703,7 @@ export async function fetchLiveSupplierAvailability(
 
     // Fallback meta tag / microdata price extraction for generic e-commerce sites
     if (!schemaPrice) {
-      schemaPrice = extractPriceFromHtml(html);
+      schemaPrice = extractPriceFromHtml(html, requestedVariantId);
     }
 
     // Determine status from Schema or HTML keywords
@@ -607,22 +711,28 @@ export async function fetchLiveSupplierAvailability(
     let msgEs = "Disponible para entrega o importación inmediata";
     let msgEn = "In stock ready for immediate delivery or import";
 
+    const schemaIsExplicitlyInStock = Boolean(schemaAvailability && /instock/i.test(schemaAvailability));
+
     const isPreOrder =
-      Boolean(schemaAvailability?.includes("PreOrder")) ||
+      Boolean(schemaAvailability && /preorder/i.test(schemaAvailability)) ||
       htmlLower.includes("pre-order now") ||
       htmlLower.includes("preorder now") ||
       htmlLower.includes("pre-order button") ||
       htmlLower.includes("preorder-now");
 
     const isOutOfStock =
-      Boolean(schemaAvailability?.includes("OutOfStock") || schemaAvailability?.includes("SoldOut") || schemaAvailability?.includes("Discontinued")) ||
-      htmlLower.includes("sold out") ||
-      htmlLower.includes("out of stock") ||
-      htmlLower.includes("temporarily unavailable") ||
-      htmlLower.includes("currently unavailable");
+      !schemaIsExplicitlyInStock &&
+      (Boolean(
+        schemaAvailability &&
+          (/outofstock|soldout|discontinued/i.test(schemaAvailability))
+      ) ||
+        (!isShopifyPattern && htmlLower.includes("sold out")) ||
+        htmlLower.includes("out of stock") ||
+        htmlLower.includes("temporarily unavailable") ||
+        htmlLower.includes("currently unavailable"));
 
     const isBackorder =
-      Boolean(schemaAvailability?.includes("BackOrder")) ||
+      Boolean(schemaAvailability && /backorder/i.test(schemaAvailability)) ||
       htmlLower.includes("backordered") ||
       htmlLower.includes("on backorder");
 

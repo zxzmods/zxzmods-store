@@ -59,24 +59,10 @@ export async function PATCH(
       return NextResponse.json({ success: false, error: "Combo not found" }, { status: 404 });
     }
 
-    // Role check: Only MASTER can alter base priceCRC
-    if (
-      body.priceCRC !== undefined &&
-      Math.round(Number(body.priceCRC)) !== existingCombo.priceCRC
-    ) {
-      if (auth.session.role !== "MASTER") {
-        return NextResponse.json(
-          {
-            success: false,
-            error: "UNAUTHORIZED_PRICE_MODIFICATION",
-            message: "Only the Master profile can edit combo base prices.",
-          },
-          { status: 403 }
-        );
-      }
-    }
-
     const updateData: any = {};
+    if (body.priceCRC !== undefined) {
+      updateData.priceCRC = Math.round(Number(body.priceCRC) || 0);
+    }
     if (body.titleEs !== undefined) updateData.titleEs = body.titleEs;
     if (body.titleEn !== undefined) updateData.titleEn = body.titleEn;
     if (body.category !== undefined) updateData.category = body.category;

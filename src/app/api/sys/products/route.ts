@@ -175,19 +175,41 @@ export async function POST(request: Request) {
       rawSD > 0
         ? Math.round(rawSD * activeExchangeRate)
         : rawSCost;
-    const profCost = Math.round(Number(prof) || 0);
+    const rawReqPriceCRC = Math.round(Number(body.price?.T_price ?? priceCRC) || 0);
     const isInstInc = Boolean(body.price?.I_price?.includes !== undefined ? body.price?.I_price?.includes : isInstallationIncluded);
     const instCost = isInstInc ? finalInstallPrice : 0;
-    const baseSubtotal = pCost + sCost + profCost + instCost;
+    const costFloor = pCost + sCost + instCost;
     const discountPct = Math.max(0, Math.min(100, Math.round(Number(body.discountPercent) || 0)));
+
+    let profCost = Math.round(Number(prof) || 0);
+    if (prof === undefined && rawReqPriceCRC >= costFloor && costFloor > 0) {
+      const targetDiscSub = ivaRate > 0 ? Math.round(rawReqPriceCRC / (1 + ivaRate / 100)) : rawReqPriceCRC;
+      const targetBaseSub = discountPct > 0 && discountPct < 100 ? Math.round(targetDiscSub / (1 - discountPct / 100)) : targetDiscSub;
+      profCost = Math.max(0, targetBaseSub - costFloor);
+    }
+
+    const baseSubtotal = costFloor + profCost;
     const discountedSubtotal = discountPct > 0 ? Math.round(baseSubtotal * (1 - discountPct / 100)) : baseSubtotal;
     const computedIvaCRC = Math.round(discountedSubtotal * (ivaRate / 100));
     const computedTPrice = discountedSubtotal + computedIvaCRC;
     const computedOrigPrice = Math.round(baseSubtotal * (1 + ivaRate / 100));
 
-    const finalPriceCRC = computedTPrice > 0 ? computedTPrice : Math.round(Number(body.price?.T_price || priceCRC) || 0);
+    const useExactReqTPrice =
+      rawReqPriceCRC > 0 &&
+      rawReqPriceCRC >= costFloor &&
+      Math.abs(rawReqPriceCRC - computedTPrice) <= 5;
+
+    const finalPriceCRC = useExactReqTPrice
+      ? rawReqPriceCRC
+      : computedTPrice > 0
+      ? computedTPrice
+      : rawReqPriceCRC;
     const finalOriginalPriceCRC = computedOrigPrice > 0 ? computedOrigPrice : Math.round(Number(body.originalPriceCRC || body.price?.originalPriceCRC || finalPriceCRC) || 0);
-    const finalIvaCRC = computedIvaCRC > 0 ? computedIvaCRC : (body.ivaCRC !== undefined ? Math.round(Number(body.ivaCRC)) : Math.round((finalPriceCRC * 13) / 113));
+    const finalIvaCRC = useExactReqTPrice
+      ? Math.max(0, rawReqPriceCRC - discountedSubtotal)
+      : computedIvaCRC > 0
+      ? computedIvaCRC
+      : (body.ivaCRC !== undefined ? Math.round(Number(body.ivaCRC)) : Math.round((finalPriceCRC * 13) / 113));
 
     const newProduct = await prisma.product.create({
       data: {

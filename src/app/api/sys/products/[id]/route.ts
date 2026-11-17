@@ -426,27 +426,47 @@ export async function PATCH(
 
     const pCost = updateData.processingPriceCRC !== undefined ? updateData.processingPriceCRC : (existingProduct.processingPriceCRC || 0);
     const sCost = updateData.shippingPriceCRC !== undefined ? updateData.shippingPriceCRC : (existingProduct.shippingPriceCRC || 0);
-    const profCost = updateData.profitCRC !== undefined ? updateData.profitCRC : (existingProduct.profitCRC || 0);
     const isInstInc = updateData.isInstallationIncluded !== undefined ? updateData.isInstallationIncluded : (existingProduct.isInstallationIncluded ?? true);
     const instCost = isInstInc ? (updateData.installationPriceCRC !== undefined ? updateData.installationPriceCRC : (existingProduct.installationPriceCRC || 0)) : 0;
-    const baseSubtotal = pCost + sCost + profCost + instCost;
+    const costFloor = pCost + sCost + instCost;
     const discountPct = body.discountPercent !== undefined ? Math.max(0, Math.min(100, Math.round(Number(body.discountPercent) || 0))) : ((existingProduct as any).discountPercent || 0);
     updateData.discountPercent = discountPct;
 
+    const reqPriceCRC = body.priceCRC !== undefined ? body.priceCRC : body.price?.T_price;
+    const numReqPriceCRC = reqPriceCRC !== undefined ? Math.round(Number(reqPriceCRC) || 0) : 0;
+
+    let profCost = updateData.profitCRC !== undefined ? updateData.profitCRC : (existingProduct.profitCRC || 0);
+    if (prof === undefined && numReqPriceCRC >= costFloor && costFloor > 0 && !body.recalculateLockedPrice) {
+      const targetDiscSub = ivaRate > 0 ? Math.round(numReqPriceCRC / (1 + ivaRate / 100)) : numReqPriceCRC;
+      const targetBaseSub = discountPct > 0 && discountPct < 100 ? Math.round(targetDiscSub / (1 - discountPct / 100)) : targetDiscSub;
+      profCost = Math.max(0, targetBaseSub - costFloor);
+      updateData.profitCRC = profCost;
+    }
+
+    const baseSubtotal = costFloor + profCost;
     const discountedSubtotal = discountPct > 0 ? Math.round(baseSubtotal * (1 - discountPct / 100)) : baseSubtotal;
     const computedIvaCRC = Math.round(discountedSubtotal * (ivaRate / 100));
     const computedTPrice = discountedSubtotal + computedIvaCRC;
     const computedOrigPrice = Math.round(baseSubtotal * (1 + ivaRate / 100));
 
     // Lock T_price (priceCRC) on creation or edit whenever pricing fields are saved
-    const reqPriceCRC = body.priceCRC !== undefined ? body.priceCRC : body.price?.T_price;
     if (hasPricingPayload || hasInstallUpdate) {
-      if (computedTPrice > 0) {
+      const useExactReqTPrice =
+        !body.recalculateLockedPrice &&
+        numReqPriceCRC > 0 &&
+        numReqPriceCRC >= costFloor &&
+        Math.abs(numReqPriceCRC - computedTPrice) <= 5;
+
+      if (useExactReqTPrice) {
+        updateData.priceCRC = numReqPriceCRC;
+        updateData.originalPriceCRC = discountPct === 0 ? numReqPriceCRC : computedOrigPrice;
+        updateData.ivaCRC = Math.max(0, numReqPriceCRC - discountedSubtotal);
+      } else if (computedTPrice > 0) {
         updateData.priceCRC = computedTPrice;
         updateData.originalPriceCRC = computedOrigPrice;
         updateData.ivaCRC = computedIvaCRC;
       } else if (reqPriceCRC !== undefined) {
-        updateData.priceCRC = Math.round(Number(reqPriceCRC));
+        updateData.priceCRC = numReqPriceCRC;
         updateData.ivaCRC = Math.round((Number(updateData.priceCRC) || 0) * (ivaRate / (100 + ivaRate)));
       }
     }

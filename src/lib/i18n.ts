@@ -2064,6 +2064,18 @@ export interface Translations {
   paginationPrevious: string;
   paginationNext: string;
   paginationPage: string;
+
+  // Editable T_price -> Profit Adjustment (Product & Combo)
+  devEditableTPriceLabel: string;
+  devEditableTPriceHelp: string;
+  devEditableTPriceMinFloorLabel: string;
+  devEditableTPriceSetMinBtn: string;
+  devComboCostBreakdownTitle: string;
+  devComboSumPPriceLabel: string;
+  devComboSumSPriceLabel: string;
+  devComboProfitLabel: string;
+  devComboTPriceInputLabel: string;
+  devComboSyncProductsProfitBtn: string;
 }
 
 
@@ -4109,6 +4121,18 @@ export const translations: Record<Language, Translations> = {
     paginationPrevious: "Anterior",
     paginationNext: "Siguiente",
     paginationPage: "Página",
+
+    // Editable T_price -> Profit Adjustment (Product & Combo)
+    devEditableTPriceLabel: "Precio Final en Colones (T_price ₡)",
+    devEditableTPriceHelp: "Se actualiza automáticamente con P_price, S_price, Profit e IVA. Si modificas este precio final (mínimo P_price + S_price), cualquier cambio se refleja únicamente en la variable de ganancia (profit).",
+    devEditableTPriceMinFloorLabel: "Mínimo permitido (P_price + S_price)",
+    devEditableTPriceSetMinBtn: "Fijar al Mínimo (Costo + IVA)",
+    devComboCostBreakdownTitle: "Desglose de Costos y Ganancia del Combo (P_price + S_price + Profit)",
+    devComboSumPPriceLabel: "P_price Combo (Suma Productos)",
+    devComboSumSPriceLabel: "S_price Combo (Suma Envío)",
+    devComboProfitLabel: "Margen de Ganancia del Combo (profit ₡)",
+    devComboTPriceInputLabel: "Precio Final del Combo (T_price ₡ - IVA 13% inc.)",
+    devComboSyncProductsProfitBtn: "Sincronizar con suma de piezas",
   },
 
   en: {
@@ -6152,6 +6176,18 @@ export const translations: Record<Language, Translations> = {
     paginationPrevious: "Previous",
     paginationNext: "Next",
     paginationPage: "Page",
+
+    // Editable T_price -> Profit Adjustment (Product & Combo)
+    devEditableTPriceLabel: "Final Selling Price in Colones (T_price ₡)",
+    devEditableTPriceHelp: "Auto-updates with P_price, S_price, Profit, and VAT. If you edit this final price (minimum P_price + S_price), any change is reflected exclusively in the profit variable.",
+    devEditableTPriceMinFloorLabel: "Minimum allowed (P_price + S_price)",
+    devEditableTPriceSetMinBtn: "Set to Minimum (Cost + VAT)",
+    devComboCostBreakdownTitle: "Combo Cost & Profit Breakdown (P_price + S_price + Profit)",
+    devComboSumPPriceLabel: "Combo P_price (Products Sum)",
+    devComboSumSPriceLabel: "Combo S_price (Shipping Sum)",
+    devComboProfitLabel: "Combo Profit Margin (profit ₡)",
+    devComboTPriceInputLabel: "Final Combo Price (T_price ₡ - 13% VAT inc.)",
+    devComboSyncProductsProfitBtn: "Sync with parts sum",
   },
 
 };
