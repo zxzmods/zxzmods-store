@@ -27,6 +27,9 @@ import {
   normalizeBrandName,
   getRecommendedFillerProducts,
   getRecommendedFillerCombos,
+  formatCompListWithYears,
+  isUniversalFit,
+  isPlatformOrVehicleMatch,
 } from "@/lib/products";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useTouchSwipe } from "@/lib/useTouchSwipe";
@@ -92,6 +95,9 @@ interface ComboItem {
   suggestedProducts?: any[];
   suggestedCombos?: any[];
   relatedProducts?: any[];
+  relatedCombos?: ComboItem[];
+  comp?: string[];
+  compDisplay?: string;
 }
 
 function StarRating({ stars, emptyLabel }: { stars?: number | null; emptyLabel?: string }) {
@@ -157,17 +163,12 @@ export default function ComboDetailPage() {
   const [relatedProducts, setRelatedProducts] = useState<ProductItem[]>([]);
   const [relatedProductsLoading, setRelatedProductsLoading] = useState(false);
 
-  // Fetch / assemble related products up to 10 strictly prioritizing vehicle compatibility, category, brand
+  // Fetch / assemble related products matching compatible vehicle and category
   useEffect(() => {
     if (!combo) return;
 
-    const initialList: ProductItem[] = [
-      ...(Array.isArray(combo.relatedProducts) ? combo.relatedProducts : []),
-      ...(Array.isArray(combo.suggestedProducts) ? combo.suggestedProducts : []),
-    ];
-
-    if (initialList.length >= 10) {
-      setRelatedProducts(initialList.slice(0, 10));
+    if (Array.isArray(combo.relatedProducts)) {
+      setRelatedProducts(combo.relatedProducts.slice(0, 10));
       setRelatedProductsLoading(false);
       return;
     }
@@ -181,7 +182,7 @@ export default function ComboDetailPage() {
             combo,
             data.products,
             10,
-            initialList
+            []
           );
           setRelatedProducts(recommended);
         }
@@ -234,6 +235,10 @@ export default function ComboDetailPage() {
   // Fetch related combos strictly prioritizing vehicle compatibility and category
   useEffect(() => {
     if (!combo) return;
+    if (Array.isArray(combo.relatedCombos)) {
+      setRelatedCombos(combo.relatedCombos.slice(0, 4));
+      return;
+    }
     fetch("/api/combos")
       .then((res) => res.json())
       .then((data) => {
@@ -242,22 +247,12 @@ export default function ComboDetailPage() {
           : (Array.isArray(data?.data?.combos) ? data.data.combos : []);
 
         if (comboList.length > 0) {
-          const explicitCombos = Array.isArray(combo.suggestedCombos) && combo.suggestedCombos.length > 0
-            ? combo.suggestedCombos
-            : (Array.isArray(combo.suggestedComboIds) && combo.suggestedComboIds.length > 0
-              ? comboList.filter((c: any) =>
-                  combo.suggestedComboIds?.some((id: string) =>
-                    id.toLowerCase() === (c.id || "").toLowerCase() || id.toLowerCase() === (c.slug || "").toLowerCase()
-                  )
-                )
-              : []);
-
           const recommended = getRecommendedFillerCombos(
             combo,
             comboList,
             undefined,
             4,
-            explicitCombos
+            []
           );
           setRelatedCombos(recommended);
         }
@@ -474,7 +469,7 @@ export default function ComboDetailPage() {
       id: `combo-${combo.id}${uniqueProductSummary ? `-${encodeURIComponent(uniqueProductSummary).slice(0, 24)}` : ""}`,
       title: lang === "es" ? combo.titleEs : combo.titleEn,
       brand: "ZxZ Performance",
-      comp: ["all"],
+      comp: combo.comp && combo.comp.length > 0 ? combo.comp : ["all"],
       priceCRC: effectivePriceCRC,
       basePriceCRC: combo.priceCRC,
       selectedParameters: selectedParametersList,
@@ -527,6 +522,23 @@ export default function ComboDetailPage() {
       ? formatUSD(convertCRCToUSD(savingsCRC, sellRate))
       : formatCRC(savingsCRC)
     : null;
+
+  const compDisplay = combo?.compDisplay || formatCompListWithYears(combo?.comp);
+  const isUniversalCombo = isUniversalFit(combo?.comp);
+  const isVehicleCompatible = Boolean(
+    vehicle &&
+      (isUniversalCombo ||
+        combo?.comp?.some(
+          (c) =>
+            isPlatformOrVehicleMatch(c, vehicle.modelName) ||
+            isPlatformOrVehicleMatch(c, vehicle.modelSlug) ||
+            isPlatformOrVehicleMatch(c, `${vehicle.brandName} ${vehicle.modelName}`)
+        ))
+  );
+  const hasExplicitSuggestedItems = Boolean(
+    (combo?.suggestedProducts && combo.suggestedProducts.length > 0) ||
+      (combo?.suggestedCombos && combo.suggestedCombos.length > 0)
+  );
 
   return (
     <div className="min-h-screen bg-white text-[#111827] flex flex-col justify-between antialiased">
@@ -1139,60 +1151,102 @@ export default function ComboDetailPage() {
                   </div>
                 )}
 
-                {/* Price Block */}
-                <div className="p-4 rounded-2xl bg-gray-50 border border-gray-200">
-                  <div className="flex items-baseline gap-3">
-                    <span className="text-3xl font-extrabold font-mono text-gray-900">
-                      {displayPrice}
-                    </span>
-                    {combo.originalPriceCRC > combo.priceCRC && (
-                      <span className="text-sm text-gray-400 line-through font-mono">
-                        {displayOriginalPrice}
+                {/* Price Block & Inherited Compatibility Tags */}
+                <div className="p-4 rounded-2xl bg-gray-50 border border-gray-200 space-y-3">
+                  <div>
+                    <div className="flex items-baseline gap-3">
+                      <span className="text-3xl font-extrabold font-mono text-gray-900">
+                        {displayPrice}
                       </span>
-                    )}
-                    {displaySavings && (
-                      <span className="text-xs font-bold text-emerald-700 bg-emerald-100/70 px-2 py-0.5 rounded-md font-mono">
-                        {t.comboSavings} {displaySavings}
-                      </span>
-                    )}
-                  </div>
-                  <span className="text-[11px] text-gray-500 block mt-1">
-                    {lang === "es"
-                      ? "Precios finales con impuestos de importación y fletes incluidos."
-                      : "Final prices include US freight and Costa Rica customs duties."}
-                  </span>
-                </div>
-
-                {/* Vehicle Fitment Indicator */}
-                <div className="p-3.5 rounded-2xl bg-white border border-gray-200 flex items-center justify-between text-xs shadow-xs">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0">
-                      <Car className="w-4 h-4" />
-                    </div>
-                    <div>
-                      {vehicle ? (
-                        <div>
-                          <span className="text-[10px] text-gray-500 block font-medium">
-                            {t.comboFitmentVerified}:
-                          </span>
-                          <span className="font-bold text-gray-900">
-                            {vehicle.year} {vehicle.brandName} {vehicle.modelName}
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="text-gray-600 font-medium">
-                          {t.comboFitmentPrompt}
+                      {combo.originalPriceCRC > combo.priceCRC && (
+                        <span className="text-sm text-gray-400 line-through font-mono">
+                          {displayOriginalPrice}
+                        </span>
+                      )}
+                      {displaySavings && (
+                        <span className="text-xs font-bold text-emerald-700 bg-emerald-100/70 px-2 py-0.5 rounded-md font-mono">
+                          {t.comboSavings} {displaySavings}
                         </span>
                       )}
                     </div>
+                    <span className="text-[11px] text-gray-500 block mt-1">
+                      {lang === "es"
+                        ? "Precios finales con impuestos de importación y fletes incluidos."
+                        : "Final prices include US freight and Costa Rica customs duties."}
+                    </span>
                   </div>
 
-                  <button
-                    onClick={() => openModal()}
-                    className="text-xs text-[#C02030] font-bold hover:underline ml-2 whitespace-nowrap"
-                  >
-                    {vehicle ? t.combosChangeVehicle : t.combosSelectVehicle}
-                  </button>
+                  {/* Compatibility & Year Model inherited from listed products */}
+                  {compDisplay && (
+                    <div className="flex items-center gap-2 pt-2.5 border-t border-gray-200/70 text-xs flex-wrap">
+                      <span className="font-bold text-gray-900 flex items-center gap-1.5">
+                        <Car className="w-4 h-4 text-[#C02030]" />
+                        <span>{lang === "es" ? "Compatibilidad:" : "Compatibility:"}</span>
+                      </span>
+                      <span className="font-extrabold text-gray-800 font-mono">
+                        {compDisplay}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Registered Garage Vehicle Compatibility Check */}
+                  {vehicle ? (
+                    isVehicleCompatible ? (
+                      <div className="flex items-center justify-between gap-2 p-2.5 rounded-2xl bg-emerald-50/90 border border-emerald-200 text-xs">
+                        <div className="flex items-center gap-2 text-emerald-950 font-bold min-w-0">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                          <span className="truncate">
+                            {lang === "es" ? "Es compatible con tu" : "Compatible with your"}{" "}
+                            <span className="underline decoration-emerald-400">
+                              {vehicle.brandName} {vehicle.modelName} ({vehicle.year})
+                            </span>
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => openModal()}
+                          className="text-[11px] text-emerald-700 font-semibold underline hover:text-emerald-900 cursor-pointer flex-shrink-0"
+                        >
+                          {t.combosChangeVehicle}
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between gap-2 p-2.5 rounded-2xl bg-rose-50/90 border border-rose-200 text-xs">
+                        <div className="flex items-center gap-2 text-rose-950 font-bold min-w-0">
+                          <AlertTriangle className="w-4 h-4 text-rose-600 flex-shrink-0" />
+                          <span className="truncate">
+                            {lang === "es" ? "No es compatible con tu" : "Not compatible with your"}{" "}
+                            <span className="line-through decoration-rose-400">
+                              {vehicle.brandName} {vehicle.modelName}
+                            </span>
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => openModal()}
+                          className="text-[11px] text-rose-700 font-semibold underline hover:text-rose-900 cursor-pointer flex-shrink-0"
+                        >
+                          {t.combosChangeVehicle}
+                        </button>
+                      </div>
+                    )
+                  ) : (
+                    <div className="flex items-center justify-between gap-2 p-2.5 rounded-2xl bg-amber-50/80 border border-amber-200 text-xs">
+                      <div className="flex items-center gap-2 text-amber-950 font-medium min-w-0">
+                        <Car className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                        <span className="truncate">
+                          {t.comboFitmentPrompt}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => openModal()}
+                        className="text-[11px] text-amber-800 font-bold underline hover:text-amber-950 cursor-pointer flex-shrink-0 whitespace-nowrap"
+                      >
+                        {t.combosSelectVehicle}
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Optional Workshop Installation Toggle */}
@@ -1269,12 +1323,14 @@ export default function ComboDetailPage() {
                   </div>
                 </div>
 
-                {/* Suggestions Section (For Optimal Function & Prevention) */}
-                <SuggestedSection
-                  suggestedProducts={combo.suggestedProducts || []}
-                  suggestedCombos={combo.suggestedCombos || []}
-                  isLoading={loading}
-                />
+                {/* Suggestions Section (ONLY shown if products or combos were explicitly attached to this combo) */}
+                {hasExplicitSuggestedItems && (
+                  <SuggestedSection
+                    suggestedProducts={combo.suggestedProducts || []}
+                    suggestedCombos={combo.suggestedCombos || []}
+                    isLoading={loading}
+                  />
+                )}
               </div>
             </div>
 

@@ -68,7 +68,9 @@ import {
   normalizeBrandName,
   ComboUniqueProduct,
   ComboUniqueProductField,
-  SUSPENSION_ADJUST_UNIQUE_PRODUCT_TEMPLATE
+  SUSPENSION_ADJUST_UNIQUE_PRODUCT_TEMPLATE,
+  deriveComboCompatibilityFromProducts,
+  formatCompListWithYears,
 } from "@/lib/products";
 import { CustomSelect } from "@/components/ui/CustomSelect";
 import { uploadMediaDirect } from "@/lib/clientDirectUpload";
@@ -11499,6 +11501,44 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                 })
                 )}
               </div>
+
+              {/* Inherited Compatibility Tags from Listed Products */}
+              {comboSelectedProducts.length > 0 && (() => {
+                const inheritedComp = deriveComboCompatibilityFromProducts(
+                  { includedProducts: comboSelectedProducts },
+                  products as any[]
+                );
+                const inheritedDisplay = formatCompListWithYears(inheritedComp);
+                return (
+                  <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                        <Car className="w-3.5 h-3.5 text-[#C02030]" />
+                        <span>
+                          {lang === "es"
+                            ? "Compatibilidad Heredada de Productos Listados:"
+                            : "Inherited Compatibility from Listed Products:"}
+                        </span>
+                      </span>
+                      {inheritedDisplay && (
+                        <span className="text-xs font-mono font-bold text-[#C02030] bg-white px-2.5 py-0.5 rounded-lg border border-slate-200">
+                          {inheritedDisplay}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {inheritedComp.map((tag, tIdx) => (
+                        <span
+                          key={tIdx}
+                          className="px-2.5 py-1 rounded-xl bg-white border border-slate-200 text-[11px] font-mono font-bold text-slate-800 shadow-2xs"
+                        >
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Extra Items or Services (Manual text list) */}
               <div className="pt-2 border-t border-slate-100">

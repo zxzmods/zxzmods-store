@@ -17,7 +17,14 @@ import { useLanguage } from "@/context/LanguageContext";
 import { useCart } from "@/context/CartContext";
 import { useGarage } from "@/context/GarageContext";
 import { formatCRC, formatUSD, convertCRCToUSD } from "@/lib/i18n";
-import { detectVehiclePlatform, isPlatformOrVehicleMatch, is4SeaterToken, is2SeaterToken } from "@/lib/products";
+import {
+  detectVehiclePlatform,
+  isPlatformOrVehicleMatch,
+  is4SeaterToken,
+  is2SeaterToken,
+  formatCompListWithYears,
+  isUniversalFit,
+} from "@/lib/products";
 import { getSxsBrandBySlug, getBrandLogo } from "@/lib/sxsBrands";
 import {
   Search,
@@ -59,6 +66,8 @@ interface ComboItem {
   isAvailable?: boolean;
   leadDaysMin?: number;
   leadDaysMax?: number;
+  comp?: string[];
+  compDisplay?: string;
 }
 
 export default function CombosPage() {
@@ -213,12 +222,22 @@ export default function CombosPage() {
     return cat.charAt(0).toUpperCase() + cat.slice(1);
   };
 
-  // Check if a combo is compatible with active garage vehicle
+  // Check if a combo is compatible with active garage vehicle (using comp tags inherited from listed products)
   const checkComboCompatibility = useCallback(
     (combo: ComboItem) => {
       if (!vehicle) return true;
 
-      // 1. Check vehicle brand if defined on combo
+      if (combo.comp && combo.comp.length > 0) {
+        if (isUniversalFit(combo.comp)) return true;
+        return combo.comp.some(
+          (c) =>
+            isPlatformOrVehicleMatch(c, vehicle.modelName) ||
+            isPlatformOrVehicleMatch(c, vehicle.modelSlug) ||
+            isPlatformOrVehicleMatch(c, `${vehicle.brandName} ${vehicle.modelName}`)
+        );
+      }
+
+      // Fallback if comp is empty
       if (combo.vehicleBrands && combo.vehicleBrands.length > 0) {
         const vBrand = (vehicle.brandSlug || vehicle.brandName || "").toLowerCase();
         const hasBrand = combo.vehicleBrands.some(
@@ -233,7 +252,6 @@ export default function CombosPage() {
       const comboText = `${combo.titleEs || ""} ${combo.titleEn || ""} ${combo.badgeEs || ""} ${combo.badgeEn || ""} ${combo.descriptionEs || ""} ${(combo.items || []).join(" ")}`.toLowerCase();
       const vehicleModelToken = vehicle.modelSlug || vehicle.modelName || "";
 
-      // 2. Strict seating capacity separation: 2-seater vs 4-seater (MAX / Crew / -4)
       if (
         (is4SeaterToken(vehicleModelToken) && is2SeaterToken(comboText)) ||
         (is2SeaterToken(vehicleModelToken) && is4SeaterToken(comboText))
@@ -241,34 +259,11 @@ export default function CombosPage() {
         return false;
       }
 
-      // 3. Check platform matching
       const vPlatform = detectVehiclePlatform(vehicleModelToken);
       const comboPlatform = detectVehiclePlatform(comboText);
 
       if (vPlatform && comboPlatform) {
         return vPlatform === comboPlatform;
-      }
-
-      // 4. Platform separation negative check
-      if (vPlatform) {
-        if (vPlatform.startsWith("maverick-r") && (comboText.includes("x3") || comboText.includes("maverick-x3") || comboText.includes("maverick x3"))) {
-          return false;
-        }
-        if (vPlatform.startsWith("x3") && (comboText.includes("maverick-r") || comboText.includes("maverick r"))) {
-          return false;
-        }
-        if (vPlatform === "z10" && (comboText.includes("1000") || comboText.includes("z1000") || comboText.includes("950") || comboText.includes("z10-4") || comboText.includes("z10 4"))) {
-          return false;
-        }
-        if (vPlatform === "z10-4" && (comboText.includes("1000") || comboText.includes("z1000") || comboText.includes("950") || (!comboText.includes("z10-4") && !comboText.includes("z10 4")))) {
-          return false;
-        }
-        if (vPlatform === "z1000" && (/\bz10(-4)?\b/i.test(comboText) || comboText.includes("950"))) {
-          return false;
-        }
-        if (vPlatform === "z950" && (comboText.includes("1000") || comboText.includes("z1000") || /\bz10(-4)?\b/i.test(comboText))) {
-          return false;
-        }
       }
 
       return true;
@@ -976,6 +971,14 @@ export default function CombosPage() {
                             <h2 className="text-base font-bold text-gray-900 tracking-tight leading-snug mt-0.5 group-hover:text-[#C02030] transition-colors line-clamp-2">
                               {lang === "es" ? combo.titleEs : combo.titleEn}
                             </h2>
+                            {(combo.compDisplay || formatCompListWithYears(combo.comp)) && (
+                              <div className="mt-1.5 inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-gray-100 border border-gray-200 text-[10px] font-mono font-bold text-gray-700 max-w-full">
+                                <Car className="w-3 h-3 text-[#C02030] shrink-0" />
+                                <span className="truncate">
+                                  {combo.compDisplay || formatCompListWithYears(combo.comp)}
+                                </span>
+                              </div>
+                            )}
                           </div>
 
                           {/* Clean Price Block */}

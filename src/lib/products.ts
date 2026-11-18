@@ -1427,7 +1427,7 @@ export function formatModelWithYear(compToken: string): string {
   if (token === "zforce-950-sport-4" || token === "z950-4") {
     return "CFMOTO ZForce 950 Sport-4 (2023-2027)";
   }
-  if (token === "zforce-950-sport" || token === "z950") {
+  if (token === "zforce-950-sport" || token === "z950" || token === "zforce-950") {
     return "CFMOTO ZForce 950 Sport (2023-2027)";
   }
   if (token === "zforce-1000" || token === "z1000") {
@@ -2228,23 +2228,21 @@ export function getProductCompatibilityTokens(item: any): string[] {
   if (!item) return [];
   const tokens = new Set<string>();
 
-  // If item is a combo, extract from includedProducts, included items and title/desc
+  // If item is a combo, derive compatibility strictly from its listed products
   if (item.items || item.itemsJson || item.includedProducts) {
-    const directProds = Array.isArray(item.includedProducts) ? item.includedProducts : [];
-    for (const prod of directProds) {
-      const prodTokens = getProductCompatibilityTokens(prod);
-      prodTokens.forEach((t) => tokens.add(t));
+    const derivedComp = deriveComboCompatibilityFromProducts(item);
+    for (const raw of derivedComp) {
+      if (typeof raw !== "string") continue;
+      const clean = raw
+        .replace(/\(\s*(?:19|20)\d{2}[^)]*\)/g, "")
+        .replace(/\b(?:19|20)\d{2}\s*(?:\+|-|\u2013)\s*(?:(?:19|20)\d{2})?/g, "")
+        .toLowerCase()
+        .trim();
+      if (!clean || clean === "all" || clean.includes("universal") || isVehicleBrand(clean)) continue;
+      tokens.add(clean);
     }
-    const comboText = `${item.titleEs || ""} ${item.titleEn || ""} ${item.descriptionEs || ""} ${item.descriptionEn || ""}`.toLowerCase();
-    for (const platforms of Object.values(SXS_BRAND_PLATFORMS)) {
-      for (const plat of platforms) {
-        const platLower = plat.toLowerCase();
-        // NEVER add vehicle brand manufacturer names (Can-Am, CFMOTO, Polaris) as platform tokens!
-        if (isVehicleBrand(platLower)) continue;
-        if (comboText.includes(platLower)) {
-          tokens.add(platLower);
-        }
-      }
+    if (tokens.size > 0) {
+      return Array.from(tokens);
     }
   }
 
@@ -2409,36 +2407,208 @@ export function isItemCompatibleWithTarget(
   return haveCompatibilityInCommon(target, candidate, catalogProducts);
 }
 
+const CATEGORY_SYNONYM_GROUPS: string[][] = [
+  ["performance", "rendimiento"],
+  ["exhaust", "escapes"],
+  ["suspension", "suspension-brakes", "suspension_brakes", "suspension & brakes"],
+  ["clutch", "clutch-belts", "clutch_belts", "clutch & belts"],
+  ["intake", "admision"],
+  ["storage", "almacenamiento"],
+  ["protection", "proteccion", "skid plates", "skit plates"],
+  ["proteccion-del-motor", "proteccion_del_motor", "engine protection", "engine", "motor"],
+  ["tools", "herramientas"],
+  ["brakes", "frenos"],
+  ["lights", "lighting-electrical", "lighting_electrical", "lighting & electrical", "electrical"],
+  ["audio", "audio & sonido", "audio-sonido"],
+];
+
+function expandCategorySynonyms(rawCat: string): string[] {
+  const norm = String(rawCat || "").toLowerCase().trim();
+  if (!norm) return [];
+  const group = CATEGORY_SYNONYM_GROUPS.find((g) => g.includes(norm));
+  return group ? group : [norm];
+}
+
+/**
+ * Resolves the actual catalog Product objects included in a Combo from `combo.items` / `combo.itemsJson`.
+ * Handles strings formatted as `"Product Title [SKU]"` as well as direct SKU/slug/ID references.
+ */
+export function resolveComboIncludedProducts(combo: any, catalogProducts: any[] = []): any[] {
+  if (!combo) return [];
+  const matched: any[] = [];
+  const seenIds = new Set<string>();
+
+  const addProd = (p: any) => {
+    if (!p) return;
+    const key = String(p.id || p.sku || p.slug || "").toLowerCase().trim();
+    if (key && !seenIds.has(key)) {
+      seenIds.add(key);
+      matched.push(p);
+    }
+  };
+
+  if (Array.isArray(combo.includedProducts)) {
+    combo.includedProducts.forEach(addProd);
+  }
+
+  let rawItems: any[] = [];
+  if (Array.isArray(combo.items)) {
+    rawItems = combo.items;
+  } else if (typeof combo.itemsJson === "string") {
+    try {
+      const parsed = JSON.parse(combo.itemsJson);
+      if (Array.isArray(parsed)) rawItems = parsed;
+    } catch {}
+  }
+
+  if (rawItems.length > 0 && Array.isArray(catalogProducts) && catalogProducts.length > 0) {
+    for (const rawItem of rawItems) {
+      if (!rawItem) continue;
+      if (typeof rawItem === "object") {
+        const ref = String(rawItem.sku || rawItem.id || rawItem.slug || "").toLowerCase().trim();
+        const found = catalogProducts.find(
+          (p) =>
+            (p.sku && p.sku.toLowerCase() === ref) ||
+            (p.id && p.id.toLowerCase() === ref) ||
+            (p.slug && p.slug.toLowerCase() === ref)
+        );
+        addProd(found || rawItem);
+        continue;
+      }
+      if (typeof rawItem === "string") {
+        const trimmed = rawItem.trim();
+        if (!trimmed || trimmed.startsWith("★ [EXCLUSIVO]")) continue;
+        const bracketMatch = trimmed.match(/\[([A-Za-z0-9\-_]+)\]/);
+        const extractedSku = bracketMatch ? bracketMatch[1].toLowerCase().trim() : null;
+        const rawLower = trimmed.toLowerCase();
+        const titleWithoutSku = trimmed.replace(/\s*\[[A-Za-z0-9\-_]+\]\s*$/, "").trim().toLowerCase();
+
+        const found = catalogProducts.find((p) => {
+          const pSku = String(p.sku || "").toLowerCase().trim();
+          const pSlug = String(p.slug || "").toLowerCase().trim();
+          const pId = String(p.id || "").toLowerCase().trim();
+          if (extractedSku && (pSku === extractedSku || pSlug === extractedSku || pId === extractedSku)) {
+            return true;
+          }
+          if (pSku === rawLower || pSlug === rawLower || pId === rawLower) {
+            return true;
+          }
+          const pNameEs = String(p.nameEs || p.p_title || "").toLowerCase().trim();
+          const pNameEn = String(p.nameEn || "").toLowerCase().trim();
+          if (titleWithoutSku && titleWithoutSku.length > 4) {
+            if (pNameEs === titleWithoutSku || pNameEn === titleWithoutSku) return true;
+          }
+          return false;
+        });
+
+        if (found) addProd(found);
+      }
+    }
+  }
+
+  return matched;
+}
+
+/**
+ * Derives the authoritative compatibility tags (`comp`) for a Combo strictly from its listed products.
+ * Example: If the listed products are compatible with Z10, then the combo is compatible with Z10 only.
+ */
+export function deriveComboCompatibilityFromProducts(combo: any, catalogProducts: any[] = []): string[] {
+  if (!combo) return [];
+
+  const includedProds = resolveComboIncludedProducts(combo, catalogProducts);
+
+  if (includedProds.length > 0) {
+    const productCompSets: string[][] = [];
+
+    for (const prod of includedProds) {
+      const prodTokens = getProductCompatibilityTokens(prod);
+      if (prodTokens.length > 0) {
+        productCompSets.push(prodTokens);
+      }
+    }
+
+    if (productCompSets.length > 0) {
+      // Compute intersection across vehicle-specific listed products so the combo only claims
+      // compatibility with vehicles supported by all vehicle-specific parts in the combo
+      let intersection = [...productCompSets[0]];
+      for (let i = 1; i < productCompSets.length; i++) {
+        const nextSet = productCompSets[i];
+        intersection = intersection.filter((tokA) =>
+          nextSet.some((tokB) => tokA === tokB || isPlatformOrVehicleMatch(tokA, tokB))
+        );
+      }
+
+      if (intersection.length > 0) {
+        return Array.from(new Set(intersection));
+      }
+
+      // Fallback to union of the listed products' compatibility tags if parts have complementary model slugs
+      const union = new Set<string>();
+      productCompSets.forEach((set) => set.forEach((t) => union.add(t)));
+      return Array.from(union);
+    }
+
+    // All listed products in the combo are universal
+    return ["all"];
+  }
+
+  // If combo already has derived `comp` array attached (e.g. from API response)
+  if (Array.isArray(combo.comp) && combo.comp.length > 0) {
+    const nonUniv = combo.comp
+      .map((c: any) => String(c || "").toLowerCase().trim())
+      .filter((c: string) => c && c !== "all" && !c.includes("universal") && !isVehicleBrand(c));
+    if (nonUniv.length > 0) return Array.from(new Set(nonUniv));
+  }
+
+  return [];
+}
+
 /**
  * Extracts categories from a product or combo as normalized lowercase strings.
  */
-export function getItemCategories(item: any): string[] {
+export function getItemCategories(item: any, catalogProducts: any[] = []): string[] {
   if (!item) return [];
   const cats = new Set<string>();
 
+  const addCat = (c: any) => {
+    if (typeof c === "string" && c.trim()) {
+      expandCategorySynonyms(c).forEach((syn) => cats.add(syn));
+    }
+  };
+
   if (typeof item.category === "string" && item.category.trim()) {
-    cats.add(item.category.toLowerCase().trim());
+    addCat(item.category);
   } else if (Array.isArray(item.category)) {
-    item.category.forEach((c: any) => {
-      if (typeof c === "string" && c.trim()) cats.add(c.toLowerCase().trim());
-    });
+    item.category.forEach(addCat);
   }
 
   if (typeof item.categoryJson === "string") {
     try {
       const p = JSON.parse(item.categoryJson);
       if (Array.isArray(p)) {
-        p.forEach((c: any) => {
-          if (typeof c === "string" && c.trim()) cats.add(c.toLowerCase().trim());
-        });
+        p.forEach(addCat);
       }
     } catch {}
   }
 
   if (Array.isArray(item.selectedCategories)) {
-    item.selectedCategories.forEach((c: any) => {
-      if (typeof c === "string" && c.trim()) cats.add(c.toLowerCase().trim());
-    });
+    item.selectedCategories.forEach(addCat);
+  }
+
+  // If item is a combo and catalogProducts are provided, also include the categories of its listed products
+  if ((item.items || item.itemsJson || item.includedProducts) && catalogProducts.length > 0) {
+    const incProds = resolveComboIncludedProducts(item, catalogProducts);
+    for (const p of incProds) {
+      if (typeof p.category === "string") addCat(p.category);
+      else if (Array.isArray(p.category)) p.category.forEach(addCat);
+      if (typeof p.categoryJson === "string") {
+        try {
+          const parsed = JSON.parse(p.categoryJson);
+          if (Array.isArray(parsed)) parsed.forEach(addCat);
+        } catch {}
+      }
+    }
   }
 
   return Array.from(cats);
@@ -2448,9 +2618,13 @@ export function getItemCategories(item: any): string[] {
  * Checks if two items share at least one category in common.
  * Supports passing either item objects or string arrays.
  */
-export function haveCategoriesInCommon(itemA: any, itemB: any): boolean {
-  const catsA = Array.isArray(itemA) ? itemA : getItemCategories(itemA);
-  const catsB = Array.isArray(itemB) ? itemB : getItemCategories(itemB);
+export function haveCategoriesInCommon(itemA: any, itemB: any, catalogProducts: any[] = []): boolean {
+  const catsA = Array.isArray(itemA)
+    ? itemA.flatMap((c) => expandCategorySynonyms(String(c)))
+    : getItemCategories(itemA, catalogProducts);
+  const catsB = Array.isArray(itemB)
+    ? itemB.flatMap((c) => expandCategorySynonyms(String(c)))
+    : getItemCategories(itemB, catalogProducts);
   if (catsA.length === 0 || catsB.length === 0) return false;
 
   for (const cA of catsA) {
@@ -2510,105 +2684,47 @@ export function haveVehicleBrandInCommon(itemA: any, itemB: any, catalogProducts
 }
 
 /**
- * Resolves compatibility tokens for a Combo by combining the tokens of its included items
- * and any tokens detected in the combo title / description.
+ * Resolves compatibility tokens for a Combo strictly from its listed products.
  */
 export function getComboCompatibilityTokens(combo: any, catalogProducts: any[] = []): string[] {
   if (!combo) return [];
-  const tokens = new Set<string>();
-
-  // 1. Direct includedProducts lookup (if already populated on the combo object)
-  const directProds = Array.isArray(combo.includedProducts) ? combo.includedProducts : [];
-  for (const prod of directProds) {
-    const prodTokens = getProductCompatibilityTokens(prod);
-    prodTokens.forEach((t) => tokens.add(t));
+  const derived = deriveComboCompatibilityFromProducts(combo, catalogProducts);
+  const specific = derived.filter((t) => t && t !== "all" && !t.includes("universal") && !isVehicleBrand(t));
+  if (specific.length > 0) {
+    return specific;
   }
-
-  // 2. Included items lookup in catalogProducts
-  let itemIds: string[] = [];
-  if (Array.isArray(combo.items)) {
-    itemIds = combo.items.map((it: any) => typeof it === "string" ? it : (it.id || it.sku || it.slug || ""));
-  } else if (typeof combo.itemsJson === "string") {
-    try {
-      const parsed = JSON.parse(combo.itemsJson);
-      if (Array.isArray(parsed)) {
-        itemIds = parsed.map((it: any) => typeof it === "string" ? it : (it.id || it.sku || it.slug || ""));
-      }
-    } catch {}
-  }
-
-  if (itemIds.length > 0 && catalogProducts && catalogProducts.length > 0) {
-    const idSet = new Set(itemIds.map((id) => id.toLowerCase().trim()));
-    const matchingProds = catalogProducts.filter((p) => {
-      return (
-        idSet.has((p.id || "").toLowerCase()) ||
-        (p.sku && idSet.has(p.sku.toLowerCase())) ||
-        (p.slug && idSet.has(p.slug.toLowerCase()))
-      );
-    });
-
-    for (const prod of matchingProds) {
-      const prodTokens = getProductCompatibilityTokens(prod);
-      prodTokens.forEach((t) => tokens.add(t));
-    }
-  }
-
-  // 3. Also check title/desc for platform words (strictly excluding vehicle brand manufacturer names)
-  const fullText = `${combo.titleEs || ""} ${combo.titleEn || ""} ${combo.descriptionEs || ""} ${combo.descriptionEn || ""}`.toLowerCase();
-  for (const platforms of Object.values(SXS_BRAND_PLATFORMS)) {
-    for (const plat of platforms) {
-      const platLower = plat.toLowerCase();
-      if (isVehicleBrand(platLower)) continue;
-      if (fullText.includes(platLower)) {
-        tokens.add(platLower);
-      }
-    }
-  }
-
-  return Array.from(tokens);
+  return [];
 }
 
 /**
- * Resolves vehicle brands for a Combo.
+ * Resolves vehicle brands for a Combo strictly from its listed products.
  */
 export function getComboVehicleBrands(combo: any, catalogProducts: any[] = []): string[] {
   if (!combo) return [];
   const brands = new Set<string>();
 
-  let itemIds: string[] = [];
-  if (Array.isArray(combo.items)) {
-    itemIds = combo.items.map((it: any) => typeof it === "string" ? it : (it.id || it.sku || it.slug || ""));
-  } else if (typeof combo.itemsJson === "string") {
-    try {
-      const parsed = JSON.parse(combo.itemsJson);
-      if (Array.isArray(parsed)) {
-        itemIds = parsed.map((it: any) => typeof it === "string" ? it : (it.id || it.sku || it.slug || ""));
-      }
-    } catch {}
-  }
-
-  const idSet = new Set(itemIds.map((id) => id.toLowerCase().trim()));
-  const matchingProds = catalogProducts.filter((p) => {
-    return (
-      idSet.has((p.id || "").toLowerCase()) ||
-      (p.sku && idSet.has(p.sku.toLowerCase())) ||
-      (p.slug && idSet.has(p.slug.toLowerCase()))
-    );
-  });
-
+  const matchingProds = resolveComboIncludedProducts(combo, catalogProducts);
   for (const prod of matchingProds) {
     const pBrands = detectProductVehicleBrands(prod);
     pBrands.forEach((b) => brands.add(b));
   }
 
-  const fullText = `${combo.titleEs || ""} ${combo.titleEn || ""} ${combo.descriptionEs || ""} ${combo.descriptionEn || ""}`.toLowerCase();
-  for (const [sxsSlug, platforms] of Object.entries(SXS_BRAND_PLATFORMS)) {
-    if (fullText.includes(sxsSlug)) {
-      brands.add(sxsSlug);
-    }
-    for (const plat of platforms) {
-      if (fullText.includes(plat.toLowerCase())) {
+  // Also check combo.comp if already populated on combo
+  if (brands.size === 0 && Array.isArray(combo.comp) && combo.comp.length > 0) {
+    const pBrands = detectProductVehicleBrands({ comp: combo.comp });
+    pBrands.forEach((b) => brands.add(b));
+  }
+
+  if (brands.size === 0) {
+    const fullText = `${combo.titleEs || ""} ${combo.titleEn || ""}`.toLowerCase();
+    for (const [sxsSlug, platforms] of Object.entries(SXS_BRAND_PLATFORMS)) {
+      if (fullText.includes(sxsSlug)) {
         brands.add(sxsSlug);
+      }
+      for (const plat of platforms) {
+        if (fullText.includes(plat.toLowerCase())) {
+          brands.add(sxsSlug);
+        }
       }
     }
   }
@@ -2641,13 +2757,23 @@ export function getRecommendedFillerProducts(
 ): ProductItem[] {
   const result: ProductItem[] = [];
   const seenIds = new Set<string>();
+  const isTargetCombo = Boolean(target?.items || target?.itemsJson || target?.includedProducts);
 
-  // Identify target keys to exclude self
+  // Identify target keys to exclude self (and if target is a combo, exclude its own included products)
   const targetKeys = new Set([
     (target.id || "").toLowerCase(),
     ((target as any).sku || "").toLowerCase(),
     (target.slug || "").toLowerCase(),
   ]);
+
+  if (isTargetCombo) {
+    const includedProds = resolveComboIncludedProducts(target, allCandidates);
+    for (const inc of includedProds) {
+      if (inc.id) targetKeys.add(inc.id.toLowerCase());
+      if (inc.sku) targetKeys.add(inc.sku.toLowerCase());
+      if (inc.slug) targetKeys.add(inc.slug.toLowerCase());
+    }
+  }
 
   // Tier 0: Seed explicit attached products first (NEVER replace or remove them!)
   for (const item of explicitItems) {
@@ -2676,19 +2802,39 @@ export function getRecommendedFillerProducts(
     return true;
   });
 
-  const targetIsVehicleSpecific = isItemVehicleSpecific(target, pool);
+  const targetCategories = getItemCategories(target, allCandidates);
+  const targetIsVehicleSpecific = isItemVehicleSpecific(target, allCandidates);
+
+  if (isTargetCombo) {
+    // For Combos: Related products MUST match BOTH compatible vehicle AND category!
+    for (const cand of pool) {
+      if (result.length >= maxCount) break;
+      if (seenIds.has(cand.id.toLowerCase())) continue;
+      const matchesVehicle = targetIsVehicleSpecific
+        ? haveCompatibilityInCommon(target, cand, allCandidates)
+        : isUniversalFit(cand.comp);
+      const matchesCat = targetCategories.length > 0
+        ? haveCategoriesInCommon(target, cand, allCandidates)
+        : true;
+      if (matchesVehicle && matchesCat) {
+        seenIds.add(cand.id.toLowerCase());
+        result.push(cand);
+      }
+    }
+    return result.slice(0, maxCount);
+  }
 
   if (targetIsVehicleSpecific) {
     // STRICT VEHICLE COMPATIBILITY:
     // Only candidates that match target's vehicle compatibility (or are universal) are allowed.
     // Incompatible vehicles are NEVER included!
-    const compatiblePool = pool.filter((cand) => isItemCompatibleWithTarget(target, cand, pool));
+    const compatiblePool = pool.filter((cand) => isItemCompatibleWithTarget(target, cand, allCandidates));
 
     // TIER 1: SAME Vehicle Compatibility AND Category in common (Highest Priority)
     for (const cand of compatiblePool) {
       if (result.length >= maxCount) break;
       if (seenIds.has(cand.id.toLowerCase())) continue;
-      if (haveCompatibilityInCommon(target, cand, pool) && haveCategoriesInCommon(target, cand)) {
+      if (haveCompatibilityInCommon(target, cand, allCandidates) && haveCategoriesInCommon(target, cand, allCandidates)) {
         seenIds.add(cand.id.toLowerCase());
         result.push(cand);
       }
@@ -2698,7 +2844,7 @@ export function getRecommendedFillerProducts(
     for (const cand of compatiblePool) {
       if (result.length >= maxCount) break;
       if (seenIds.has(cand.id.toLowerCase())) continue;
-      if (haveCompatibilityInCommon(target, cand, pool)) {
+      if (haveCompatibilityInCommon(target, cand, allCandidates)) {
         seenIds.add(cand.id.toLowerCase());
         result.push(cand);
       }
@@ -2708,7 +2854,7 @@ export function getRecommendedFillerProducts(
     for (const cand of compatiblePool) {
       if (result.length >= maxCount) break;
       if (seenIds.has(cand.id.toLowerCase())) continue;
-      if (isUniversalFit(cand.comp) && haveCategoriesInCommon(target, cand)) {
+      if (isUniversalFit(cand.comp) && haveCategoriesInCommon(target, cand, allCandidates)) {
         seenIds.add(cand.id.toLowerCase());
         result.push(cand);
       }
@@ -2733,7 +2879,7 @@ export function getRecommendedFillerProducts(
   for (const cand of pool) {
     if (result.length >= maxCount) break;
     if (seenIds.has(cand.id.toLowerCase())) continue;
-    if (haveCategoriesInCommon(target, cand) && haveDealerBrandInCommon(target, cand)) {
+    if (haveCategoriesInCommon(target, cand, pool) && haveDealerBrandInCommon(target, cand)) {
       seenIds.add(cand.id.toLowerCase());
       result.push(cand);
     }
@@ -2743,7 +2889,7 @@ export function getRecommendedFillerProducts(
   for (const cand of pool) {
     if (result.length >= maxCount) break;
     if (seenIds.has(cand.id.toLowerCase())) continue;
-    if (haveCategoriesInCommon(target, cand)) {
+    if (haveCategoriesInCommon(target, cand, pool)) {
       seenIds.add(cand.id.toLowerCase());
       result.push(cand);
     }
@@ -2821,25 +2967,25 @@ export function getRecommendedFillerCombos(
   });
 
   const isTargetCombo = Boolean(target.items || target.itemsJson || target.includedProducts);
-  const targetCategories = getItemCategories(target);
+  const targetCategories = getItemCategories(target, catalogProducts);
   const targetIsVehicleSpecific = isItemVehicleSpecific(target, catalogProducts);
 
   const comboContainsTargetProduct = (combo: any) => {
     if (isTargetCombo) return false;
-    let items: any[] = [];
-    if (Array.isArray(combo.items)) items = combo.items;
-    else if (typeof combo.itemsJson === "string") {
-      try { items = JSON.parse(combo.itemsJson); } catch {}
+    const resolved = resolveComboIncludedProducts(combo, catalogProducts);
+    if (resolved.some((p) => {
+      const pId = (p.id || "").toLowerCase();
+      const pSku = (p.sku || "").toLowerCase();
+      const pSlug = (p.slug || "").toLowerCase();
+      return pId === targetId || (targetSku && pSku === targetSku) || (targetSlug && pSlug === targetSlug);
+    })) {
+      return true;
     }
-    return items.some((it: any) => {
-      const itId = typeof it === "string" ? it.toLowerCase() : (it.id || it.sku || it.slug || "").toLowerCase();
-      return itId === targetId || (targetSku && itId === targetSku) || (targetSlug && itId === targetSlug);
-    });
+    return false;
   };
 
   const comboMatchesCategory = (combo: any) => {
-    const cCategories = getItemCategories(combo);
-    return haveCategoriesInCommon(targetCategories, cCategories);
+    return haveCategoriesInCommon(targetCategories, combo, catalogProducts);
   };
 
   if (targetIsVehicleSpecific) {

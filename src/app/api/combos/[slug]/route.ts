@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { calculateComboAvailability } from "@/lib/comboAvailability";
+import {
+  deriveComboCompatibilityFromProducts,
+  formatCompListWithYears,
+  getRecommendedFillerProducts,
+  getRecommendedFillerCombos,
+} from "@/lib/products";
 
 export const dynamic = "force-dynamic";
 
@@ -101,7 +107,7 @@ export async function GET(
   try {
     const { slug } = await params;
 
-    const [combo, catalogProducts] = await Promise.all([
+    const [combo, rawCatalogProducts] = await Promise.all([
       prisma.combo.findUnique({
         where: { slug },
       }),
@@ -116,6 +122,8 @@ export async function GET(
           priceCRC: true,
           originalPriceCRC: true,
           discountPercent: true,
+          isInstallationIncluded: true,
+          installationPriceCRC: true,
           imageUrl: true,
           imagesJson: true,
           additionalImagesJson: true,
@@ -123,6 +131,7 @@ export async function GET(
           brandJson: true,
           categoryJson: true,
           compJson: true,
+          modelYearCompatibilityJson: true,
           supplierStockStatus: true,
           stockStatus: true,
           isArchived: true,
@@ -139,8 +148,92 @@ export async function GET(
       );
     }
 
+    const catalogProducts = rawCatalogProducts.map((p: any) => {
+      const comp: string[] = (() => {
+        if (p.compJson) {
+          try {
+            const parsed = JSON.parse(p.compJson);
+            if (Array.isArray(parsed)) return parsed;
+          } catch {}
+        }
+        return [];
+      })();
+      const category: string[] = (() => {
+        if (p.categoryJson) {
+          try {
+            const parsed = JSON.parse(p.categoryJson);
+            if (Array.isArray(parsed)) return parsed;
+          } catch {}
+        }
+        return [];
+      })();
+      const brand: string[] = (() => {
+        const list: string[] = [];
+        if (p.brandName) list.push(p.brandName);
+        if (p.brandJson) {
+          try {
+            const parsed = JSON.parse(p.brandJson);
+            if (Array.isArray(parsed)) {
+              parsed.forEach((b: string) => {
+                if (b && !list.includes(b)) list.push(b);
+              });
+            }
+          } catch {}
+        }
+        return list;
+      })();
+      const imgs: string[] = [];
+      if (p.imageUrl && typeof p.imageUrl === "string" && p.imageUrl.trim()) {
+        imgs.push(p.imageUrl.trim());
+      }
+      if (p.imagesJson) {
+        try {
+          const parsed = JSON.parse(p.imagesJson);
+          if (Array.isArray(parsed)) {
+            parsed.forEach((img: string) => {
+              if (typeof img === "string" && img.trim() && !imgs.includes(img.trim())) {
+                imgs.push(img.trim());
+              }
+            });
+          }
+        } catch {}
+      }
+      const modelYearCompatibility: any[] = (() => {
+        if (p.modelYearCompatibilityJson) {
+          try {
+            const parsed = JSON.parse(p.modelYearCompatibilityJson);
+            if (Array.isArray(parsed)) return parsed;
+          } catch {}
+        }
+        return [];
+      })();
+      return {
+        ...p,
+        comp,
+        compDisplay: formatCompListWithYears(comp),
+        category,
+        brand,
+        modelYearCompatibility,
+        imgs: imgs.length > 0 ? imgs : ["/images/sxs/z10_front.png"],
+        price: {
+          T_price: p.priceCRC || 0,
+          I_price: {
+            includes: p.isInstallationIncluded ?? true,
+            I_price: p.installationPriceCRC || 0,
+          },
+        },
+      };
+    });
+
     const availability = calculateComboAvailability(combo.itemsJson, catalogProducts);
     const comboImgs = extractComboImages(combo, catalogProducts);
+    const comboComp = deriveComboCompatibilityFromProducts(combo, catalogProducts);
+    const comboCompDisplay = formatCompListWithYears(comboComp);
+    const comboWithComp = {
+      ...combo,
+      comp: comboComp,
+      compDisplay: comboCompDisplay,
+    };
 
     const sugProdIds: string[] = (() => {
       if ((combo as any).suggestedProductIdsJson) {
@@ -162,7 +255,8 @@ export async function GET(
       return [];
     })();
 
-    let suggestedProducts: any[] = [];
+    // ONLY explicitly attached suggested/prevention products
+    let explicitProducts: any[] = [];
     const seenProdIds = new Set<string>();
 
     if (sugProdIds.length > 0) {
@@ -171,89 +265,57 @@ export async function GET(
         if (idSet.has(p.id.toLowerCase()) || idSet.has(p.sku.toLowerCase()) || idSet.has(p.slug.toLowerCase())) {
           if (!seenProdIds.has(p.id)) {
             seenProdIds.add(p.id);
-            suggestedProducts.push(p);
+            explicitProducts.push(p);
           }
         }
       }
     }
 
-    // Dynamically fill related/suggested products up to 10 matching category or brand
-    // (Without modifying the database array)
-    if (suggestedProducts.length < 10) {
-      const comboCat = (combo.category || "performance").toLowerCase();
+    // Related products matching compatible vehicle and category
+    const relatedProducts = getRecommendedFillerProducts(
+      comboWithComp,
+      catalogProducts as any[],
+      10,
+      []
+    );
 
-      // Priority A: Same category
-      for (const p of catalogProducts) {
-        if (suggestedProducts.length >= 10) break;
-        if (seenProdIds.has(p.id)) continue;
-        const pCats: string[] = (() => {
-          if (p.categoryJson) {
-            try {
-              const parsed = JSON.parse(p.categoryJson);
-              if (Array.isArray(parsed)) return parsed.map((c: string) => String(c).toLowerCase());
-            } catch {}
-          }
-          return [];
-        })();
-        if (pCats.includes(comboCat) || pCats.some((c: string) => c.includes(comboCat))) {
-          seenProdIds.add(p.id);
-          suggestedProducts.push(p);
-        }
-      }
+    const allDbCombos = await prisma.combo.findMany({
+      where: { isArchived: false },
+    });
+    const parsedCombos = allDbCombos.map((c) => {
+      const cComp = deriveComboCompatibilityFromProducts(c, catalogProducts);
+      return {
+        ...c,
+        comp: cComp,
+        compDisplay: formatCompListWithYears(cComp),
+        imgs: extractComboImages(c, catalogProducts),
+        items: (() => {
+          try { return JSON.parse(c.itemsJson || "[]"); } catch { return []; }
+        })(),
+      };
+    });
 
-      // Priority B: Matching brands related to this combo
-      const comboTitle = (combo.titleEs + " " + combo.titleEn).toLowerCase();
-      for (const p of catalogProducts) {
-        if (suggestedProducts.length >= 10) break;
-        if (seenProdIds.has(p.id)) continue;
-        const pBrands: string[] = [];
-        if (p.brandName) pBrands.push(p.brandName.toLowerCase());
-        if (p.brandJson) {
-          try {
-            const parsed = JSON.parse(p.brandJson);
-            if (Array.isArray(parsed)) parsed.forEach((b: string) => pBrands.push(String(b).toLowerCase()));
-          } catch {}
-        }
-        const matchesBrand = pBrands.some((b: string) => comboTitle.includes(b));
-        if (matchesBrand) {
-          seenProdIds.add(p.id);
-          suggestedProducts.push(p);
-        }
-      }
-
-      // Priority C: Any other active catalog products
-      for (const p of catalogProducts) {
-        if (suggestedProducts.length >= 10) break;
-        if (!seenProdIds.has(p.id)) {
-          seenProdIds.add(p.id);
-          suggestedProducts.push(p);
-        }
-      }
-    }
-
-    suggestedProducts = suggestedProducts.slice(0, 10);
-
-    let suggestedCombos: any[] = [];
+    let explicitCombos: any[] = [];
     if (sugComboIds.length > 0) {
       const cIdSet = new Set(sugComboIds.map((s) => s.toLowerCase()));
-      const allDbCombos = await prisma.combo.findMany({
-        where: { isArchived: false },
-      });
-      suggestedCombos = allDbCombos
-        .filter((c) => cIdSet.has(c.id.toLowerCase()) || cIdSet.has(c.slug.toLowerCase()))
-        .map((c) => ({
-          ...c,
-          items: (() => {
-            try { return JSON.parse(c.itemsJson || "[]"); } catch { return []; }
-          })(),
-        }));
+      explicitCombos = parsedCombos.filter((c) => cIdSet.has(c.id.toLowerCase()) || cIdSet.has(c.slug.toLowerCase()));
     }
+
+    const relatedCombos = getRecommendedFillerCombos(
+      comboWithComp,
+      parsedCombos,
+      catalogProducts as any[],
+      4,
+      []
+    );
 
     return NextResponse.json({
       success: true,
       data: {
         combo: {
           ...combo,
+          comp: comboComp,
+          compDisplay: comboCompDisplay,
           imgs: comboImgs,
           images: comboImgs,
           items: JSON.parse(combo.itemsJson || "[]") as string[],
@@ -268,9 +330,10 @@ export async function GET(
           })(),
           suggestedProductIds: sugProdIds,
           suggestedComboIds: sugComboIds,
-          suggestedProducts,
-          relatedProducts: suggestedProducts,
-          suggestedCombos,
+          suggestedProducts: explicitProducts,
+          relatedProducts,
+          suggestedCombos: explicitCombos,
+          relatedCombos,
           availability,
           stockStatus: availability.status,
           isAvailable: availability.available,
