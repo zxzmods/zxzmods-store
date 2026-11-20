@@ -53,7 +53,7 @@ export const AVAILABILITY_MAX_AGE_MS = 8 * 60 * 60 * 1000; // 8 hours in millise
 // Prevents multiple ?variant=... checks on the same Shopify product from making duplicate HTTP requests or triggering 429 rate limits
 const shopifyProductPayloadCache = new Map<
   string,
-  { prodData: any; fromDotJson: boolean; timestamp: number }
+  { prodData: any; fromDotJson: boolean; fromGraphQL?: boolean; timestamp: number }
 >();
 const SHOPIFY_PAYLOAD_CACHE_TTL_MS = 15 * 60 * 1000;
 
@@ -61,16 +61,44 @@ export const KNOWN_SHOPIFY_STOREFRONT_TOKENS: Record<string, string> = {
   "rpmsxs.com": "ec7ec3c4888c4f395d14463306136340",
   "teammscdealers.com": "4e50d8d113215018d1eeef0dcaffa896",
   "evopowersports.com": "da4a7f4ea1577b031d42556f55fd094c",
+  "dealers.evopowersports.com": "da4a7f4ea1577b031d42556f55fd094c",
   "hangar116.com": "846c6984b1873aabe447f011bbad9549",
 };
+
+export const SHOPIFY_HOST_STOREFRONT_ORIGINS: Record<string, string> = {
+  "dealers.evopowersports.com": "evopowersports.com",
+};
+
+export function resolveShopifyHostAndToken(hostname: string): { targetHost: string; token: string | null } {
+  const cleanHost = hostname.toLowerCase().replace(/^www\./, "");
+  let targetHost = cleanHost;
+
+  if (cleanHost.endsWith("evopowersports.com")) {
+    targetHost = "evopowersports.com";
+  } else if (cleanHost.endsWith("teammscdealers.com")) {
+    targetHost = "teammscdealers.com";
+  } else if (cleanHost.endsWith("rpmsxs.com")) {
+    targetHost = "rpmsxs.com";
+  } else if (cleanHost.endsWith("hangar116.com")) {
+    targetHost = "hangar116.com";
+  } else if (SHOPIFY_HOST_STOREFRONT_ORIGINS[cleanHost]) {
+    targetHost = SHOPIFY_HOST_STOREFRONT_ORIGINS[cleanHost];
+  }
+
+  const token =
+    KNOWN_SHOPIFY_STOREFRONT_TOKENS[cleanHost] ||
+    KNOWN_SHOPIFY_STOREFRONT_TOKENS[targetHost] ||
+    null;
+
+  return { targetHost, token };
+}
 
 async function fetchShopifyStorefrontGraphQL(
   hostname: string,
   handle: string,
   variantId?: string | null
 ): Promise<{ prodData: any } | null> {
-  const cleanHost = hostname.toLowerCase().replace(/^www\./, "");
-  const token = KNOWN_SHOPIFY_STOREFRONT_TOKENS[cleanHost];
+  const { targetHost, token } = resolveShopifyHostAndToken(hostname);
   if (!token) return null;
 
   try {
@@ -96,7 +124,7 @@ async function fetchShopifyStorefrontGraphQL(
           }
         }
       `;
-      const res = await fetch(`https://${hostname}/api/2024-07/graphql.json`, {
+      const res = await fetch(`https://${targetHost}/api/2024-07/graphql.json`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -159,7 +187,7 @@ async function fetchShopifyStorefrontGraphQL(
         }
       }
     `;
-    const resH = await fetch(`https://${hostname}/api/2024-07/graphql.json`, {
+    const resH = await fetch(`https://${targetHost}/api/2024-07/graphql.json`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -167,27 +195,71 @@ async function fetchShopifyStorefrontGraphQL(
       },
       body: JSON.stringify({ query: qHandle, variables: { handle } }),
     });
+
+    let p: any = null;
     if (resH.ok) {
       const d = await resH.json();
-      const p = d?.data?.product;
-      if (p) {
-        const variantsList = (p.variants?.nodes || []).map((vn: any) => ({
-          id: parseInt(vn.id.replace("gid://shopify/ProductVariant/", ""), 10),
-          title: vn.title,
-          available: vn.availableForSale,
-          price: parseFloat(vn.price?.amount || "0"),
-        }));
-        return {
-          prodData: {
-            title: p.title,
-            handle: p.handle,
-            available: p.availableForSale,
-            tags: p.tags || [],
-            price: variantsList[0]?.price || null,
-            variants: variantsList,
+      p = d?.data?.product;
+    }
+
+    // Fallback: If exact handle wasn't found, try storefront search query
+    if (!p && handle) {
+      const searchTerms = handle
+        .replace(/[-_]/g, " ")
+        .split(/\s+/)
+        .filter((w) => w.length > 2)
+        .slice(0, 5)
+        .join(" ");
+
+      if (searchTerms) {
+        const qSearch = `
+          query searchProducts($query: String!) {
+            products(first: 5, query: $query) {
+              nodes {
+                title
+                handle
+                availableForSale
+                tags
+                variants(first: 50) {
+                  nodes { id title availableForSale price { amount } }
+                }
+              }
+            }
+          }
+        `;
+        const resSearch = await fetch(`https://${targetHost}/api/2024-07/graphql.json`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Shopify-Storefront-Access-Token": token,
           },
-        };
+          body: JSON.stringify({ query: qSearch, variables: { query: searchTerms } }),
+        });
+        if (resSearch.ok) {
+          const sData = await resSearch.json();
+          const nodes = sData?.data?.products?.nodes || [];
+          p = nodes.find((n: any) => n.handle === handle) || nodes[0] || null;
+        }
       }
+    }
+
+    if (p) {
+      const variantsList = (p.variants?.nodes || []).map((vn: any) => ({
+        id: parseInt(vn.id.replace("gid://shopify/ProductVariant/", ""), 10),
+        title: vn.title,
+        available: vn.availableForSale,
+        price: parseFloat(vn.price?.amount || "0"),
+      }));
+      return {
+        prodData: {
+          title: p.title,
+          handle: p.handle,
+          available: p.availableForSale,
+          tags: p.tags || [],
+          price: variantsList[0]?.price || null,
+          variants: variantsList,
+        },
+      };
     }
   } catch {}
   return null;
@@ -621,8 +693,8 @@ export async function fetchLiveSupplierAvailability(
       }
 
       if (!cachedShopifyPayload) {
-        const hostKey = parsedShopifyUrl.hostname.toLowerCase().replace(/^www\./, "");
-        if (KNOWN_SHOPIFY_STOREFRONT_TOKENS[hostKey]) {
+        const { token: storefrontToken } = resolveShopifyHostAndToken(parsedShopifyUrl.hostname);
+        if (storefrontToken) {
           const productHandle = cleanPathname.split("/").filter(Boolean).pop() || "";
           const gqlPayload = await fetchShopifyStorefrontGraphQL(
             parsedShopifyUrl.hostname,
@@ -633,7 +705,8 @@ export async function fetchLiveSupplierAvailability(
             const entry = {
               timestamp: Date.now(),
               prodData: gqlPayload.prodData,
-              fromDotJson: false,
+              fromDotJson: true,
+              fromGraphQL: true,
             };
             cachedShopifyPayload = entry;
             shopifyProductPayloadCache.set(baseProductUrl, entry);
@@ -687,7 +760,7 @@ export async function fetchLiveSupplierAvailability(
       }
 
       if (cachedShopifyPayload) {
-        const { prodData, fromDotJson } = cachedShopifyPayload;
+        const { prodData, fromDotJson, fromGraphQL } = cachedShopifyPayload;
         const title = prodData.title || extractTitleFromUrl(url);
         const variants = Array.isArray(prodData.variants) ? prodData.variants : [];
         const matchedVariant = requestedVariantId
@@ -801,7 +874,9 @@ export async function fetchLiveSupplierAvailability(
             leadDaysMax: status === "PRE_ORDER" ? 28 : 21,
             checkedAt: nowIso,
             rawDetails: {
-              platformIdentified: fromDotJson
+              platformIdentified: fromGraphQL
+                ? "Shopify Storefront API (GraphQL)"
+                : fromDotJson
                 ? "Shopify Product API (.json)"
                 : "Shopify Product API (.js)",
               variantsCount: variants.length,
