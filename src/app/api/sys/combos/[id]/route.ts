@@ -10,8 +10,10 @@ import { sanitizeExtraParts } from "@/lib/catalogExtraParts";
 function revalidateComboPaths(slug?: string) {
   try {
     revalidatePath("/combos");
+    revalidatePath("/productos");
     revalidatePath("/");
     revalidatePath("/api/combos");
+    revalidatePath("/api/products");
     if (slug) {
       revalidatePath(`/combos/${slug}`);
       revalidatePath(`/api/combos/${slug}`);
@@ -234,6 +236,35 @@ export async function PATCH(
         profitCRC: 0,
         totalCostCRC: 0,
       });
+    }
+
+    // Combos ALWAYS include installation cost (I_price) in their T_price (priceCRC).
+    // If installation fields are updated via PATCH without an explicit priceCRC, adjust priceCRC accordingly.
+    if (body.priceCRC === undefined && (hasInstallUpdate || updateData.installationPriceCRC !== undefined || updateData.installationAvailable !== undefined)) {
+      const prevInstall =
+        existingCombo.installationAvailable !== false
+          ? Math.max(0, Math.round(Number(existingCombo.installationPriceCRC) || 0))
+          : 0;
+      const nextInstallAvailable =
+        updateData.installationAvailable !== undefined
+          ? Boolean(updateData.installationAvailable)
+          : existingCombo.installationAvailable !== false;
+      const nextInstall = nextInstallAvailable
+        ? Math.max(
+            0,
+            Math.round(
+              Number(
+                updateData.installationPriceCRC !== undefined
+                  ? updateData.installationPriceCRC
+                  : existingCombo.installationPriceCRC
+              ) || 0
+            )
+          )
+        : 0;
+      if (nextInstall !== prevInstall) {
+        const deltaWithIva = Math.round((nextInstall - prevInstall) * 1.13);
+        updateData.priceCRC = Math.max(0, Math.round(Number(existingCombo.priceCRC) || 0) + deltaWithIva);
+      }
     }
 
     const previousMediaUrls = collectComboMediaUrls(existingCombo);

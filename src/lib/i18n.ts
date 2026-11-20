@@ -2105,6 +2105,14 @@ export interface Translations {
   devComboCostBreakdownTitle: string;
   devComboSumPPriceLabel: string;
   devComboSumSPriceLabel: string;
+  devComboIPriceLabel: string;
+  devComboAddedToTPriceBadge: string;
+  devComboDeliveryOnlyShort: string;
+  devComboInstallIncludedFormulaLabel: string;
+  devComboMinFloorLabel: string;
+  devComboTPriceHelp: string;
+  devComboInstallAlwaysIncludedTitle: string;
+  devComboInstallAlwaysIncludedHelp: string;
   devComboProfitLabel: string;
   devComboTPriceInputLabel: string;
   devComboSyncProductsProfitBtn: string;
@@ -4191,9 +4199,17 @@ export const translations: Record<Language, Translations> = {
     devEditableTPriceHelp: "Se actualiza automáticamente con P_price, S_price, Profit e IVA. Si modificas este precio final (mínimo P_price + S_price), cualquier cambio se refleja únicamente en la variable de ganancia (profit).",
     devEditableTPriceMinFloorLabel: "Mínimo permitido (P_price + S_price)",
     devEditableTPriceSetMinBtn: "Fijar al Mínimo (Costo + IVA)",
-    devComboCostBreakdownTitle: "Desglose de Costos y Ganancia del Combo (P_price + S_price + Profit)",
+    devComboCostBreakdownTitle: "Desglose de Costos y Ganancia del Combo (P_price + S_price + I_price + Profit)",
     devComboSumPPriceLabel: "P_price Combo (Suma Productos)",
     devComboSumSPriceLabel: "S_price Combo (Suma Envío)",
+    devComboIPriceLabel: "I_price (Instalación)",
+    devComboAddedToTPriceBadge: "Sumado a T_price",
+    devComboDeliveryOnlyShort: "Solo Envío",
+    devComboInstallIncludedFormulaLabel: "I_price (Instalación Incluida)",
+    devComboMinFloorLabel: "Mínimo permitido (P_price + S_price + I_price)",
+    devComboTPriceHelp: "Se actualiza automáticamente con P_price, S_price, I_price (Instalación), Profit e IVA. Si modificas este precio final (mínimo P_price + S_price + I_price), cualquier cambio se refleja únicamente en la variable de ganancia (profit).",
+    devComboInstallAlwaysIncludedTitle: "Sumado automáticamente al T_price del combo",
+    devComboInstallAlwaysIncludedHelp: "En los combos, el costo de instalación (I_price) siempre se suma automáticamente al T_price final junto con el IVA.",
     devComboProfitLabel: "Margen de Ganancia del Combo (profit ₡)",
     devComboTPriceInputLabel: "Precio Final del Combo (T_price ₡ - IVA 13% inc.)",
     devComboSyncProductsProfitBtn: "Sincronizar con suma de piezas",
@@ -6278,9 +6294,17 @@ export const translations: Record<Language, Translations> = {
     devEditableTPriceHelp: "Auto-updates with P_price, S_price, Profit, and VAT. If you edit this final price (minimum P_price + S_price), any change is reflected exclusively in the profit variable.",
     devEditableTPriceMinFloorLabel: "Minimum allowed (P_price + S_price)",
     devEditableTPriceSetMinBtn: "Set to Minimum (Cost + VAT)",
-    devComboCostBreakdownTitle: "Combo Cost & Profit Breakdown (P_price + S_price + Profit)",
+    devComboCostBreakdownTitle: "Combo Cost & Profit Breakdown (P_price + S_price + I_price + Profit)",
     devComboSumPPriceLabel: "Combo P_price (Products Sum)",
     devComboSumSPriceLabel: "Combo S_price (Shipping Sum)",
+    devComboIPriceLabel: "I_price (Install)",
+    devComboAddedToTPriceBadge: "Added to T_price",
+    devComboDeliveryOnlyShort: "Delivery Only",
+    devComboInstallIncludedFormulaLabel: "I_price (Included Install)",
+    devComboMinFloorLabel: "Minimum allowed (P_price + S_price + I_price)",
+    devComboTPriceHelp: "Auto-updates with P_price, S_price, I_price (Installation), Profit, and VAT. If you edit this final price (minimum P_price + S_price + I_price), any change is reflected exclusively in the profit variable.",
+    devComboInstallAlwaysIncludedTitle: "Automatically added to combo T_price",
+    devComboInstallAlwaysIncludedHelp: "For combos, the installation cost (I_price) is always automatically added to the final T_price along with VAT.",
     devComboProfitLabel: "Combo Profit Margin (profit ₡)",
     devComboTPriceInputLabel: "Final Combo Price (T_price ₡ - 13% VAT inc.)",
     devComboSyncProductsProfitBtn: "Sync with parts sum",

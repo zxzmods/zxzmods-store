@@ -163,8 +163,10 @@ export async function POST(request: Request) {
 
     try {
       revalidatePath("/combos");
+      revalidatePath("/productos");
       revalidatePath("/");
       revalidatePath("/api/combos");
+      revalidatePath("/api/products");
       revalidatePath(`/combos/${newCombo.slug}`);
     } catch {}
 

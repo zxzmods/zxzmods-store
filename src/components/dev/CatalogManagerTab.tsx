@@ -3293,6 +3293,7 @@ function InstallationBreakdownEditor({
   lang = "es",
   t,
   showIncludeCheckbox = false,
+  alwaysIncludedInTPrice = false,
   isIncluded = true,
   onToggleInclude,
   comboProductsInstallSummary,
@@ -3309,6 +3310,7 @@ function InstallationBreakdownEditor({
   lang?: "es" | "en";
   t: any;
   showIncludeCheckbox?: boolean;
+  alwaysIncludedInTPrice?: boolean;
   isIncluded?: boolean;
   onToggleInclude?: (val: boolean) => void;
   comboProductsInstallSummary?: {
@@ -3430,6 +3432,26 @@ function InstallationBreakdownEditor({
             <Calculator className="w-3.5 h-3.5" />
             <span>{t.devComboAddProductInstallCostsBtn || "Sumar costos de instalación de los productos incluidos"}</span>
           </button>
+        </div>
+      )}
+
+      {/* Combo-only Always Included in T_price Notice */}
+      {!showIncludeCheckbox && alwaysIncludedInTPrice && (
+        <div className="flex items-start gap-2.5 p-2.5 rounded-xl bg-white border border-emerald-300/90 shadow-2xs">
+          <CheckCircle2 className="w-4 h-4 mt-0.5 text-emerald-600 shrink-0" />
+          <div className="text-left flex-1">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-xs font-bold text-slate-900">
+                {t.devComboInstallAlwaysIncludedTitle}
+              </span>
+              <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full border border-emerald-300">
+                {t.devComboAddedToTPriceBadge}
+              </span>
+            </div>
+            <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">
+              {t.devComboInstallAlwaysIncludedHelp}
+            </p>
+          </div>
         </div>
       )}
 
@@ -6202,10 +6224,12 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
     })();
 
     const pricingSum = computeComboProductsPricing(matchedProducts);
+    const comboInstallIncludedInCost = combo.installationAvailable !== false ? effectiveComboInstall : 0;
+    const comboFloorWithInstall = pricingSum.minCostFloorCRC + comboInstallIncludedInCost;
     const savedTPrice = Math.round(Number(combo.priceCRC) || 0);
-    const preIvaSub = savedTPrice > 0 ? Math.round(savedTPrice / 1.13) : (pricingSum.minCostFloorCRC + pricingSum.sumProductsProfitCRC);
+    const preIvaSub = savedTPrice > 0 ? Math.round(savedTPrice / 1.13) : (comboFloorWithInstall + pricingSum.sumProductsProfitCRC);
     const initialComboProfit = savedTPrice > 0
-      ? Math.max(0, preIvaSub - pricingSum.minCostFloorCRC)
+      ? Math.max(0, preIvaSub - comboFloorWithInstall)
       : pricingSum.sumProductsProfitCRC;
     const initialComboIva = savedTPrice > 0
       ? Math.max(0, savedTPrice - preIvaSub)
@@ -7268,8 +7292,28 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
   }, [comboSelectedProducts]);
 
   const comboPricingSummary = useMemo(() => {
-    return computeComboProductsPricing(comboSelectedProducts);
-  }, [comboSelectedProducts, computeComboProductsPricing]);
+    const base = computeComboProductsPricing(comboSelectedProducts);
+    // Combos ALWAYS add installation price (I_price) into their T_price whenever installation is enabled
+    const installPriceCRC =
+      comboForm.installationAvailable !== false
+        ? Math.max(0, Math.round(Number(comboForm.installationPriceCRC) || 0))
+        : 0;
+    const minCostFloorCRC = base.sumPPriceCRC + base.sumSPriceCRC + installPriceCRC;
+    const ivaRate = comboForm.ivaPercent ?? 13;
+    const minTPriceWithIvaCRC = Math.round(minCostFloorCRC * (1 + ivaRate / 100));
+    return {
+      ...base,
+      installPriceCRC,
+      minCostFloorCRC,
+      minTPriceWithIvaCRC,
+    };
+  }, [
+    comboSelectedProducts,
+    computeComboProductsPricing,
+    comboForm.installationAvailable,
+    comboForm.installationPriceCRC,
+    comboForm.ivaPercent,
+  ]);
 
   const applyComboSelectedProductsChange = useCallback(
     (nextProducts: any[]) => {
@@ -7284,11 +7328,18 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       const sumInfo = computeComboProductsPricing(nextProducts);
       setComboForm((prev) => {
         const ivaRate = prev.ivaPercent ?? 13;
+        const activeInstall =
+          prev.installationAvailable !== false
+            ? Math.max(0, Math.round(Number(prev.installationPriceCRC) || 0))
+            : 0;
         const nextProfit = sumInfo.sumProductsProfitCRC;
-        const baseSub = sumInfo.minCostFloorCRC + nextProfit;
+        const baseSub = sumInfo.minCostFloorCRC + activeInstall + nextProfit;
         const nextIva = Math.round(baseSub * (ivaRate / 100));
         const nextTPrice = baseSub + nextIva;
-        const nextOrig = sumInfo.sumProductsTPriceCRC > 0 ? sumInfo.sumProductsTPriceCRC : nextTPrice;
+        const nextOrig =
+          sumInfo.sumProductsTPriceCRC > 0
+            ? sumInfo.sumProductsTPriceCRC + Math.round(activeInstall * (1 + ivaRate / 100))
+            : nextTPrice;
         const nextDisc =
           nextOrig > nextTPrice
             ? Math.max(0, Math.round(((nextOrig - nextTPrice) / nextOrig) * 100))
@@ -11349,6 +11400,9 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       (sum, p) => sum + (p.priceCRC || p.price?.T_price || 0),
       0
     );
+    const totalIncludedWithInstall =
+      totalIncludedPrice +
+      Math.round(comboPricingSummary.installPriceCRC * (1 + (comboForm.ivaPercent ?? 13) / 100));
 
     const currentComboAvailability = calculateComboAvailability(
       [
@@ -11359,14 +11413,31 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
     );
 
     const handleApplyComboProductsInstall = () => {
-      setComboForm((prev) => ({
-        ...prev,
-        installLabourCostCRC: comboProductsInstallSummary.totalLabour,
-        installExtraParts: comboProductsInstallSummary.allExtraParts,
-        installProfitCRC: comboProductsInstallSummary.totalProfit,
-        installationPriceCRC: comboProductsInstallSummary.totalInstall,
-        installationDurationMinutes: comboProductsInstallSummary.totalDuration,
-      }));
+      const nextInstall = Math.max(0, Math.round(comboProductsInstallSummary.totalInstall || 0));
+      setComboForm((prev) => {
+        const ivaRate = prev.ivaPercent ?? 13;
+        const baseSub = comboPricingSummary.sumPPriceCRC + comboPricingSummary.sumSPriceCRC + nextInstall + (Number(prev.profit) || 0);
+        const nextIva = Math.round(baseSub * (ivaRate / 100));
+        const nextTPrice = baseSub + nextIva;
+        const origPrice = prev.originalPriceCRC || totalIncludedWithInstall || nextTPrice;
+        const nextDisc =
+          origPrice > nextTPrice
+            ? Math.max(0, Math.round(((origPrice - nextTPrice) / origPrice) * 100))
+            : 0;
+        return {
+          ...prev,
+          installationAvailable: true,
+          installLabourCostCRC: comboProductsInstallSummary.totalLabour,
+          installExtraParts: comboProductsInstallSummary.allExtraParts,
+          installProfitCRC: comboProductsInstallSummary.totalProfit,
+          installationPriceCRC: nextInstall,
+          installationDurationMinutes: comboProductsInstallSummary.totalDuration,
+          ivaCRC: nextIva,
+          T_price: nextTPrice,
+          priceCRC: nextTPrice,
+          discountPercent: nextDisc,
+        };
+      });
       setFeedback({
         type: "success",
         msg: lang === "es"
@@ -12669,8 +12740,8 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                     )}
                   </div>
 
-                  {/* P_price & S_price Grid (Auto-summed from Included Products) */}
-                  <div className="grid grid-cols-2 gap-2">
+                  {/* P_price, S_price & I_price Grid (All included in Combo T_price) */}
+                  <div className="grid grid-cols-3 gap-2">
                     <div className="bg-white border border-slate-200 rounded-xl p-2.5">
                       <span className="text-[9px] font-bold text-slate-400 uppercase block">
                         {t.devComboSumPPriceLabel}
@@ -12697,10 +12768,23 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                         </span>
                       )}
                     </div>
+                    <div className="bg-emerald-50/70 border border-emerald-200 rounded-xl p-2.5">
+                      <span className="text-[9px] font-bold text-emerald-700 uppercase block">
+                        {t.devComboIPriceLabel}
+                      </span>
+                      <span className="text-xs font-mono font-extrabold text-emerald-900 block mt-0.5">
+                        {formatCRC(comboPricingSummary.installPriceCRC)}
+                      </span>
+                      <span className="text-[9px] font-sans text-emerald-700/80 block">
+                        {comboForm.installationAvailable !== false
+                          ? t.devComboAddedToTPriceBadge
+                          : t.devComboDeliveryOnlyShort}
+                      </span>
+                    </div>
                   </div>
 
                   <div className="text-[10px] font-mono text-slate-500 flex items-center justify-between px-0.5">
-                    <span>{t.devEditableTPriceMinFloorLabel}:</span>
+                    <span>{t.devComboMinFloorLabel}:</span>
                     <strong className="text-slate-800">{formatCRC(comboPricingSummary.minCostFloorCRC)}</strong>
                   </div>
 
@@ -12753,22 +12837,22 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                     <label className="text-[11px] font-bold text-slate-700">
                       Precio Regular / Original (₡):
                     </label>
-                    {totalIncludedPrice > 0 && (
+                    {totalIncludedWithInstall > 0 && (
                       <button
                         type="button"
                         onClick={() =>
                           setComboForm((prev) => ({
                             ...prev,
-                            originalPriceCRC: totalIncludedPrice,
+                            originalPriceCRC: totalIncludedWithInstall,
                             discountPercent:
-                              prev.priceCRC > 0
-                                ? Math.max(0, Math.round(((totalIncludedPrice - prev.priceCRC) / totalIncludedPrice) * 100))
-                                : prev.discountPercent,
+                              prev.priceCRC > 0 && totalIncludedWithInstall > prev.priceCRC
+                                ? Math.max(0, Math.round(((totalIncludedWithInstall - prev.priceCRC) / totalIncludedWithInstall) * 100))
+                                : 0,
                           }))
                         }
                         className="text-[10px] font-bold text-purple-700 hover:text-purple-900 underline"
                       >
-                        Fijar a suma ({formatCRC(totalIncludedPrice)})
+                        Fijar a suma ({formatCRC(totalIncludedWithInstall)})
                       </button>
                     )}
                   </div>
@@ -12925,6 +13009,10 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                       <span>S_price (Envío):</span>
                       <span className="text-white font-bold">{formatCRC(comboPricingSummary.sumSPriceCRC)}</span>
                     </div>
+                    <div className="flex items-center justify-between text-emerald-300">
+                      <span>{t.devComboInstallIncludedFormulaLabel}:</span>
+                      <span className="font-bold">+{formatCRC(comboPricingSummary.installPriceCRC)}</span>
+                    </div>
                     <div className="flex items-center justify-between">
                       <span>Profit Combo:</span>
                       <span className="text-emerald-400 font-bold">{formatCRC(comboForm.profit)}</span>
@@ -12940,7 +13028,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                   </div>
 
                   <p className="text-[10px] text-slate-400 leading-snug">
-                    {t.devEditableTPriceHelp}
+                    {t.devComboTPriceHelp}
                   </p>
                 </div>
 
@@ -13006,11 +13094,27 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                       <button
                         type="button"
                         onClick={() => {
-                          setComboForm((prev) => ({
-                            ...prev,
-                            installationAvailable: true,
-                            installationDurationMinutes: prev.installationDurationMinutes > 0 ? prev.installationDurationMinutes : 60,
-                          }));
+                          setComboForm((prev) => {
+                            const activeInstall = Math.max(0, Math.round(Number(prev.installationPriceCRC) || 0));
+                            const ivaRate = prev.ivaPercent ?? 13;
+                            const baseSub = comboPricingSummary.sumPPriceCRC + comboPricingSummary.sumSPriceCRC + activeInstall + (Number(prev.profit) || 0);
+                            const nextIva = Math.round(baseSub * (ivaRate / 100));
+                            const nextTPrice = baseSub + nextIva;
+                            const origPrice = prev.originalPriceCRC || totalIncludedWithInstall || nextTPrice;
+                            const nextDisc =
+                              origPrice > nextTPrice
+                                ? Math.max(0, Math.round(((origPrice - nextTPrice) / origPrice) * 100))
+                                : 0;
+                            return {
+                              ...prev,
+                              installationAvailable: true,
+                              installationDurationMinutes: prev.installationDurationMinutes > 0 ? prev.installationDurationMinutes : 60,
+                              ivaCRC: nextIva,
+                              T_price: nextTPrice,
+                              priceCRC: nextTPrice,
+                              discountPercent: nextDisc,
+                            };
+                          });
                         }}
                         className={`p-3 rounded-xl border text-left transition flex items-start gap-2.5 cursor-pointer ${
                           comboForm.installationAvailable !== false
@@ -13039,16 +13143,31 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                       <button
                         type="button"
                         onClick={() => {
-                          setComboForm((prev) => ({
-                            ...prev,
-                            installationAvailable: false,
-                            homeInstallationAvailable: false,
-                            installationPriceCRC: 0,
-                            installLabourCostCRC: 0,
-                            installProfitCRC: 0,
-                            installExtraParts: [],
-                            installationDurationMinutes: 0,
-                          }));
+                          setComboForm((prev) => {
+                            const ivaRate = prev.ivaPercent ?? 13;
+                            const baseSub = comboPricingSummary.sumPPriceCRC + comboPricingSummary.sumSPriceCRC + (Number(prev.profit) || 0);
+                            const nextIva = Math.round(baseSub * (ivaRate / 100));
+                            const nextTPrice = baseSub + nextIva;
+                            const origPrice = prev.originalPriceCRC || totalIncludedPrice || nextTPrice;
+                            const nextDisc =
+                              origPrice > nextTPrice
+                                ? Math.max(0, Math.round(((origPrice - nextTPrice) / origPrice) * 100))
+                                : 0;
+                            return {
+                              ...prev,
+                              installationAvailable: false,
+                              homeInstallationAvailable: false,
+                              installationPriceCRC: 0,
+                              installLabourCostCRC: 0,
+                              installProfitCRC: 0,
+                              installExtraParts: [],
+                              installationDurationMinutes: 0,
+                              ivaCRC: nextIva,
+                              T_price: nextTPrice,
+                              priceCRC: nextTPrice,
+                              discountPercent: nextDisc,
+                            };
+                          });
                         }}
                         className={`p-3 rounded-xl border text-left transition flex items-start gap-2.5 cursor-pointer ${
                           comboForm.installationAvailable === false
@@ -13086,19 +13205,35 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                       lang={lang}
                       t={t}
                       showIncludeCheckbox={false}
+                      alwaysIncludedInTPrice={true}
                       comboProductsInstallSummary={comboProductsInstallSummary}
                       onApplyComboProductsInstall={handleApplyComboProductsInstall}
                       suggestedExtraParts={availableExtraPartsSuggestions}
                       onChange={(labour, parts, profit) => {
                         const partsTotal = (parts || []).reduce((sum, pt) => sum + (Number(pt.priceCRC) || 0), 0);
                         const totalInstall = Math.max(0, labour) + Math.max(0, partsTotal) + Math.max(0, profit);
-                        setComboForm((prev) => ({
-                          ...prev,
-                          installLabourCostCRC: labour,
-                          installExtraParts: parts,
-                          installProfitCRC: profit,
-                          installationPriceCRC: totalInstall,
-                        }));
+                        setComboForm((prev) => {
+                          const ivaRate = prev.ivaPercent ?? 13;
+                          const baseSub = comboPricingSummary.sumPPriceCRC + comboPricingSummary.sumSPriceCRC + totalInstall + (Number(prev.profit) || 0);
+                          const nextIva = Math.round(baseSub * (ivaRate / 100));
+                          const nextTPrice = baseSub + nextIva;
+                          const origPrice = prev.originalPriceCRC || totalIncludedWithInstall || nextTPrice;
+                          const nextDisc =
+                            origPrice > nextTPrice
+                              ? Math.max(0, Math.round(((origPrice - nextTPrice) / origPrice) * 100))
+                              : 0;
+                          return {
+                            ...prev,
+                            installLabourCostCRC: labour,
+                            installExtraParts: parts,
+                            installProfitCRC: profit,
+                            installationPriceCRC: totalInstall,
+                            ivaCRC: nextIva,
+                            T_price: nextTPrice,
+                            priceCRC: nextTPrice,
+                            discountPercent: nextDisc,
+                          };
+                        });
                       }}
                     />
                   ) : (
