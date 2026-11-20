@@ -108,6 +108,30 @@ export async function PATCH(
     if (body.itemsJson !== undefined) {
       updateData.itemsJson = typeof body.itemsJson === "string" ? body.itemsJson : JSON.stringify(body.itemsJson);
     }
+    if (body.compJson !== undefined || body.comp !== undefined) {
+      if (body.compJson === null || body.comp === null) {
+        updateData.compJson = null;
+      } else if (Array.isArray(body.comp)) {
+        const cleaned = body.comp.map((c: any) => String(c || "").trim()).filter(Boolean);
+        updateData.compJson = cleaned.length > 0 ? JSON.stringify(Array.from(new Set(cleaned))) : null;
+      } else if (typeof body.compJson === "string") {
+        if (!body.compJson.trim()) {
+          updateData.compJson = null;
+        } else {
+          try {
+            const parsed = JSON.parse(body.compJson);
+            if (Array.isArray(parsed)) {
+              const cleaned = parsed.map((c: any) => String(c || "").trim()).filter(Boolean);
+              updateData.compJson = cleaned.length > 0 ? JSON.stringify(Array.from(new Set(cleaned))) : null;
+            } else {
+              updateData.compJson = null;
+            }
+          } catch {
+            updateData.compJson = null;
+          }
+        }
+      }
+    }
     if (body.parameters !== undefined) {
       updateData.parametersJson = JSON.stringify(body.parameters);
     } else if (body.parametersJson !== undefined) {

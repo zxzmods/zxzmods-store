@@ -2567,9 +2567,10 @@ export function resolveComboIncludedProducts(combo: any, catalogProducts: any[] 
 
 /**
  * Derives the authoritative compatibility tags (`comp`) for a Combo strictly from its listed products.
- * Example: If the listed products are compatible with Z10, then the combo is compatible with Z10 only.
+ * Derives compatibility strictly from the combo's listed products (ignoring any explicit combo.compJson override).
+ * Used as the default compatibility for combos and for resetting custom combo compatibility back to product defaults.
  */
-export function deriveComboCompatibilityFromProducts(combo: any, catalogProducts: any[] = []): string[] {
+export function deriveInheritedComboCompatibilityFromProducts(combo: any, catalogProducts: any[] = []): string[] {
   if (!combo) return [];
 
   const includedProds = resolveComboIncludedProducts(combo, catalogProducts);
@@ -2609,12 +2610,45 @@ export function deriveComboCompatibilityFromProducts(combo: any, catalogProducts
     return ["all"];
   }
 
-  // If combo already has derived `comp` array attached (e.g. from API response)
+  return [];
+}
+
+/**
+ * Resolves the effective compatibility tags of a combo:
+ * 1. If the combo has an explicit compatibility override saved in `compJson`, use it.
+ * 2. Otherwise default to the inherited compatibility derived from its listed products.
+ * Example: If staff sets compJson=["z10"], the combo is strictly compatible with Z10 only.
+ */
+export function deriveComboCompatibilityFromProducts(combo: any, catalogProducts: any[] = []): string[] {
+  if (!combo) return [];
+
+  // 1. Explicit combo compatibility override saved in compJson
+  if (typeof combo.compJson === "string" && combo.compJson.trim()) {
+    try {
+      const parsed = JSON.parse(combo.compJson);
+      if (Array.isArray(parsed)) {
+        const cleaned = parsed
+          .map((c: any) => String(c || "").trim())
+          .filter(Boolean);
+        if (cleaned.length > 0) {
+          return Array.from(new Set(cleaned));
+        }
+      }
+    } catch {}
+  }
+
+  // 2. Default: inherited compatibility from listed products
+  const inherited = deriveInheritedComboCompatibilityFromProducts(combo, catalogProducts);
+  if (inherited.length > 0) {
+    return inherited;
+  }
+
+  // 3. Fallback: if combo already has a pre-computed `comp` array attached (e.g. from API response)
   if (Array.isArray(combo.comp) && combo.comp.length > 0) {
-    const nonUniv = combo.comp
-      .map((c: any) => String(c || "").toLowerCase().trim())
-      .filter((c: string) => c && c !== "all" && !c.includes("universal") && !isVehicleBrand(c));
-    if (nonUniv.length > 0) return Array.from(new Set(nonUniv));
+    const cleanedComp = combo.comp
+      .map((c: any) => String(c || "").trim())
+      .filter(Boolean);
+    if (cleanedComp.length > 0) return Array.from(new Set(cleanedComp));
   }
 
   return [];

@@ -1125,6 +1125,11 @@ export interface Translations {
   comboDeliveryOnlyBadge: string;
   devComboInstallIncludedOption: string;
   devComboInstallIncludedHelp: string;
+  devComboCompTitle: string;
+  devComboCompDefaultBadge: string;
+  devComboCompCustomBadge: string;
+  devComboCompResetBtn: string;
+  devComboCompHelp: string;
 
   // Pick-up, Delivery & Home Installation
   servicesTitle: string;
@@ -3078,6 +3083,11 @@ export const translations: Record<Language, Translations> = {
     comboDeliveryOnlyBadge: "Solo Envío",
     devComboInstallIncludedOption: "Incluye Instalación (Incluida en el Precio)",
     devComboInstallIncludedHelp: "La instalación ya viene incluida en el precio del combo (₡0 adicional para el cliente) y pasa por el sistema de servicios de instalación.",
+    devComboCompTitle: "Compatibilidad de Vehículos del Combo",
+    devComboCompDefaultBadge: "Por defecto (de productos)",
+    devComboCompCustomBadge: "Personalizada",
+    devComboCompResetBtn: "Restaurar desde productos",
+    devComboCompHelp: "Por defecto hereda la compatibilidad de los productos incluidos. Puedes modificarla para hacer este combo exclusivo para vehículos específicos.",
     devComboIncludedProducts: "Productos Incluidos en el Combo",
     devComboSearchProductPlaceholder: "Buscar producto del catálogo para agregar al combo...",
     devComboAddProduct: "Agregar al Combo",
@@ -5160,6 +5170,11 @@ export const translations: Record<Language, Translations> = {
     comboDeliveryOnlyBadge: "Delivery Only",
     devComboInstallIncludedOption: "Includes Installation (Included in Price)",
     devComboInstallIncludedHelp: "Installation is already included in the combo price (₡0 extra for customer) and goes through the installation services system.",
+    devComboCompTitle: "Combo Vehicle Compatibility",
+    devComboCompDefaultBadge: "Default (from products)",
+    devComboCompCustomBadge: "Custom",
+    devComboCompResetBtn: "Reset to product defaults",
+    devComboCompHelp: "Defaults to the compatibility of included products. You can customize it to target specific vehicles.",
     devComboIncludedProducts: "Products Included in Combo",
     devComboSearchProductPlaceholder: "Search catalog product to add to combo...",
     devComboAddProduct: "Add to Combo",

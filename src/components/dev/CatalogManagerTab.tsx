@@ -70,6 +70,7 @@ import {
   ComboUniqueProductField,
   SUSPENSION_ADJUST_UNIQUE_PRODUCT_TEMPLATE,
   deriveComboCompatibilityFromProducts,
+  deriveInheritedComboCompatibilityFromProducts,
   formatCompListWithYears,
 } from "@/lib/products";
 import { CustomSelect } from "@/components/ui/CustomSelect";
@@ -227,6 +228,8 @@ interface Combo {
   installationBreakdownJson?: string | null;
   discountPercent: number;
   itemsJson: string;
+  compJson?: string | null;
+  comp?: string[];
   parameters?: ConfigurableParameter[];
   parametersJson?: string;
   imageUrl: string;
@@ -4134,6 +4137,8 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
   const [isEditingComboView, setIsEditingComboView] = useState(false);
   const [editingCombo, setEditingCombo] = useState<Combo | null>(null);
   const [comboSelectedProducts, setComboSelectedProducts] = useState<any[]>([]);
+  const [comboSelectedVehicles, setComboSelectedVehicles] = useState<string[]>([]);
+  const [isComboCompManuallyEdited, setIsComboCompManuallyEdited] = useState<boolean>(false);
   const [comboProductSearch, setComboProductSearch] = useState("");
   const [isComboSearchDropdownOpen, setIsComboSearchDropdownOpen] = useState(false);
   const [comboForm, setComboForm] = useState({
@@ -6209,6 +6214,29 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
 
     setComboSelectedProducts(matchedProducts);
     setComboProductSearch("");
+    // Load explicit combo compatibility override if saved; otherwise default to inherited products' compatibility
+    let explicitComboComp: string[] = [];
+    if (typeof (combo as any).compJson === "string" && (combo as any).compJson.trim()) {
+      try {
+        const parsed = JSON.parse((combo as any).compJson);
+        if (Array.isArray(parsed)) {
+          explicitComboComp = parsed.map((c: any) => String(c || "").trim()).filter(Boolean);
+        }
+      } catch {}
+    } else if (Array.isArray((combo as any).comp) && (combo as any).comp.length > 0 && (combo as any).compJson !== null) {
+      explicitComboComp = (combo as any).comp.map((c: any) => String(c || "").trim()).filter(Boolean);
+    }
+    if (explicitComboComp.length > 0) {
+      setComboSelectedVehicles(Array.from(new Set(explicitComboComp)));
+      setIsComboCompManuallyEdited(true);
+    } else {
+      const inheritedDefault = deriveInheritedComboCompatibilityFromProducts(
+        { includedProducts: matchedProducts },
+        products as any[]
+      );
+      setComboSelectedVehicles(inheritedDefault);
+      setIsComboCompManuallyEdited(false);
+    }
     setComboForm({
       slug: combo.slug,
       category: combo.category || "performance",
@@ -6287,6 +6315,8 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
   const handleOpenCreateCombo = () => {
     setEditingCombo(null);
     setComboSelectedProducts([]);
+    setComboSelectedVehicles([]);
+    setIsComboCompManuallyEdited(false);
     setComboProductSearch("");
     setComboForm({
       slug: `combo-${Math.floor(100 + Math.random() * 900)}`,
@@ -6548,6 +6578,16 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
           installExtraPartsJson: comboForm.installationAvailable !== false ? JSON.stringify(sanitizeExtraParts(comboForm.installExtraParts || [])) : "[]",
           discountPercent: comboForm.discountPercent,
           itemsJson: JSON.stringify(items),
+          comp: (() => {
+            if (!isComboCompManuallyEdited) return null;
+            const cleaned = comboSelectedVehicles.map((v) => v.trim()).filter(Boolean);
+            return cleaned.length > 0 ? Array.from(new Set(cleaned)) : null;
+          })(),
+          compJson: (() => {
+            if (!isComboCompManuallyEdited) return null;
+            const cleaned = comboSelectedVehicles.map((v) => v.trim()).filter(Boolean);
+            return cleaned.length > 0 ? JSON.stringify(Array.from(new Set(cleaned))) : null;
+          })(),
           imageUrl: chosenComboPrimary,
           imagesJson: JSON.stringify(orderedComboImgs),
           imgs: orderedComboImgs,
@@ -7234,6 +7274,13 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
   const applyComboSelectedProductsChange = useCallback(
     (nextProducts: any[]) => {
       setComboSelectedProducts(nextProducts);
+      if (!isComboCompManuallyEdited) {
+        const inheritedDefault = deriveInheritedComboCompatibilityFromProducts(
+          { includedProducts: nextProducts },
+          products as any[]
+        );
+        setComboSelectedVehicles(inheritedDefault);
+      }
       const sumInfo = computeComboProductsPricing(nextProducts);
       setComboForm((prev) => {
         const ivaRate = prev.ivaPercent ?? 13;
@@ -7259,7 +7306,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
         };
       });
     },
-    [computeComboProductsPricing]
+    [computeComboProductsPricing, isComboCompManuallyEdited, products]
   );
 
   // Filtered lists
@@ -11919,39 +11966,251 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                 )}
               </div>
 
-              {/* Inherited Compatibility Tags from Listed Products */}
-              {comboSelectedProducts.length > 0 && (() => {
-                const inheritedComp = deriveComboCompatibilityFromProducts(
+              {/* Interactive Combo Vehicle Compatibility Selector (Defaults to Listed Products' Compatibility) */}
+              {(() => {
+                const inheritedDefaultComp = deriveInheritedComboCompatibilityFromProducts(
                   { includedProducts: comboSelectedProducts },
                   products as any[]
                 );
-                const inheritedDisplay = formatCompListWithYears(inheritedComp);
+                const activeCompClean = comboSelectedVehicles.map((v) => v.trim()).filter(Boolean);
+                const activeDisplay = formatCompListWithYears(activeCompClean);
+
+                const handleToggleComboVehicleFamily = (familySlugs: string[]) => {
+                  const allSelected = familySlugs.every((slug) => comboSelectedVehicles.includes(slug));
+                  let updated: string[];
+                  if (allSelected) {
+                    updated = comboSelectedVehicles.filter((s) => !familySlugs.includes(s));
+                  } else {
+                    const toAdd = familySlugs.filter((slug) => !comboSelectedVehicles.includes(slug));
+                    const cleanCurrent = comboSelectedVehicles.filter((s) => s && s !== "all");
+                    updated = [...cleanCurrent, ...toAdd];
+                  }
+                  setComboSelectedVehicles(updated);
+                  setIsComboCompManuallyEdited(true);
+                };
+
+                const handleToggleComboUniversal = () => {
+                  const isUniversal = comboSelectedVehicles.includes("all");
+                  setComboSelectedVehicles(isUniversal ? [] : ["all"]);
+                  setIsComboCompManuallyEdited(true);
+                };
+
                 return (
-                  <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+                  <div className="p-4 bg-slate-50/90 rounded-2xl border border-slate-200 space-y-3">
                     <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
-                        <Car className="w-3.5 h-3.5 text-[#C02030]" />
-                        <span>
-                          {lang === "es"
-                            ? "Compatibilidad Heredada de Productos Listados:"
-                            : "Inherited Compatibility from Listed Products:"}
+                      <div>
+                        <span className="text-xs font-extrabold uppercase tracking-wider text-slate-900 flex items-center gap-1.5">
+                          <Car className="w-4 h-4 text-[#C02030]" />
+                          <span>
+                            {t.devComboCompTitle ||
+                              (lang === "es"
+                                ? "Compatibilidad de Vehículos del Combo"
+                                : "Combo Vehicle Compatibility")}
+                          </span>
+                          <span
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                              isComboCompManuallyEdited
+                                ? "bg-rose-50 text-[#C02030] border-rose-200"
+                                : "bg-emerald-50 text-emerald-800 border-emerald-200"
+                            }`}
+                          >
+                            {isComboCompManuallyEdited
+                              ? t.devComboCompCustomBadge || (lang === "es" ? "Personalizada" : "Custom")
+                              : t.devComboCompDefaultBadge ||
+                                (lang === "es" ? "Por defecto (de productos)" : "Default (from products)")}
+                          </span>
                         </span>
-                      </span>
-                      {inheritedDisplay && (
-                        <span className="text-xs font-mono font-bold text-[#C02030] bg-white px-2.5 py-0.5 rounded-lg border border-slate-200">
-                          {inheritedDisplay}
+                        <p className="text-[10px] text-slate-500 mt-0.5">
+                          {t.devComboCompHelp ||
+                            (lang === "es"
+                              ? "Por defecto hereda la compatibilidad de los productos incluidos. Puedes modificarla para hacer este combo exclusivo para vehículos específicos."
+                              : "Defaults to the compatibility of included products. You can customize it to target specific vehicles.")}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {isComboCompManuallyEdited && comboSelectedProducts.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setComboSelectedVehicles(inheritedDefaultComp);
+                              setIsComboCompManuallyEdited(false);
+                            }}
+                            className="px-2.5 py-1 rounded-xl bg-white hover:bg-slate-100 border border-slate-300 text-[11px] font-bold text-slate-700 flex items-center gap-1 transition cursor-pointer shadow-2xs"
+                          >
+                            <RefreshCw className="w-3 h-3 text-[#C02030]" />
+                            <span>
+                              {t.devComboCompResetBtn ||
+                                (lang === "es" ? "Restaurar desde productos" : "Reset to product defaults")}
+                            </span>
+                          </button>
+                        )}
+                        <span className="text-[10px] text-slate-500 font-semibold">
+                          {activeCompClean.length} {lang === "es" ? "vehículo(s)" : "vehicle(s)"}
                         </span>
-                      )}
+                      </div>
                     </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {inheritedComp.map((tag, tIdx) => (
-                        <span
-                          key={tIdx}
-                          className="px-2.5 py-1 rounded-xl bg-white border border-slate-200 text-[11px] font-mono font-bold text-slate-800 shadow-2xs"
-                        >
-                          {tag}
+
+                    {activeDisplay && (
+                      <div className="flex items-center gap-2 flex-wrap px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-xs">
+                        <span className="text-[10px] font-bold uppercase text-slate-500">
+                          {lang === "es" ? "Vista en tienda:" : "Storefront preview:"}
                         </span>
+                        <span className="font-mono font-extrabold text-[#C02030]">
+                          {activeDisplay}
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Quick Family Toggle Toolbar */}
+                    <div className="p-3 bg-gradient-to-r from-white via-red-50/25 to-white border border-red-200/80 rounded-2xl space-y-2.5">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <span className="text-[11px] font-bold text-slate-800 flex items-center gap-1.5">
+                          <Sparkles className="w-3.5 h-3.5 text-[#C02030]" />
+                          <span>
+                            {lang === "es"
+                              ? "Selección rápida por Familia (Click para Alternar):"
+                              : "Quick Family Selection (Click to Toggle):"}
+                          </span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleToggleComboUniversal}
+                          className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition flex items-center gap-1.5 cursor-pointer border ${
+                            comboSelectedVehicles.includes("all")
+                              ? "bg-[#C02030] text-white border-[#C02030] shadow-2xs"
+                              : "bg-white text-slate-700 border-slate-200 hover:border-slate-300 hover:bg-slate-50"
+                          }`}
+                        >
+                          <Globe className="w-3 h-3" />
+                          <span>{lang === "es" ? "🌐 Ajuste Universal" : "🌐 Universal"}</span>
+                          {comboSelectedVehicles.includes("all") && <Check className="w-3 h-3 stroke-[3]" />}
+                        </button>
+                      </div>
+
+                      <div className="space-y-2">
+                        {vehicleFamilyGroups.map((bGrp) => (
+                          <div key={bGrp.brandSlug} className="space-y-1">
+                            <div className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">
+                              {bGrp.brandName}
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {bGrp.families.map((fam) => {
+                                const totalCount = fam.slugs.length;
+                                const selectedCount = fam.slugs.filter((s) => comboSelectedVehicles.includes(s)).length;
+                                const isAll = selectedCount === totalCount && totalCount > 0;
+                                const isPartial = selectedCount > 0 && !isAll;
+
+                                return (
+                                  <button
+                                    key={fam.family}
+                                    type="button"
+                                    onClick={() => handleToggleComboVehicleFamily(fam.slugs)}
+                                    className={`px-2.5 py-1 rounded-xl text-xs transition flex items-center gap-1.5 cursor-pointer border ${
+                                      isAll
+                                        ? "bg-[#C02030] text-white border-[#C02030] shadow-2xs font-bold"
+                                        : isPartial
+                                        ? "bg-red-50 text-[#C02030] border-red-300 font-semibold hover:bg-red-100"
+                                        : "bg-white text-slate-700 border-slate-200 hover:border-slate-300 hover:bg-slate-50 font-medium"
+                                    }`}
+                                  >
+                                    <span>
+                                      {fam.family}
+                                      {fam.code ? ` [${fam.code}]` : ""}
+                                    </span>
+                                    <span
+                                      className={`text-[10px] px-1.5 py-0.2 rounded-md font-mono ${
+                                        isAll
+                                          ? "bg-white/20 text-white"
+                                          : isPartial
+                                          ? "bg-red-200 text-[#C02030]"
+                                          : "bg-slate-100 text-slate-500"
+                                      }`}
+                                    >
+                                      {isAll ? "✓" : `${selectedCount}/${totalCount}`}
+                                    </span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Individual Vehicle Model Dropdown Selectors */}
+                    <div className="space-y-2">
+                      {comboSelectedVehicles.map((vehicleSlug, index) => (
+                        <div key={index} className="flex items-center gap-2 min-w-0">
+                          <select
+                            value={vehicleSlug}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              const updated = comboSelectedVehicles.map((v, i) => (i === index ? val : v));
+                              setComboSelectedVehicles(updated);
+                              setIsComboCompManuallyEdited(true);
+                            }}
+                            className="flex-1 min-w-0 bg-white border border-red-200 rounded-xl p-2 text-xs font-semibold text-slate-900 focus:outline-none focus:border-red-500 truncate"
+                          >
+                            <option value="" disabled>
+                              {t.devSelectVehiclePrompt}
+                            </option>
+                            <option value="all">🌐 {t.devUniversalFitment}</option>
+                            {registeredVehicleBrands.map((brand: any) => {
+                              const familyMap = new Map<string, any[]>();
+                              brand.models.forEach((m: any) => {
+                                const fam = getModelFamilyName(m);
+                                if (!familyMap.has(fam)) familyMap.set(fam, []);
+                                familyMap.get(fam)!.push(m);
+                              });
+
+                              return Array.from(familyMap.entries()).map(([fam, fModels]) => (
+                                <optgroup key={`${brand.slug}-${fam}`} label={`${brand.name} - ${fam}`}>
+                                  {fModels.map((model: any) => (
+                                    <option key={model.id || model.slug} value={model.slug}>
+                                      {model.name} {model.code ? `[SKU: ${model.code}]` : ""}
+                                    </option>
+                                  ))}
+                                </optgroup>
+                              ));
+                            })}
+                            {vehicleSlug &&
+                              vehicleSlug !== "all" &&
+                              !registeredVehicleBrands.some((b: any) =>
+                                b.models.some((m: any) => m.slug === vehicleSlug)
+                              ) && (
+                                <option value={vehicleSlug}>
+                                  {vehicleSlug.toUpperCase()}
+                                </option>
+                              )}
+                          </select>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const updated = comboSelectedVehicles.filter((_, i) => i !== index);
+                              setComboSelectedVehicles(updated);
+                              setIsComboCompManuallyEdited(true);
+                            }}
+                            className="p-2 rounded-xl border border-red-200 bg-white text-red-600 hover:bg-red-50 transition shrink-0 cursor-pointer"
+                            title={t.devRemoveVehicle}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       ))}
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setComboSelectedVehicles((prev) => [...prev, ""]);
+                          setIsComboCompManuallyEdited(true);
+                        }}
+                        className="w-full py-2 px-3 rounded-xl border border-dashed border-red-300 bg-red-50/40 hover:bg-red-50 text-[#C02030] font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>{t.devAddVehicleSelector}</span>
+                      </button>
                     </div>
                   </div>
                 );

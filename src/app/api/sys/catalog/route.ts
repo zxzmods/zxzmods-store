@@ -324,6 +324,16 @@ export async function GET() {
       return {
         ...c,
         installationAvailable: c.installationAvailable ?? true,
+        compJson: (c as any).compJson || null,
+        comp: (() => {
+          if ((c as any).compJson) {
+            try {
+              const parsed = JSON.parse((c as any).compJson);
+              if (Array.isArray(parsed)) return parsed;
+            } catch {}
+          }
+          return [];
+        })(),
         descriptionEs: cleanDescriptionText(c.descriptionEs),
         descriptionEn: cleanDescriptionText(c.descriptionEn),
         installLabourCostCRC: c.installLabourCostCRC || (c.installationPriceCRC && !c.installProfitCRC && (!c.installExtraPartsJson || c.installExtraPartsJson === "[]") ? c.installationPriceCRC : 0),

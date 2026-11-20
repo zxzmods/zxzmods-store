@@ -162,6 +162,7 @@ model Combo {
   installationBreakdownJson String?
   discountPercent      Int
   itemsJson            String   // JSON list of components included
+  compJson             String?  // Optional explicit vehicle compatibility override JSON array (defaults to inherited from products when null)
   parametersJson       String?  @default("[]")
   imageUrl             String
   imagesJson           String?  @default("[]")

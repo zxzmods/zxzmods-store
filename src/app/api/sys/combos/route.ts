@@ -106,6 +106,23 @@ export async function POST(request: Request) {
         }),
         discountPercent: Math.round(Number(discountPercent) || 0),
         itemsJson: typeof itemsJson === "string" ? itemsJson : JSON.stringify(itemsJson),
+        compJson: (() => {
+          if (body.compJson === null) return null;
+          if (Array.isArray(body.comp)) {
+            const cleaned = body.comp.map((c: any) => String(c || "").trim()).filter(Boolean);
+            return cleaned.length > 0 ? JSON.stringify(Array.from(new Set(cleaned))) : null;
+          }
+          if (typeof body.compJson === "string" && body.compJson.trim()) {
+            try {
+              const parsed = JSON.parse(body.compJson);
+              if (Array.isArray(parsed)) {
+                const cleaned = parsed.map((c: any) => String(c || "").trim()).filter(Boolean);
+                return cleaned.length > 0 ? JSON.stringify(Array.from(new Set(cleaned))) : null;
+              }
+            } catch {}
+          }
+          return null;
+        })(),
         parametersJson: body.parameters !== undefined
           ? JSON.stringify(body.parameters)
           : (typeof body.parametersJson === "string" ? body.parametersJson : JSON.stringify(body.parametersJson || [])),
