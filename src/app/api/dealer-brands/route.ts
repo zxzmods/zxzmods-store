@@ -30,7 +30,7 @@ export async function GET() {
     });
     response.headers.set(
       "Cache-Control",
-      "public, s-maxage=120, stale-while-revalidate=300"
+      "no-store, no-cache, must-revalidate, proxy-revalidate"
     );
     return response;
   } catch (error) {

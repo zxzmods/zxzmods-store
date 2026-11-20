@@ -174,7 +174,7 @@ export default function ComboDetailPage() {
     }
 
     setRelatedProductsLoading(true);
-    fetch("/api/products")
+    fetch("/api/products", { cache: "no-store" })
       .then((res) => res.json())
       .then((data) => {
         if (data.success && Array.isArray(data.products)) {
@@ -195,10 +195,16 @@ export default function ComboDetailPage() {
     if (!slug) return;
     setLoading(true);
 
-    fetch(`/api/combos?slug=${encodeURIComponent(slug)}`)
+    fetch(`/api/combos?slug=${encodeURIComponent(slug)}`, {
+      cache: "no-store",
+      headers: {
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        Pragma: "no-cache",
+      },
+    })
       .then((res) => res.json())
       .then((data) => {
-        if (data.success && data.data?.combo) {
+        if (data.success && data.data?.combo && !data.data.combo.isArchived) {
           setCombo(data.data.combo);
           setActiveImageIndex(0);
           setSelectedImageOverride(null);
@@ -239,7 +245,13 @@ export default function ComboDetailPage() {
       setRelatedCombos(combo.relatedCombos.slice(0, 4));
       return;
     }
-    fetch("/api/combos")
+    fetch("/api/combos", {
+      cache: "no-store",
+      headers: {
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        Pragma: "no-cache",
+      },
+    })
       .then((res) => res.json())
       .then((data) => {
         const comboList = Array.isArray(data?.combos)

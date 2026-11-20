@@ -9,6 +9,7 @@ import {
 } from "@/lib/products";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 function extractComboImages(combo: any, catalogProducts: any[]) {
   const imgs: string[] = [];
@@ -141,10 +142,15 @@ export async function GET(
       }),
     ]);
 
-    if (!combo) {
+    if (!combo || combo.isArchived) {
       return NextResponse.json(
         { success: false, error: "Combo not found" },
-        { status: 404 }
+        {
+          status: 404,
+          headers: {
+            "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+          },
+        }
       );
     }
 
@@ -349,6 +355,10 @@ export async function GET(
             return null;
           })(),
         },
+      },
+    }, {
+      headers: {
+        "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
       },
     });
   } catch (error) {

@@ -1,10 +1,25 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { requireStealthSession, verifyMasterElevationPassword } from "@/lib/stealthAuth";
 import { prisma } from "@/lib/prisma";
 import { recordAuditLog } from "@/lib/audit";
 import { cleanDescriptionText } from "@/lib/products";
 import { cleanupRemovedMediaUrls } from "@/lib/storage";
 import { sanitizeExtraParts } from "@/lib/catalogExtraParts";
+
+function revalidateComboPaths(slug?: string) {
+  try {
+    revalidatePath("/combos");
+    revalidatePath("/");
+    revalidatePath("/api/combos");
+    if (slug) {
+      revalidatePath(`/combos/${slug}`);
+      revalidatePath(`/api/combos/${slug}`);
+    }
+  } catch (e) {
+    console.warn("[COMBO_REVALIDATE_WARN]:", e);
+  }
+}
 
 function collectComboMediaUrls(c: any): string[] {
   if (!c) return [];
@@ -214,6 +229,8 @@ export async function PATCH(
       details: `Combo ${existingCombo.slug} updated by ${auth.session.role} ${auth.session.email}`,
     });
 
+    revalidateComboPaths(updatedCombo.slug || existingCombo.slug);
+
     return NextResponse.json({ success: true, combo: updatedCombo });
   } catch (error) {
     console.error("[SYS_COMBO_PATCH_ERROR]:", error);
@@ -237,15 +254,18 @@ export async function DELETE(
     const body = await request.json().catch(() => ({}));
     const action = body.action || searchParams.get("action") || "eliminate";
 
-    const existing = await prisma.combo.findUnique({ where: { id: comboId } });
+    const existing =
+      (await prisma.combo.findUnique({ where: { id: comboId } })) ||
+      (await prisma.combo.findUnique({ where: { slug: comboId } }));
     if (!existing) {
       return NextResponse.json({ success: false, error: "Combo no encontrado." }, { status: 404 });
     }
+    const targetComboId = existing.id;
 
     // ARCHIVE COMBO ACTION (Staff & Master)
     if (action === "archive") {
       const archived = await prisma.combo.update({
-        where: { id: comboId },
+        where: { id: targetComboId },
         data: { isArchived: true },
       });
 
@@ -261,13 +281,15 @@ export async function DELETE(
         details: `Combo ${existing.slug} archivado por ${auth.session.role} ${auth.session.email}`,
       });
 
+      revalidateComboPaths(existing.slug);
+
       return NextResponse.json({ success: true, archived: true, combo: archived });
     }
 
     // UNARCHIVE / RESTORE COMBO ACTION (Staff & Master)
     if (action === "unarchive") {
       const restored = await prisma.combo.update({
-        where: { id: comboId },
+        where: { id: targetComboId },
         data: { isArchived: false },
       });
 
@@ -282,6 +304,8 @@ export async function DELETE(
         newData: { slug: existing.slug, isArchived: false },
         details: `Combo ${existing.slug} desarchivado por ${auth.session.role} ${auth.session.email}`,
       });
+
+      revalidateComboPaths(existing.slug);
 
       return NextResponse.json({ success: true, unarchived: true, combo: restored });
     }
@@ -309,7 +333,21 @@ export async function DELETE(
       const mediaToEliminate = collectComboMediaUrls(existing);
 
       // Hard delete combo from database
-      await prisma.combo.delete({ where: { id: comboId } });
+      await prisma.combo.delete({ where: { id: targetComboId } });
+
+      // Remove any homepage featured item pointing to this eliminated combo
+      try {
+        await prisma.homePageItem.deleteMany({
+          where: {
+            OR: [
+              { redirectUrl: `/combos/${existing.slug}` },
+              { redirectUrl: { endsWith: `/combos/${existing.slug}` } },
+            ],
+          },
+        });
+      } catch (hpErr) {
+        console.warn("[COMBO_DELETE_HOMEPAGE_CLEANUP_WARN]:", hpErr);
+      }
 
       // Hard delete associated media from storage
       try {
@@ -329,6 +367,8 @@ export async function DELETE(
         newData: null,
         details: `Combo ${existing.slug} eliminado definitivamente del catálogo con contraseña Master por ${auth.session.role} ${auth.session.email}`,
       });
+
+      revalidateComboPaths(existing.slug);
 
       return NextResponse.json({ success: true, eliminated: true, comboId });
     }

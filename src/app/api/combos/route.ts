@@ -20,6 +20,7 @@ import { SXS_BRAND_PLATFORMS, SXS_BRANDS, getBrandLogo } from "@/lib/sxsBrands";
 import { evaluateComboSearch, buildDealerBrandSearchRefs } from "@/lib/search";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 function extractComboImages(combo: any, catalogProducts: any[]) {
   const imgs: string[] = [];
@@ -314,15 +315,22 @@ export async function GET(request: NextRequest) {
 
     const catalogProducts = rawCatalogProducts.map(formatCatalogProductForCombo);
 
+    const includeArchived = searchParams.get("includeArchived") === "true";
+
     if (slug) {
       const combo = await prisma.combo.findUnique({
         where: { slug },
       });
 
-      if (!combo) {
+      if (!combo || (combo.isArchived && !includeArchived)) {
         return NextResponse.json(
           { success: false, error: "Combo not found" },
-          { status: 404 }
+          {
+            status: 404,
+            headers: {
+              "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+            },
+          }
         );
       }
 
@@ -462,10 +470,12 @@ export async function GET(request: NextRequest) {
             })(),
           },
         },
+      }, {
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+        },
       });
     }
-
-    const includeArchived = searchParams.get("includeArchived") === "true";
 
     const [allCombos, dbBrands, dbDealerBrands] = await Promise.all([
       prisma.combo.findMany({
@@ -792,7 +802,7 @@ export async function GET(request: NextRequest) {
     });
     response.headers.set(
       "Cache-Control",
-      "public, s-maxage=60, stale-while-revalidate=300"
+      "no-store, no-cache, must-revalidate, proxy-revalidate"
     );
     return response;
   } catch (error) {

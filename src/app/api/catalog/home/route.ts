@@ -15,6 +15,7 @@ export async function GET() {
           orderBy: { name: "asc" },
         }),
         prisma.combo.findMany({
+          where: { isArchived: false },
           orderBy: { createdAt: "desc" },
         }),
         prisma.performancePackage.findMany({

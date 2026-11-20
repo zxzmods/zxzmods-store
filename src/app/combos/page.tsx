@@ -178,12 +178,18 @@ export default function CombosPage() {
       if (vehicle.year) params.set("vehicleYear", String(vehicle.year));
     }
 
-    fetch(`/api/combos?${params.toString()}`)
+    fetch(`/api/combos?${params.toString()}`, {
+      cache: "no-store",
+      headers: {
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        Pragma: "no-cache",
+      },
+    })
       .then((res) => res.json())
       .then((res) => {
         if (!isMounted) return;
         if (res.success && res.data) {
-          setCombos(res.data.combos || []);
+          setCombos((res.data.combos || []).filter((c: any) => !c?.isArchived));
           if (Array.isArray(res.data.categories)) setCategories(res.data.categories);
           if (Array.isArray(res.data.availableVehicleBrands)) setAvailableVehicleBrands(res.data.availableVehicleBrands);
           if (Array.isArray(res.data.availableDistributorBrands)) setAvailableDistributorBrands(res.data.availableDistributorBrands);

@@ -6266,6 +6266,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
         setCombos((prev) => prev.filter((c) => c.id !== eliminateModalCombo.id));
         setEliminateModalCombo(null);
         setEliminateComboMasterPassword("");
+        await fetchCatalog();
         setFeedback({
           type: "success",
           msg: t.comboEliminateSuccess,

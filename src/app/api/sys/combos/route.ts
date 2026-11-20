@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { requireStealthSession } from "@/lib/stealthAuth";
 import { prisma } from "@/lib/prisma";
 import { recordAuditLog } from "@/lib/audit";
@@ -128,6 +129,13 @@ export async function POST(request: Request) {
       },
       details: `Combo ${newCombo.slug} created by ${auth.session.role} ${auth.session.email}`,
     });
+
+    try {
+      revalidatePath("/combos");
+      revalidatePath("/");
+      revalidatePath("/api/combos");
+      revalidatePath(`/combos/${newCombo.slug}`);
+    } catch {}
 
     return NextResponse.json({ success: true, combo: newCombo });
   } catch (error: any) {
