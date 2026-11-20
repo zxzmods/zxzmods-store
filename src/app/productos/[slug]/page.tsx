@@ -386,7 +386,26 @@ export default function ProductDetailPage() {
   const [switchingLinkedProduct, setSwitchingLinkedProduct] = useState(false);
   const [switchingTargetId, setSwitchingTargetId] = useState<string | null>(null);
 
+  const isOptionOutOfStock = useCallback((opt: ParameterOption): boolean => {
+    const addonProd = opt.addonProduct;
+    return Boolean(
+      opt.supplierStockStatus === "OUT_OF_STOCK" ||
+      opt.supplierStockStatus === "UNAVAILABLE" ||
+      opt.stockStatus === "OUT_OF_STOCK" ||
+      addonProd?.supplierStockStatus === "OUT_OF_STOCK" ||
+      addonProd?.supplierStockStatus === "UNAVAILABLE" ||
+      addonProd?.stockStatus === "OUT_OF_STOCK"
+    );
+  }, []);
+
   const toggleCartAddonOption = (optId: string) => {
+    // If the complement is out of stock, do not allow toggling or adding
+    for (const param of cartAddonParameters) {
+      const found = (param.options || []).find((o) => o.id === optId);
+      if (found && isOptionOutOfStock(found)) {
+        return;
+      }
+    }
     setSelectedAddonIds((prev) => ({
       ...prev,
       [optId]: !prev[optId],
@@ -696,13 +715,13 @@ export default function ProductDetailPage() {
     const list: ParameterOption[] = [];
     cartAddonParameters.forEach((param) => {
       (param.options || []).forEach((opt) => {
-        if (selectedAddonIds[opt.id]) {
+        if (selectedAddonIds[opt.id] && !isOptionOutOfStock(opt)) {
           list.push(opt);
         }
       });
     });
     return list;
-  }, [cartAddonParameters, selectedAddonIds]);
+  }, [cartAddonParameters, selectedAddonIds, isOptionOutOfStock]);
 
   const totalAddonsPriceCRC = useMemo(() => {
     return selectedAddonOptions.reduce((sum, opt) => {
@@ -1096,7 +1115,7 @@ export default function ProductDetailPage() {
       .map((opt) => {
         const addonProd = opt.addonProduct;
         const prodId = addonProd?.id || opt.addonProductId;
-        if (!prodId) return null;
+        if (!prodId || isOptionOutOfStock(opt)) return null;
         const addonDeliveryOnly =
           addonProd?.installationAvailable === false ||
           (addonProd as any)?.installationAvailable === false;
@@ -2113,7 +2132,8 @@ export default function ProductDetailPage() {
 
                           <div className="space-y-2.5">
                             {(addonParam.options || []).map((opt) => {
-                              const isToggled = Boolean(selectedAddonIds[opt.id]);
+                              const isOutOfStock = isOptionOutOfStock(opt);
+                              const isToggled = !isOutOfStock && Boolean(selectedAddonIds[opt.id]);
                               const addonProd = opt.addonProduct;
                               const optTitle =
                                 lang === "es"
@@ -2144,18 +2164,25 @@ export default function ProductDetailPage() {
                                   key={opt.id}
                                   role="switch"
                                   aria-checked={isToggled}
-                                  tabIndex={0}
-                                  onClick={() => toggleCartAddonOption(opt.id)}
+                                  aria-disabled={isOutOfStock}
+                                  tabIndex={isOutOfStock ? -1 : 0}
+                                  onClick={() => {
+                                    if (!isOutOfStock) {
+                                      toggleCartAddonOption(opt.id);
+                                    }
+                                  }}
                                   onKeyDown={(e) => {
-                                    if (e.key === "Enter" || e.key === " ") {
+                                    if ((e.key === "Enter" || e.key === " ") && !isOutOfStock) {
                                       e.preventDefault();
                                       toggleCartAddonOption(opt.id);
                                     }
                                   }}
-                                  className={`p-3 rounded-2xl border transition-all duration-200 flex items-center justify-between gap-3 cursor-pointer select-none ${
-                                    isToggled
-                                      ? "bg-white border-[#C02030] ring-2 ring-[#C02030]/15 shadow-sm"
-                                      : "bg-white/90 hover:bg-white border-gray-200 hover:border-gray-300 shadow-2xs"
+                                  className={`p-3 rounded-2xl border transition-all duration-200 flex items-center justify-between gap-3 select-none ${
+                                    isOutOfStock
+                                      ? "bg-gray-100/80 border-gray-200 text-gray-400 opacity-60 cursor-not-allowed grayscale-[0.6]"
+                                      : isToggled
+                                      ? "bg-white border-[#C02030] ring-2 ring-[#C02030]/15 shadow-sm cursor-pointer"
+                                      : "bg-white/90 hover:bg-white border-gray-200 hover:border-gray-300 shadow-2xs cursor-pointer"
                                   }`}
                                 >
                                   <div className="flex items-center gap-3 min-w-0">
@@ -2167,11 +2194,15 @@ export default function ProductDetailPage() {
                                       />
                                     </div>
                                     <div className="min-w-0 space-y-0.5">
-                                      <div className="flex items-center gap-1.5">
+                                      <div className="flex items-center gap-1.5 flex-wrap">
                                         <span className="text-xs sm:text-sm font-bold text-[#111827] truncate block">
                                           {optTitle}
                                         </span>
-                                        {targetProductHref && (
+                                        {isOutOfStock ? (
+                                          <span className="px-1.5 py-0.5 rounded bg-gray-200 text-gray-600 text-[10px] font-black uppercase tracking-wider shrink-0">
+                                            {t.productOutOfStock || (lang === "es" ? "Agotado" : "Out of stock")}
+                                          </span>
+                                        ) : targetProductHref ? (
                                           <Link
                                             href={`/productos/${encodeURIComponent(targetProductHref)}`}
                                             onClick={(e) => e.stopPropagation()}
@@ -2180,11 +2211,17 @@ export default function ProductDetailPage() {
                                           >
                                             <ExternalLink className="w-3 h-3" />
                                           </Link>
-                                        )}
+                                        ) : null}
                                       </div>
-                                      <span className="text-xs font-mono font-extrabold text-[#C02030] block">
-                                        + {optPriceFormatted}
-                                      </span>
+                                      {isOutOfStock ? (
+                                        <span className="text-xs font-mono font-semibold text-gray-400 block line-through">
+                                          + {optPriceFormatted}
+                                        </span>
+                                      ) : (
+                                        <span className="text-xs font-mono font-extrabold text-[#C02030] block">
+                                          + {optPriceFormatted}
+                                        </span>
+                                      )}
                                     </div>
                                   </div>
 
@@ -2192,24 +2229,36 @@ export default function ProductDetailPage() {
                                   <div className="flex items-center gap-2 shrink-0">
                                     <span
                                       className={`hidden sm:inline-block text-[11px] font-bold transition-colors ${
-                                        isToggled ? "text-[#C02030]" : "text-gray-500"
+                                        isOutOfStock
+                                          ? "text-gray-400"
+                                          : isToggled
+                                          ? "text-[#C02030]"
+                                          : "text-gray-500"
                                       }`}
                                     >
-                                      {isToggled
+                                      {isOutOfStock
+                                        ? t.productOutOfStock || (lang === "es" ? "Agotado" : "Out of stock")
+                                        : isToggled
                                         ? t.productCartAddonToggleOn || (lang === "es" ? "Agregado" : "Added")
                                         : t.productCartAddonToggleOff || (lang === "es" ? "Agregar" : "Add")}
                                     </span>
                                     <div
                                       className={`w-11 h-6 rounded-full p-0.5 transition-colors duration-200 flex items-center ${
-                                        isToggled ? "bg-[#C02030]" : "bg-gray-200"
+                                        isOutOfStock
+                                          ? "bg-gray-200 cursor-not-allowed opacity-60"
+                                          : isToggled
+                                          ? "bg-[#C02030]"
+                                          : "bg-gray-200"
                                       }`}
                                     >
                                       <div
-                                        className={`w-5 h-5 rounded-full bg-white shadow-sm transform transition-transform duration-200 flex items-center justify-center ${
-                                          isToggled ? "translate-x-5" : "translate-x-0"
+                                        className={`w-5 h-5 rounded-full ${
+                                          isOutOfStock ? "bg-gray-300" : "bg-white shadow-sm"
+                                        } transform transition-transform duration-200 flex items-center justify-center ${
+                                          isToggled && !isOutOfStock ? "translate-x-5" : "translate-x-0"
                                         }`}
                                       >
-                                        {isToggled && (
+                                        {isToggled && !isOutOfStock && (
                                           <CheckCircle2 className="w-3.5 h-3.5 text-[#C02030]" />
                                         )}
                                       </div>

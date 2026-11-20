@@ -93,6 +93,7 @@ export interface ProductItem {
   modelYearCompatibility?: ModelYearFitment[]; // Dedicated model & year compatibility list
   supplierUrl?: string | null;
   supplierPlatform?: string | null;
+  stockStatus?: string;
   supplierStockStatus?: string; // IN_STOCK, PRE_ORDER, LOW_STOCK, OUT_OF_STOCK, UNAVAILABLE
   supplierStockCount?: number | null;
   supplierStockMessageEs?: string | null;

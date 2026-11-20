@@ -4722,19 +4722,32 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
     const installProfit = isInstallationAvailable ? (prod.installProfitCRC ?? 0) : 0;
     const computedTotalInstall = isInstallationAvailable ? (labourCost + extraPartsSum + installProfit) : 0;
     const I_price = isInstallationAvailable ? (computedTotalInstall > 0 ? computedTotalInstall : rawIPrice) : 0;
-    const profit = prod.price?.profit ?? prod.profitCRC ?? 0;
-    const ivaPercent = (prod as any).ivaPercent ?? 13;
-    const discountPercent = (prod as any).discountPercent || 0;
-    const computedIvaCRC = calculateIvaAmount(P_price, S_price, profit, I_price, I_price_includes, discountPercent, ivaPercent);
-    const computedTPrice = recalculateTPrice(P_price, S_price, profit, I_price, I_price_includes, discountPercent, ivaPercent);
-    const computedOriginalPrice = getProductOriginalPriceWithIVA(P_price, S_price, profit, I_price, I_price_includes, ivaPercent);
     const savedTPrice = Math.round(Number(prod.price?.T_price ?? prod.priceCRC ?? 0) || 0);
-    const hasExactManualTPrice = savedTPrice > 0 && Math.abs(savedTPrice - computedTPrice) <= 5 && savedTPrice !== computedTPrice;
-    isManualProductTPriceRef.current = hasExactManualTPrice;
-    const T_price = hasExactManualTPrice ? savedTPrice : (computedTPrice > 0 ? computedTPrice : savedTPrice);
-    const initialIvaCRC = hasExactManualTPrice
-      ? Math.max(0, savedTPrice - Math.round(savedTPrice / (1 + (Number(ivaPercent) || 13) / 100)))
-      : computedIvaCRC;
+    const discountPercent = (prod as any).discountPercent || 0;
+    const ivaPercent = (prod as any).ivaPercent ?? 13;
+    const hasLockedTPrice = savedTPrice > 0;
+    isManualProductTPriceRef.current = hasLockedTPrice;
+
+    let profit = prod.price?.profit ?? prod.profitCRC ?? 0;
+    let initialIvaCRC = 0;
+    if (hasLockedTPrice) {
+      const inv = computeProfitAndIvaFromTPrice(
+        savedTPrice,
+        P_price,
+        S_price,
+        I_price,
+        I_price_includes,
+        discountPercent,
+        ivaPercent
+      );
+      profit = inv.profitCRC;
+      initialIvaCRC = inv.ivaCRC;
+    } else {
+      initialIvaCRC = calculateIvaAmount(P_price, S_price, profit, I_price, I_price_includes, discountPercent, ivaPercent);
+    }
+    const computedTPrice = recalculateTPrice(P_price, S_price, profit, I_price, I_price_includes, discountPercent, ivaPercent);
+    const T_price = hasLockedTPrice ? savedTPrice : (computedTPrice > 0 ? computedTPrice : savedTPrice);
+    const computedOriginalPrice = getProductOriginalPriceWithIVA(P_price, S_price, profit, I_price, I_price_includes, ivaPercent);
     const T_price_D = String(prod.price?.T_price_D ?? prod.totalPriceD ?? "calculate in checkout with the selling value of dolar to colones");
 
     // 7. Year range extraction
@@ -5274,12 +5287,15 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
     const translatedPPrice = pPriceUSD > 0 ? Math.round(pPriceUSD * activeRate) : 0;
     const translatedSPrice = sPriceUSD > 0 ? Math.round(sPriceUSD * activeRate) : 0;
 
-    // If P_price or S_price changed from USD translation while manual T_price was set, reset manual flag so T_price auto-updates
-    if (productForm.P_price !== translatedPPrice || productForm.S_price !== translatedSPrice) {
-      isManualProductTPriceRef.current = false;
-    }
-
+    // If manual T_price is locked, keep T_price locked and do not allow background translation to overwrite it
     if (isManualProductTPriceRef.current) {
+      if (productForm.P_price !== translatedPPrice || productForm.S_price !== translatedSPrice) {
+        setProductForm((prev) => ({
+          ...prev,
+          P_price: translatedPPrice,
+          S_price: translatedSPrice,
+        }));
+      }
       return;
     }
 
@@ -5532,7 +5548,6 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       (productForm.I_price_includes ? Math.round(Number(productForm.I_price) || 0) : 0);
     const manualTPriceCRC = Math.round(Number(productForm.T_price) || 0);
     const useExactManualTPrice =
-      isManualProductTPriceRef.current &&
       manualTPriceCRC >= costFloorCRC &&
       manualTPriceCRC > 0;
     const finalTPrice = useExactManualTPrice ? manualTPriceCRC : computedTPrice;
@@ -8689,6 +8704,20 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                   />
                 </div>
               </div>
+
+              {/* CONFIGURABLE PARAMETERS & VARIANTS (Moved below requirements & reviews on left side to balance columns) */}
+              <ParametersEditorSection
+                parameters={productForm.parameters}
+                onChange={(newParams) => setProductForm((prev) => ({ ...prev, parameters: newParams }))}
+                t={t}
+                availableProducts={products.filter((p) => (p.sku || p.id) !== (productForm.sku || productForm.slug))}
+                currentProductPrice={productForm.T_price || productForm.priceCRC}
+                currentProductName={productForm.nameEs || productForm.p_title}
+                currentProductSku={productForm.sku}
+                currentProductImage={productForm.imageUrl || parsedImgsList[0] || ""}
+                currentProductSupplierUrl={productForm.supplierUrl || ""}
+                liveExchangeRate={liveExchangeRate || 515}
+              />
             </div>
 
             {/* RIGHT COLUMN: Categorization, Full Price Breakdown (price), Vehicle Fitment & Actions */}
@@ -10680,20 +10709,6 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                   );
                 })()}
               </div>
-
-              {/* CONFIGURABLE PARAMETERS & VARIANTS */}
-              <ParametersEditorSection
-                parameters={productForm.parameters}
-                onChange={(newParams) => setProductForm((prev) => ({ ...prev, parameters: newParams }))}
-                t={t}
-                availableProducts={products.filter((p) => (p.sku || p.id) !== (productForm.sku || productForm.slug))}
-                currentProductPrice={productForm.T_price || productForm.priceCRC}
-                currentProductName={productForm.nameEs || productForm.p_title}
-                currentProductSku={productForm.sku}
-                currentProductImage={productForm.imageUrl || parsedImgsList[0] || ""}
-                currentProductSupplierUrl={productForm.supplierUrl || ""}
-                liveExchangeRate={liveExchangeRate || 515}
-              />
 
               {/* Services & Toggles (inHome_install & featured) */}
               <div className="p-5 rounded-3xl bg-white border border-red-200 shadow-sm space-y-3">

@@ -454,8 +454,7 @@ export async function PATCH(
       const useExactReqTPrice =
         !body.recalculateLockedPrice &&
         numReqPriceCRC > 0 &&
-        numReqPriceCRC >= costFloor &&
-        Math.abs(numReqPriceCRC - computedTPrice) <= 5;
+        numReqPriceCRC >= costFloor;
 
       if (useExactReqTPrice) {
         updateData.priceCRC = numReqPriceCRC;

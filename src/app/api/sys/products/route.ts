@@ -196,8 +196,7 @@ export async function POST(request: Request) {
 
     const useExactReqTPrice =
       rawReqPriceCRC > 0 &&
-      rawReqPriceCRC >= costFloor &&
-      Math.abs(rawReqPriceCRC - computedTPrice) <= 5;
+      rawReqPriceCRC >= costFloor;
 
     const finalPriceCRC = useExactReqTPrice
       ? rawReqPriceCRC

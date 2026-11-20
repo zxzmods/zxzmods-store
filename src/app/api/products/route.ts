@@ -197,6 +197,7 @@ function dbProductToProductItem(dbProd: any, jsonProd?: ProductItem | null, isSt
     modelYearCompatibility,
     supplierUrl: dbProd.supplierUrl || null,
     supplierPlatform: dbProd.supplierPlatform || null,
+    stockStatus: dbProd.stockStatus || "IN_STOCK_US",
     supplierStockStatus: dbProd.supplierStockStatus || "IN_STOCK",
     supplierStockCount: dbProd.supplierStockCount ?? null,
     supplierStockMessageEs: dbProd.supplierStockMessageEs || null,
@@ -555,6 +556,8 @@ export async function GET(request: Request) {
                 opt.imageUrl = matchedAddon.imageUrl || matchedAddon.imgs?.[0] || opt.imageUrl;
                 if (!opt.labelEs) opt.labelEs = matchedAddon.nameEs || matchedAddon.p_title;
                 if (!opt.labelEn) opt.labelEn = matchedAddon.nameEn || matchedAddon.p_title;
+                opt.supplierStockStatus = matchedAddon.supplierStockStatus || "IN_STOCK";
+                opt.stockStatus = matchedAddon.stockStatus || "IN_STOCK_US";
               }
             }
           }

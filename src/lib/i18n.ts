@@ -1098,6 +1098,7 @@ export interface Translations {
   productCartAddonToggleOff: string;
   productCartAddonToggleOn: string;
   productCartAddonSelectedSummary: string;
+  productOutOfStock: string;
 
   // Pick-up, Delivery & Home Installation
   servicesTitle: string;
@@ -3024,6 +3025,7 @@ export const translations: Record<Language, Translations> = {
     productCartAddonToggleOff: "Agregar",
     productCartAddonToggleOn: "Agregado",
     productCartAddonSelectedSummary: "complemento(s) para agregar junto al carrito",
+    productOutOfStock: "Agotado",
     devComboIncludedProducts: "Productos Incluidos en el Combo",
     devComboSearchProductPlaceholder: "Buscar producto del catálogo para agregar al combo...",
     devComboAddProduct: "Agregar al Combo",
@@ -5079,6 +5081,7 @@ export const translations: Record<Language, Translations> = {
     productCartAddonToggleOff: "Add",
     productCartAddonToggleOn: "Added",
     productCartAddonSelectedSummary: "add-on(s) to add together to cart",
+    productOutOfStock: "Out of Stock",
     devComboIncludedProducts: "Products Included in Combo",
     devComboSearchProductPlaceholder: "Search catalog product to add to combo...",
     devComboAddProduct: "Add to Combo",
