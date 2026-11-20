@@ -769,27 +769,28 @@ export default function ProductDetailPage() {
   const activeOptionCachedAvailability = useMemo((): NonNullable<typeof availability> | null => {
     if (!product) return null;
     const conn = dualResolution.connection;
-    if (conn && conn.supplierUrl?.trim() && conn.supplierStockStatus) {
+    if (conn && (conn.supplierStockStatus || conn.supplierUrl?.trim() || conn.manualStockOverride)) {
+      const stockStatus = conn.supplierStockStatus || (conn.manualStockOverride ? "OUT_OF_STOCK" : "IN_STOCK");
       return {
-        status: conn.supplierStockStatus,
+        status: stockStatus,
         available:
-          conn.supplierStockStatus !== "OUT_OF_STOCK" &&
-          conn.supplierStockStatus !== "UNAVAILABLE",
+          stockStatus !== "OUT_OF_STOCK" &&
+          stockStatus !== "UNAVAILABLE",
         stockCount: conn.supplierStockCount ?? null,
         platform: conn.supplierPlatform || product.supplierPlatform || "SHOPIFY",
         messageEs:
           conn.supplierStockMessageEs ||
-          (conn.supplierStockStatus === "OUT_OF_STOCK"
+          (stockStatus === "OUT_OF_STOCK"
             ? "Agotado temporalmente (Disponible para cotización de reserva)"
             : "Disponible para entrega o importación inmediata"),
         messageEn:
           conn.supplierStockMessageEn ||
-          (conn.supplierStockStatus === "OUT_OF_STOCK"
+          (stockStatus === "OUT_OF_STOCK"
             ? "Temporarily out of stock (Available for reservation quote)"
             : "In stock ready for immediate delivery or import"),
         leadDaysMin: conn.supplierLeadDaysMin || product.supplierLeadDaysMin || 7,
         leadDaysMax: conn.supplierLeadDaysMax || product.supplierLeadDaysMax || 21,
-        supplierUrl: conn.supplierUrl.trim(),
+        supplierUrl: conn.supplierUrl ? conn.supplierUrl.trim() : null,
         supplierPriceUSD:
           conn.supplierLastPriceUSD ?? product.supplierLastPriceUSD ?? null,
         checkedAt:
@@ -809,36 +810,39 @@ export default function ProductDetailPage() {
       if (isLinked) continue;
       const selId = selectedOptions[param.id] || param.options?.[0]?.id;
       const opt = param.options?.find((o) => o.id === selId);
-      if (opt && opt.supplierUrl?.trim() && opt.supplierStockStatus) {
-        return {
-          status: opt.supplierStockStatus,
-          available:
-            opt.supplierStockStatus !== "OUT_OF_STOCK" &&
-            opt.supplierStockStatus !== "UNAVAILABLE",
-          stockCount: opt.supplierStockCount ?? null,
-          platform: opt.supplierPlatform || product.supplierPlatform || "SHOPIFY",
-          messageEs:
-            opt.supplierStockMessageEs ||
-            (opt.supplierStockStatus === "OUT_OF_STOCK"
-              ? "Agotado temporalmente (Disponible para cotización de reserva)"
-              : "Disponible para entrega o importación inmediata"),
-          messageEn:
-            opt.supplierStockMessageEn ||
-            (opt.supplierStockStatus === "OUT_OF_STOCK"
-              ? "Temporarily out of stock (Available for reservation quote)"
-              : "In stock ready for immediate delivery or import"),
-          leadDaysMin: opt.supplierLeadDaysMin || product.supplierLeadDaysMin || 7,
-          leadDaysMax: opt.supplierLeadDaysMax || product.supplierLeadDaysMax || 21,
-          supplierUrl: opt.supplierUrl.trim(),
-          supplierPriceUSD:
-            opt.supplierLastPriceUSD ?? product.supplierLastPriceUSD ?? null,
-          checkedAt:
-            opt.supplierStockCheckedAt ||
-            (product.supplierStockCheckedAt
-              ? new Date(product.supplierStockCheckedAt).toISOString()
-              : new Date().toISOString()),
-          isStale: false,
-        };
+      if (opt && (opt.supplierStockStatus || opt.supplierUrl?.trim() || opt.manualStockOverride)) {
+        const stockStatus = opt.supplierStockStatus || (opt.manualStockOverride ? "OUT_OF_STOCK" : null);
+        if (stockStatus) {
+          return {
+            status: stockStatus,
+            available:
+              stockStatus !== "OUT_OF_STOCK" &&
+              stockStatus !== "UNAVAILABLE",
+            stockCount: opt.supplierStockCount ?? null,
+            platform: opt.supplierPlatform || product.supplierPlatform || "SHOPIFY",
+            messageEs:
+              opt.supplierStockMessageEs ||
+              (stockStatus === "OUT_OF_STOCK"
+                ? "Agotado temporalmente (Disponible para cotización de reserva)"
+                : "Disponible para entrega o importación inmediata"),
+            messageEn:
+              opt.supplierStockMessageEn ||
+              (stockStatus === "OUT_OF_STOCK"
+                ? "Temporarily out of stock (Available for reservation quote)"
+                : "In stock ready for immediate delivery or import"),
+            leadDaysMin: opt.supplierLeadDaysMin || product.supplierLeadDaysMin || 7,
+            leadDaysMax: opt.supplierLeadDaysMax || product.supplierLeadDaysMax || 21,
+            supplierUrl: opt.supplierUrl ? opt.supplierUrl.trim() : null,
+            supplierPriceUSD:
+              opt.supplierLastPriceUSD ?? product.supplierLastPriceUSD ?? null,
+            checkedAt:
+              opt.supplierStockCheckedAt ||
+              (product.supplierStockCheckedAt
+                ? new Date(product.supplierStockCheckedAt).toISOString()
+                : new Date().toISOString()),
+            isStale: false,
+          };
+        }
       }
     }
     return null;
@@ -1152,6 +1156,10 @@ export default function ProductDetailPage() {
 
   const handleAddToCart = () => {
     if (!product) return;
+    if (availability?.status === "OUT_OF_STOCK" || availability?.status === "UNAVAILABLE") {
+      handleReserveQuotation();
+      return;
+    }
     const isDeliveryOnly = product.installationAvailable === false || (product as any).installationAvailable === false;
     const isIncluded = !isDeliveryOnly && Boolean(
       product.price?.I_price?.includes ||

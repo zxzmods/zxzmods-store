@@ -125,6 +125,8 @@ export interface ParameterOptionConnection {
   priceDeltaUSD?: number;       // Specific price override for this combo (if differs from sum)
   priceDeltaCRC?: number;
   supplierStockStatus?: string;
+  manualStockOverride?: boolean;
+  stockStatus?: string;
   supplierStockCount?: number | null;
   supplierPlatform?: string | null;
   supplierStockMessageEs?: string | null;
@@ -154,6 +156,8 @@ export interface ParameterOption {
   isCurrentProduct?: boolean;
   connections?: ParameterOptionConnection[]; // Matrix connections to 2nd parameter options (expansion)
   supplierStockStatus?: string;
+  manualStockOverride?: boolean;
+  stockStatus?: string;
   supplierStockCount?: number | null;
   supplierPlatform?: string | null;
   supplierStockMessageEs?: string | null;
@@ -353,6 +357,7 @@ export function resolveDualParameterConnection(
   effectiveImages?: string[];
   effectivePriceDeltaCRC: number;
   effectivePriceDeltaUSD: number;
+  effectiveStockStatus?: string;
 } {
   const localParams = (parameters || []).filter(isLocalVariantParameter);
   if (localParams.length < 2) {
@@ -406,6 +411,12 @@ export function resolveDualParameterConnection(
   const effectivePriceDeltaCRC = hasConnCrc ? connection!.priceDeltaCRC! : sumCrc;
   const effectivePriceDeltaUSD = hasConnUsd ? connection!.priceDeltaUSD! : sumUsd;
 
+  const effectiveStockStatus =
+    connection?.supplierStockStatus ||
+    (opt1?.supplierStockStatus === "OUT_OF_STOCK" || opt2?.supplierStockStatus === "OUT_OF_STOCK"
+      ? "OUT_OF_STOCK"
+      : opt1?.supplierStockStatus || opt2?.supplierStockStatus || undefined);
+
   return {
     connection,
     opt1,
@@ -414,6 +425,7 @@ export function resolveDualParameterConnection(
     effectiveImages,
     effectivePriceDeltaCRC,
     effectivePriceDeltaUSD,
+    effectiveStockStatus,
   };
 }
 

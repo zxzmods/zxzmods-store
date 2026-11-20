@@ -1146,6 +1146,62 @@ function DualParameterMatrixModal({
                           </div>
                         </div>
 
+                        {/* Matrix Combination Stock Availability Status & Manual Override */}
+                        <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2 text-xs">
+                          <div className="flex items-center gap-1.5">
+                            <label className="text-[10px] font-bold text-slate-500">
+                              Disponibilidad / Stock:
+                            </label>
+                            <select
+                              value={conn.manualStockOverride ? (conn.supplierStockStatus || "IN_STOCK") : (conn.supplierStockStatus ? conn.supplierStockStatus : "AUTO")}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                if (val === "AUTO") {
+                                  handleUpdateActiveConnection(conn.secondOptionId, {
+                                    manualStockOverride: false,
+                                    supplierStockStatus: undefined,
+                                    supplierStockMessageEs: undefined,
+                                    supplierStockMessageEn: undefined,
+                                  });
+                                } else {
+                                  handleUpdateActiveConnection(conn.secondOptionId, {
+                                    supplierStockStatus: val,
+                                    manualStockOverride: true,
+                                    supplierStockCount: val === "OUT_OF_STOCK" ? 0 : conn.supplierStockCount,
+                                    supplierStockMessageEs: val === "OUT_OF_STOCK"
+                                      ? "Agotado temporalmente (Disponible para cotización de reserva)"
+                                      : val === "PRE_ORDER"
+                                      ? "Disponible en Preventa (Reserva prioritaria)"
+                                      : "Disponible para entrega o importación inmediata",
+                                    supplierStockMessageEn: val === "OUT_OF_STOCK"
+                                      ? "Temporarily out of stock (Available for reservation quote)"
+                                      : val === "PRE_ORDER"
+                                      ? "Available for Pre-Order (Priority reservation)"
+                                      : "In stock ready for immediate delivery or import",
+                                  });
+                                }
+                              }}
+                              className={`px-2 py-1 text-[10px] font-bold rounded-lg border transition cursor-pointer ${
+                                conn.supplierStockStatus === "OUT_OF_STOCK"
+                                  ? "bg-rose-50 border-rose-300 text-rose-800"
+                                  : conn.supplierStockStatus === "PRE_ORDER"
+                                  ? "bg-blue-50 border-blue-300 text-blue-800"
+                                  : "bg-emerald-50 border-emerald-300 text-emerald-800"
+                              }`}
+                            >
+                              <option value="AUTO">Auto (Sincronizar con Proveedor)</option>
+                              <option value="IN_STOCK">En Stock (Manual)</option>
+                              <option value="OUT_OF_STOCK">Agotado (Manual)</option>
+                              <option value="PRE_ORDER">Pre-Orden (Manual)</option>
+                            </select>
+                            {conn.manualStockOverride && (
+                              <span className="text-[9px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                                Fijado Manual
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
                         {/* Multi-Image Gallery for this Combo */}
                         <div className="space-y-1.5 pt-2 border-t border-slate-100">
                           <div className="flex items-center justify-between text-[10px] font-bold text-slate-600">
@@ -2881,7 +2937,68 @@ function ParametersEditorSection({
                               )}
                             </div>
                           </div>
+
+                        {/* Option Stock Availability Status & Manual Override */}
+                        <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2 text-xs">
+                          <div className="flex items-center gap-1.5">
+                            <label className="text-[9px] font-bold text-slate-500">
+                              Disponibilidad / Stock:
+                            </label>
+                            <select
+                              value={opt.manualStockOverride ? (opt.supplierStockStatus || "IN_STOCK") : (opt.supplierStockStatus ? opt.supplierStockStatus : "AUTO")}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                if (val === "AUTO") {
+                                  handleUpdateOptionMulti(pIdx, oIdx, {
+                                    manualStockOverride: false,
+                                    supplierStockStatus: undefined,
+                                    supplierStockMessageEs: undefined,
+                                    supplierStockMessageEn: undefined,
+                                  });
+                                } else {
+                                  handleUpdateOptionMulti(pIdx, oIdx, {
+                                    supplierStockStatus: val,
+                                    manualStockOverride: true,
+                                    supplierStockCount: val === "OUT_OF_STOCK" ? 0 : opt.supplierStockCount,
+                                    supplierStockMessageEs: val === "OUT_OF_STOCK"
+                                      ? "Agotado temporalmente (Disponible para cotización de reserva)"
+                                      : val === "PRE_ORDER"
+                                      ? "Disponible en Preventa (Reserva prioritaria)"
+                                      : "Disponible para entrega o importación inmediata",
+                                    supplierStockMessageEn: val === "OUT_OF_STOCK"
+                                      ? "Temporarily out of stock (Available for reservation quote)"
+                                      : val === "PRE_ORDER"
+                                      ? "Available for Pre-Order (Priority reservation)"
+                                      : "In stock ready for immediate delivery or import",
+                                  });
+                                }
+                              }}
+                              className={`px-2 py-1 text-[10px] font-bold rounded-lg border transition cursor-pointer ${
+                                opt.supplierStockStatus === "OUT_OF_STOCK"
+                                  ? "bg-rose-50 border-rose-300 text-rose-800"
+                                  : opt.supplierStockStatus === "PRE_ORDER"
+                                  ? "bg-blue-50 border-blue-300 text-blue-800"
+                                  : "bg-emerald-50 border-emerald-300 text-emerald-800"
+                              }`}
+                            >
+                              <option value="AUTO">Auto (Sincronizar con Proveedor)</option>
+                              <option value="IN_STOCK">En Stock (Manual)</option>
+                              <option value="OUT_OF_STOCK">Agotado (Manual)</option>
+                              <option value="PRE_ORDER">Pre-Orden (Manual)</option>
+                            </select>
+                            {opt.manualStockOverride && (
+                              <span className="text-[9px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                                Fijado Manual
+                              </span>
+                            )}
+                          </div>
+                          {opt.supplierStockStatus && (
+                            <span className="text-[9px] text-slate-400 font-medium truncate max-w-[200px]" title={opt.supplierStockMessageEs || ""}>
+                              {opt.supplierStockStatus === "OUT_OF_STOCK" ? "Agotado" : opt.supplierStockStatus === "PRE_ORDER" ? "Pre-Orden" : "En Stock"}
+                            </span>
+                          )}
                         </div>
+                      </div>
                       </div>
                     );
                   })}

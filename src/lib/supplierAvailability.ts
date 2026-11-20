@@ -57,6 +57,142 @@ const shopifyProductPayloadCache = new Map<
 >();
 const SHOPIFY_PAYLOAD_CACHE_TTL_MS = 15 * 60 * 1000;
 
+export const KNOWN_SHOPIFY_STOREFRONT_TOKENS: Record<string, string> = {
+  "rpmsxs.com": "ec7ec3c4888c4f395d14463306136340",
+  "teammscdealers.com": "4e50d8d113215018d1eeef0dcaffa896",
+  "evopowersports.com": "da4a7f4ea1577b031d42556f55fd094c",
+  "hangar116.com": "846c6984b1873aabe447f011bbad9549",
+};
+
+async function fetchShopifyStorefrontGraphQL(
+  hostname: string,
+  handle: string,
+  variantId?: string | null
+): Promise<{ prodData: any } | null> {
+  const cleanHost = hostname.toLowerCase().replace(/^www\./, "");
+  const token = KNOWN_SHOPIFY_STOREFRONT_TOKENS[cleanHost];
+  if (!token) return null;
+
+  try {
+    if (variantId) {
+      const q = `
+        query getVariant($id: ID!) {
+          node(id: $id) {
+            ... on ProductVariant {
+              id
+              title
+              availableForSale
+              price { amount }
+              product {
+                title
+                handle
+                availableForSale
+                tags
+                variants(first: 50) {
+                  nodes { id title availableForSale price { amount } }
+                }
+              }
+            }
+          }
+        }
+      `;
+      const res = await fetch(`https://${hostname}/api/2024-07/graphql.json`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Shopify-Storefront-Access-Token": token,
+        },
+        body: JSON.stringify({
+          query: q,
+          variables: { id: `gid://shopify/ProductVariant/${variantId}` },
+        }),
+      });
+      if (res.ok) {
+        const d = await res.json();
+        const vNode = d?.data?.node;
+        if (vNode) {
+          const matchedNumericId = parseInt(
+            vNode.id.replace("gid://shopify/ProductVariant/", ""),
+            10
+          );
+          const p = vNode.product;
+          const variantsList = (p?.variants?.nodes || []).map((vn: any) => ({
+            id: parseInt(vn.id.replace("gid://shopify/ProductVariant/", ""), 10),
+            title: vn.title,
+            available: vn.availableForSale,
+            price: parseFloat(vn.price?.amount || "0"),
+          }));
+          return {
+            prodData: {
+              title: p?.title || vNode.title,
+              handle: p?.handle || handle,
+              available: vNode.availableForSale,
+              tags: p?.tags || [],
+              price: parseFloat(vNode.price?.amount || "0"),
+              variants:
+                variantsList.length > 0
+                  ? variantsList
+                  : [
+                      {
+                        id: matchedNumericId,
+                        title: vNode.title,
+                        available: vNode.availableForSale,
+                        price: parseFloat(vNode.price?.amount || "0"),
+                      },
+                    ],
+            },
+          };
+        }
+      }
+    }
+
+    const qHandle = `
+      query getProduct($handle: String!) {
+        product(handle: $handle) {
+          title
+          handle
+          availableForSale
+          tags
+          variants(first: 50) {
+            nodes { id title availableForSale price { amount } }
+          }
+        }
+      }
+    `;
+    const resH = await fetch(`https://${hostname}/api/2024-07/graphql.json`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Shopify-Storefront-Access-Token": token,
+      },
+      body: JSON.stringify({ query: qHandle, variables: { handle } }),
+    });
+    if (resH.ok) {
+      const d = await resH.json();
+      const p = d?.data?.product;
+      if (p) {
+        const variantsList = (p.variants?.nodes || []).map((vn: any) => ({
+          id: parseInt(vn.id.replace("gid://shopify/ProductVariant/", ""), 10),
+          title: vn.title,
+          available: vn.availableForSale,
+          price: parseFloat(vn.price?.amount || "0"),
+        }));
+        return {
+          prodData: {
+            title: p.title,
+            handle: p.handle,
+            available: p.availableForSale,
+            tags: p.tags || [],
+            price: variantsList[0]?.price || null,
+            variants: variantsList,
+          },
+        };
+      }
+    }
+  } catch {}
+  return null;
+}
+
 export function clearShopifyPayloadCacheForUrl(rawUrl?: string | null) {
   if (!rawUrl) return;
   try {
@@ -482,6 +618,27 @@ export async function fetchLiveSupplierAvailability(
       ) {
         shopifyProductPayloadCache.delete(baseProductUrl);
         cachedShopifyPayload = undefined;
+      }
+
+      if (!cachedShopifyPayload) {
+        const hostKey = parsedShopifyUrl.hostname.toLowerCase().replace(/^www\./, "");
+        if (KNOWN_SHOPIFY_STOREFRONT_TOKENS[hostKey]) {
+          const productHandle = cleanPathname.split("/").filter(Boolean).pop() || "";
+          const gqlPayload = await fetchShopifyStorefrontGraphQL(
+            parsedShopifyUrl.hostname,
+            productHandle,
+            requestedVariantId
+          );
+          if (gqlPayload) {
+            const entry = {
+              timestamp: Date.now(),
+              prodData: gqlPayload.prodData,
+              fromDotJson: false,
+            };
+            cachedShopifyPayload = entry;
+            shopifyProductPayloadCache.set(baseProductUrl, entry);
+          }
+        }
       }
 
       if (!cachedShopifyPayload) {
@@ -1219,20 +1376,23 @@ export async function syncProductAvailability(
                 const optRateLimited = Boolean(
                   optLive.rawDetails?.botProtectionMitigated || optLive.rawDetails?.fallback
                 );
-                // If rate-limited and option already had a verified status, preserve it
-                if (!optRateLimited || !opt.supplierStockStatus) {
-                  opt.supplierStockStatus = optLive.status;
-                  opt.supplierStockCount = optLive.stockCount;
-                  opt.supplierPlatform = optLive.platform;
-                  opt.supplierStockMessageEs = optLive.messageEs;
-                  opt.supplierStockMessageEn = optLive.messageEn;
-                  opt.supplierStockCheckedAt = new Date().toISOString();
-                  opt.supplierLeadDaysMin = optLive.leadDaysMin;
-                  opt.supplierLeadDaysMax = optLive.leadDaysMax;
-                  if (optLive.supplierPriceUSD) {
-                    opt.supplierLastPriceUSD = optLive.supplierPriceUSD;
+                // If manualStockOverride is true, NEVER overwrite with automated status
+                if (!opt.manualStockOverride && (!optRateLimited || !opt.supplierStockStatus)) {
+                  // If rate-limited, do NOT overwrite an existing OUT_OF_STOCK
+                  if (!optRateLimited || opt.supplierStockStatus !== "OUT_OF_STOCK") {
+                    opt.supplierStockStatus = optLive.status;
+                    opt.supplierStockCount = optLive.stockCount;
+                    opt.supplierPlatform = optLive.platform;
+                    opt.supplierStockMessageEs = optLive.messageEs;
+                    opt.supplierStockMessageEn = optLive.messageEn;
+                    opt.supplierStockCheckedAt = new Date().toISOString();
+                    opt.supplierLeadDaysMin = optLive.leadDaysMin;
+                    opt.supplierLeadDaysMax = optLive.leadDaysMax;
+                    if (optLive.supplierPriceUSD) {
+                      opt.supplierLastPriceUSD = optLive.supplierPriceUSD;
+                    }
+                    parametersModified = true;
                   }
-                  parametersModified = true;
                 }
               }
             }
@@ -1255,19 +1415,21 @@ export async function syncProductAvailability(
                     const connRateLimited = Boolean(
                       connLive.rawDetails?.botProtectionMitigated || connLive.rawDetails?.fallback
                     );
-                    if (!connRateLimited || !conn.supplierStockStatus) {
-                      conn.supplierStockStatus = connLive.status;
-                      conn.supplierStockCount = connLive.stockCount;
-                      conn.supplierPlatform = connLive.platform;
-                      conn.supplierStockMessageEs = connLive.messageEs;
-                      conn.supplierStockMessageEn = connLive.messageEn;
-                      conn.supplierStockCheckedAt = new Date().toISOString();
-                      conn.supplierLeadDaysMin = connLive.leadDaysMin;
-                      conn.supplierLeadDaysMax = connLive.leadDaysMax;
-                      if (connLive.supplierPriceUSD) {
-                        conn.supplierLastPriceUSD = connLive.supplierPriceUSD;
+                    if (!conn.manualStockOverride && (!connRateLimited || !conn.supplierStockStatus)) {
+                      if (!connRateLimited || conn.supplierStockStatus !== "OUT_OF_STOCK") {
+                        conn.supplierStockStatus = connLive.status;
+                        conn.supplierStockCount = connLive.stockCount;
+                        conn.supplierPlatform = connLive.platform;
+                        conn.supplierStockMessageEs = connLive.messageEs;
+                        conn.supplierStockMessageEn = connLive.messageEn;
+                        conn.supplierStockCheckedAt = new Date().toISOString();
+                        conn.supplierLeadDaysMin = connLive.leadDaysMin;
+                        conn.supplierLeadDaysMax = connLive.leadDaysMax;
+                        if (connLive.supplierPriceUSD) {
+                          conn.supplierLastPriceUSD = connLive.supplierPriceUSD;
+                        }
+                        parametersModified = true;
                       }
-                      parametersModified = true;
                     }
                   }
                 }
@@ -1394,17 +1556,20 @@ export async function syncProductAvailability(
       variantMap[effectiveTargetUrl] ||
       buildAvailabilityObject({
         status:
-          isRateLimitedFallback && matchedTargetNode?.supplierStockStatus
+          (matchedTargetNode?.manualStockOverride || isRateLimitedFallback) && matchedTargetNode?.supplierStockStatus
             ? matchedTargetNode.supplierStockStatus
             : live.status,
-        stockCount: live.stockCount,
+        stockCount:
+          matchedTargetNode?.manualStockOverride && matchedTargetNode?.supplierStockStatus === "OUT_OF_STOCK"
+            ? 0
+            : live.stockCount,
         platform: live.platform,
         messageEs:
-          isRateLimitedFallback && matchedTargetNode?.supplierStockMessageEs
+          (matchedTargetNode?.manualStockOverride || isRateLimitedFallback) && matchedTargetNode?.supplierStockMessageEs
             ? matchedTargetNode.supplierStockMessageEs
             : live.messageEs,
         messageEn:
-          isRateLimitedFallback && matchedTargetNode?.supplierStockMessageEn
+          (matchedTargetNode?.manualStockOverride || isRateLimitedFallback) && matchedTargetNode?.supplierStockMessageEn
             ? matchedTargetNode.supplierStockMessageEn
             : live.messageEn,
         leadDaysMin: live.leadDaysMin,
