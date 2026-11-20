@@ -320,6 +320,9 @@ export async function GET(
       data: {
         combo: {
           ...combo,
+          installationAvailable: (combo as any).installationAvailable !== false,
+          isInstallationIncluded: (combo as any).installationAvailable !== false,
+          freeInstallation: (combo as any).installationAvailable !== false,
           comp: comboComp,
           compDisplay: comboCompDisplay,
           imgs: comboImgs,

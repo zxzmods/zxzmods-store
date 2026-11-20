@@ -1118,6 +1118,13 @@ export interface Translations {
   catalogComboBadge: string;
   catalogViewComboBtn: string;
   catalogConfigureBtn: string;
+  comboInstallIncludedTitle: string;
+  comboInstallIncludedDesc: string;
+  comboDeliveryOnlyTitle: string;
+  comboDeliveryOnlyDesc: string;
+  comboDeliveryOnlyBadge: string;
+  devComboInstallIncludedOption: string;
+  devComboInstallIncludedHelp: string;
 
   // Pick-up, Delivery & Home Installation
   servicesTitle: string;
@@ -3064,6 +3071,13 @@ export const translations: Record<Language, Translations> = {
     catalogComboBadge: "COMBO",
     catalogViewComboBtn: "Ver Combo",
     catalogConfigureBtn: "Configurar",
+    comboInstallIncludedTitle: "Instalación Profesional Incluida",
+    comboInstallIncludedDesc: "Ya está incluida en el precio del combo · Se coordina mediante nuestro sistema de servicios de instalación",
+    comboDeliveryOnlyTitle: "Solo Entrega / Envío (Sin Instalación)",
+    comboDeliveryOnlyDesc: "Este combo no incluye servicio de instalación; se entrega o envía directamente.",
+    comboDeliveryOnlyBadge: "Solo Envío",
+    devComboInstallIncludedOption: "Incluye Instalación (Incluida en el Precio)",
+    devComboInstallIncludedHelp: "La instalación ya viene incluida en el precio del combo (₡0 adicional para el cliente) y pasa por el sistema de servicios de instalación.",
     devComboIncludedProducts: "Productos Incluidos en el Combo",
     devComboSearchProductPlaceholder: "Buscar producto del catálogo para agregar al combo...",
     devComboAddProduct: "Agregar al Combo",
@@ -5139,6 +5153,13 @@ export const translations: Record<Language, Translations> = {
     catalogComboBadge: "COMBO",
     catalogViewComboBtn: "View Combo",
     catalogConfigureBtn: "Configure",
+    comboInstallIncludedTitle: "Professional Installation Included",
+    comboInstallIncludedDesc: "Already included in the combo price · Scheduled through our installation services system",
+    comboDeliveryOnlyTitle: "Delivery / Shipping Only (No Installation)",
+    comboDeliveryOnlyDesc: "This combo does not include installation; delivered or shipped directly.",
+    comboDeliveryOnlyBadge: "Delivery Only",
+    devComboInstallIncludedOption: "Includes Installation (Included in Price)",
+    devComboInstallIncludedHelp: "Installation is already included in the combo price (₡0 extra for customer) and goes through the installation services system.",
     devComboIncludedProducts: "Products Included in Combo",
     devComboSearchProductPlaceholder: "Search catalog product to add to combo...",
     devComboAddProduct: "Add to Combo",

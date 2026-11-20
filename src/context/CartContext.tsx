@@ -22,6 +22,7 @@ export interface CartItem {
   selectedParameters?: SelectedParameterItem[];
   parametersSummary?: string;
   installationPriceCRC: number;
+  installationAvailable?: boolean;
   withInstallation: boolean;
   quantity: number;
   type: "PRODUCT" | "COMBO" | "PACKAGE";
@@ -294,18 +295,15 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             );
 
             if (matched) {
-              const isComboFree = Boolean(
-                matched.freeInstallation === true ||
-                matched.isInstallationIncluded === true ||
-                matched.installationPriceCRC === 0
-              );
-              const freshHomeInstall = matched.homeInstallationAvailable !== false;
+              // Combos include installation inside their T_price (₡0 extra) whenever installationAvailable !== false
+              const comboIncludesInstall = matched.installationAvailable !== false;
+              const freshHomeInstall = comboIncludesInstall ? (matched.homeInstallationAvailable !== false) : false;
               const comboDeltaSum = (cartItem.selectedParameters || []).reduce((acc, p) => acc + (p.priceDeltaCRC || 0), 0);
               const freshBasePrice = matched.priceCRC ?? (cartItem.basePriceCRC ?? (cartItem.priceCRC - comboDeltaSum));
               const freshPrice = freshBasePrice + comboDeltaSum;
-              const freshInstallPrice = isComboFree ? 0 : (matched.installationPriceCRC ?? cartItem.installationPriceCRC);
-              const freshWithInstallation = isComboFree ? true : cartItem.withInstallation;
-              const freshFreeInstallation = isComboFree;
+              const freshInstallPrice = 0;
+              const freshWithInstallation = comboIncludesInstall;
+              const freshFreeInstallation = comboIncludesInstall;
 
               const freshStockStatus = matched.stockStatus || matched.availability?.status || "IN_STOCK";
               const freshStockMsg = matched.availability?.summaryEs || null;
@@ -314,6 +312,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
               if (
                 cartItem.homeInstallation !== freshHomeInstall ||
+                cartItem.installationAvailable !== comboIncludesInstall ||
                 cartItem.priceCRC !== freshPrice ||
                 cartItem.installationPriceCRC !== freshInstallPrice ||
                 cartItem.withInstallation !== freshWithInstallation ||
@@ -324,6 +323,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
                 return {
                   ...cartItem,
                   homeInstallation: freshHomeInstall,
+                  installationAvailable: comboIncludesInstall,
                   basePriceCRC: freshBasePrice,
                   priceCRC: freshPrice,
                   installationPriceCRC: freshInstallPrice,
@@ -495,7 +495,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       ? item.selectedParameters.map((p) => `${p.parameterName}: ${p.optionLabel}${p.priceDeltaCRC ? ` (${p.priceDeltaCRC > 0 ? `+₡${p.priceDeltaCRC.toLocaleString()}` : `-₡${Math.abs(p.priceDeltaCRC).toLocaleString()}`})` : ""}`).join(" | ")
       : undefined);
 
-    const isFree = Boolean(
+    const isDeliveryOnly = item.installationAvailable === false;
+    const isFree = !isDeliveryOnly && Boolean(
       item.freeInstallation === true ||
       (item.withInstallation && item.installationPriceCRC === 0)
     );
@@ -503,9 +504,11 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       ...item,
       id: computedId,
       parametersSummary: computedSummary,
+      installationAvailable: !isDeliveryOnly,
       freeInstallation: isFree,
-      installationPriceCRC: isFree ? 0 : item.installationPriceCRC,
-      withInstallation: isFree ? true : item.withInstallation,
+      installationPriceCRC: isDeliveryOnly || isFree ? 0 : item.installationPriceCRC,
+      withInstallation: isDeliveryOnly ? false : (isFree ? true : item.withInstallation),
+      homeInstallation: isDeliveryOnly ? false : item.homeInstallation,
     };
 
     let updatedItem: CartItem = { ...sanitizedItem, quantity: 1 };
@@ -590,9 +593,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       quantity: 1,
       imageUrl: combo.imageUrl || "/images/sxs/z10_front.png",
       category: ["performance"],
-      withInstallation: false,
+      installationAvailable: true,
+      withInstallation: true,
       installationPriceCRC: 0,
-      freeInstallation: false,
+      freeInstallation: true,
       supplierStockStatus: "IN_STOCK",
       supplierLeadDaysMin: 2,
       supplierLeadDaysMax: 4,

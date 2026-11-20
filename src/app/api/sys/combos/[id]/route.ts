@@ -119,6 +119,9 @@ export async function PATCH(
       updateData.uniqueProductJson = typeof body.uniqueProductJson === "string" ? body.uniqueProductJson : JSON.stringify(body.uniqueProductJson);
     }
     if (body.featured !== undefined) updateData.featured = Boolean(body.featured);
+    if (body.installationAvailable !== undefined) {
+      updateData.installationAvailable = Boolean(body.installationAvailable);
+    }
     if (body.homeInstallationAvailable !== undefined) updateData.homeInstallationAvailable = Boolean(body.homeInstallationAvailable);
     if (body.isArchived !== undefined) updateData.isArchived = Boolean(body.isArchived);
 
@@ -191,6 +194,21 @@ export async function PATCH(
         extraPartsTotalCRC: extraPartsSum,
         profitCRC: installProfit,
         totalCostCRC: updateData.installationPriceCRC !== undefined ? updateData.installationPriceCRC : calculatedInstallPrice,
+      });
+    }
+
+    if (updateData.installationAvailable === false) {
+      updateData.homeInstallationAvailable = false;
+      updateData.installationPriceCRC = 0;
+      updateData.installLabourCostCRC = 0;
+      updateData.installProfitCRC = 0;
+      updateData.installExtraPartsJson = "[]";
+      updateData.installationDurationMinutes = 0;
+      updateData.installationBreakdownJson = JSON.stringify({
+        labourCostCRC: 0,
+        extraPartsTotalCRC: 0,
+        profitCRC: 0,
+        totalCostCRC: 0,
       });
     }
 

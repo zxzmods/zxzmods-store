@@ -446,20 +446,45 @@ function TransportServiceContent() {
     [config?.ineligibleHomeInstallKeys]
   );
 
+  // Check if ALL items across selected orders are Delivery Only (installationAvailable === false)
+  const isDeliveryOnlyOrder = useMemo(() => {
+    if (selectedOrders.length === 0) return false;
+    let foundAnyItem = false;
+    const allDeliveryOnly = selectedOrders.every((ord) => {
+      if (!ord?.itemsJson) return false;
+      try {
+        const items = JSON.parse(ord.itemsJson);
+        if (Array.isArray(items) && items.length > 0) {
+          foundAnyItem = true;
+          return items.every((it: any) => it.installationAvailable === false);
+        }
+      } catch {}
+      return false;
+    });
+    return foundAnyItem && allDeliveryOnly;
+  }, [selectedOrders]);
+
+  // If the selected order(s) are strictly Delivery Only, automatically switch to "delivery"
+  useEffect(() => {
+    if (isDeliveryOnlyOrder && selectedService !== "delivery") {
+      setSelectedService("delivery");
+    }
+  }, [isDeliveryOnlyOrder, selectedService]);
+
   // Check if ANY of the selected orders contains an ineligible product
   const isHomeInstallationBlockedByOrder = useMemo(() => {
     if (selectedOrders.length === 0) return false;
-    return selectedOrders.some((ord) => orderHasIneligibleHomeInstall(ord));
-  }, [selectedOrders, orderHasIneligibleHomeInstall]);
+    return isDeliveryOnlyOrder || selectedOrders.some((ord) => orderHasIneligibleHomeInstall(ord));
+  }, [selectedOrders, orderHasIneligibleHomeInstall, isDeliveryOnlyOrder]);
 
   // If user has 'installation' selected and the order contains an ineligible product,
   // automatically switch away to shop_installation and alert the user
   useEffect(() => {
-    if (isHomeInstallationBlockedByOrder && selectedService === "installation") {
+    if (!isDeliveryOnlyOrder && isHomeInstallationBlockedByOrder && selectedService === "installation") {
       setSelectedService("shop_installation");
       setErrorMessage(t.serviceHomeInstallIneligibleOrderAlert);
     }
-  }, [isHomeInstallationBlockedByOrder, selectedService, t.serviceHomeInstallIneligibleOrderAlert]);
+  }, [isDeliveryOnlyOrder, isHomeInstallationBlockedByOrder, selectedService, t.serviceHomeInstallIneligibleOrderAlert]);
 
   const isReturnBooking = searchParams.get("return") === "true";
 
@@ -536,6 +561,14 @@ function TransportServiceContent() {
         openGarageModal();
         return;
       }
+    }
+    if (isDeliveryOnlyOrder && newService !== "delivery") {
+      setErrorMessage(
+        lang === "es"
+          ? "Este pedido es únicamente de Entrega / Envío (sin servicio de instalación)."
+          : "This order is Delivery / Shipping Only (no installation service)."
+      );
+      return;
     }
     if (isPickupBounded && newService !== "pickup") {
       setErrorMessage(

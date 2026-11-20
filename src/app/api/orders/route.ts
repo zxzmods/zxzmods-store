@@ -201,6 +201,7 @@ export async function POST(request: Request) {
             slug: true,
             priceCRC: true,
             installationPriceCRC: true,
+            installationAvailable: true,
             isInstallationIncluded: true,
             installationDurationMinutes: true,
             processingPriceD: true,
@@ -216,22 +217,43 @@ export async function POST(request: Request) {
               { slug: { in: identifiers } },
             ],
           },
-          select: { id: true, slug: true, priceCRC: true, installationPriceCRC: true, installationDurationMinutes: true, category: true },
+          select: {
+            id: true,
+            slug: true,
+            priceCRC: true,
+            installationPriceCRC: true,
+            installationAvailable: true,
+            installationDurationMinutes: true,
+            category: true,
+          },
         }),
       ]);
 
       const priceMap = new Map<
         string,
-        { priceCRC: number; installCRC: number; durationMin: number; isFreeInstall: boolean; basePriceUSD?: number; supplierUrl?: string | null; voidsWarranty?: boolean }
+        {
+          priceCRC: number;
+          installCRC: number;
+          durationMin: number;
+          isFreeInstall: boolean;
+          installationAvailable: boolean;
+          basePriceUSD?: number;
+          supplierUrl?: string | null;
+          voidsWarranty?: boolean;
+        }
       >();
       dbProducts.forEach((p) => {
-        const isFree = Boolean(p.isInstallationIncluded);
-        const durationMin = Number(p.installationDurationMinutes) > 0 ? Number(p.installationDurationMinutes) : 60;
+        const isDeliveryOnly = p.installationAvailable === false;
+        const isFree = !isDeliveryOnly && Boolean(p.isInstallationIncluded);
+        const durationMin = isDeliveryOnly
+          ? 0
+          : (Number(p.installationDurationMinutes) > 0 ? Number(p.installationDurationMinutes) : 60);
         const entry = {
           priceCRC: p.priceCRC,
-          installCRC: isFree ? 0 : p.installationPriceCRC,
+          installCRC: isDeliveryOnly || isFree ? 0 : p.installationPriceCRC,
           durationMin,
           isFreeInstall: isFree,
+          installationAvailable: !isDeliveryOnly,
           basePriceUSD: p.processingPriceD || p.supplierLastPriceUSD || 0,
           supplierUrl: p.supplierUrl || null,
           voidsWarranty: Boolean(p.voidsWarranty),
@@ -241,13 +263,17 @@ export async function POST(request: Request) {
         priceMap.set(p.slug, entry);
       });
       dbCombos.forEach((c) => {
-        const isComboFree = (c.installationPriceCRC || 0) === 0;
-        const durationMin = Number(c.installationDurationMinutes) > 0 ? Number(c.installationDurationMinutes) : 60;
+        // Combo installation is ALWAYS included in the combo's T_price when installationAvailable !== false (₡0 extra)
+        const comboIncludesInstall = c.installationAvailable !== false;
+        const durationMin = comboIncludesInstall
+          ? (Number(c.installationDurationMinutes) > 0 ? Number(c.installationDurationMinutes) : 60)
+          : 0;
         const entry = {
           priceCRC: c.priceCRC,
-          installCRC: isComboFree ? 0 : c.installationPriceCRC,
+          installCRC: 0,
           durationMin,
-          isFreeInstall: isComboFree,
+          isFreeInstall: comboIncludesInstall,
+          installationAvailable: comboIncludesInstall,
           voidsWarranty: c.category === "performance",
         };
         priceMap.set(c.id, entry);
@@ -264,27 +290,31 @@ export async function POST(request: Request) {
           priceMap.get(rawId) ||
           (it.sku ? priceMap.get(it.sku) : undefined) ||
           (it.slug ? priceMap.get(it.slug) : undefined);
-        const isFree = Boolean(
+        const isDeliveryOnly = dbItem
+          ? dbItem.installationAvailable === false
+          : it.installationAvailable === false;
+        const isFree = !isDeliveryOnly && Boolean(
           dbItem?.isFreeInstall ||
           it.freeInstallation === true ||
-          it.isInstallationIncluded === true
+          it.isInstallationIncluded === true ||
+          it.type === "COMBO"
         );
         const paramDeltaCRC = Array.isArray(it.selectedParameters)
           ? it.selectedParameters.reduce((acc: number, p: any) => acc + (Number(p?.priceDeltaCRC) || 0), 0)
           : 0;
         const unitPrice = dbItem ? dbItem.priceCRC + paramDeltaCRC : Math.max(0, Number(it.priceCRC) || 0);
-        const installPrice = isFree ? 0 : (dbItem ? dbItem.installCRC : Math.max(0, Number(it.installationPriceCRC) || 0));
-        const itemDuration = dbItem?.durationMin ?? (Number(it.installationDurationMinutes) || 60);
+        const installPrice = isDeliveryOnly || isFree ? 0 : (dbItem ? dbItem.installCRC : Math.max(0, Number(it.installationPriceCRC) || 0));
+        const itemDuration = isDeliveryOnly ? 0 : (dbItem?.durationMin ?? (Number(it.installationDurationMinutes) || 60));
 
         calculatedPartsCRC += unitPrice * qty;
         totalProductsInstallationCRC += installPrice * qty;
 
-        const needsInstall = isFree ? true : Boolean(it.withInstallation);
+        const needsInstall = isDeliveryOnly ? false : (isFree ? true : Boolean(it.withInstallation));
         if (needsInstall) {
           totalInstallationMinutes += itemDuration * qty;
         }
 
-        if (it.withInstallation && !isFree) {
+        if (needsInstall && !isFree) {
           calculatedLaborCRC += installPrice * qty;
         }
 
@@ -297,8 +327,10 @@ export async function POST(request: Request) {
           priceCRC: unitPrice,
           installationPriceCRC: installPrice,
           installationDurationMinutes: itemDuration,
+          installationAvailable: !isDeliveryOnly,
           freeInstallation: isFree,
-          withInstallation: isFree ? true : Boolean(it.withInstallation),
+          withInstallation: needsInstall,
+          homeInstallation: isDeliveryOnly ? false : it.homeInstallation,
           basePriceUSD: it.basePriceUSD ?? dbItem?.basePriceUSD ?? undefined,
           supplierUrl: variantSupplierUrl || it.supplierUrl || dbItem?.supplierUrl || undefined,
           voidsWarranty: dbItem?.voidsWarranty ?? it.voidsWarranty ?? false,

@@ -425,6 +425,9 @@ export async function GET(request: NextRequest) {
         data: {
           combo: {
             ...combo,
+            installationAvailable: (combo as any).installationAvailable !== false,
+            isInstallationIncluded: (combo as any).installationAvailable !== false,
+            freeInstallation: (combo as any).installationAvailable !== false,
             comp: comboComp,
             compDisplay: comboCompDisplay,
             imgs: comboImgs,
@@ -533,6 +536,9 @@ export async function GET(request: NextRequest) {
       const distributorBrands = detectComboDistributorBrands(c, catalogProducts);
       return {
         ...c,
+        installationAvailable: (c as any).installationAvailable !== false,
+        isInstallationIncluded: (c as any).installationAvailable !== false,
+        freeInstallation: (c as any).installationAvailable !== false,
         comp,
         compDisplay,
         imgs: cImgs,

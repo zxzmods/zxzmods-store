@@ -352,7 +352,7 @@ function dbComboToProductItem(combo: any, activeDbProducts: any[]): ProductItem 
     return null;
   })();
 
-  const isInstallIncluded = combo.installationAvailable !== false && (Number(combo.installationPriceCRC) || 0) === 0;
+  const isInstallIncluded = combo.installationAvailable !== false;
 
   return {
     id: `combo-${combo.id}`,
@@ -370,7 +370,7 @@ function dbComboToProductItem(combo: any, activeDbProducts: any[]): ProductItem 
       S_price: 0,
       I_price: {
         includes: isInstallIncluded,
-        I_price: combo.installationAvailable === false ? 0 : (Number(combo.installationPriceCRC) || 0),
+        I_price: 0,
       },
       profit: 0,
       iva: {

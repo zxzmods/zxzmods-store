@@ -74,6 +74,7 @@ interface ComboItem {
   priceCRC: number;
   originalPriceCRC: number;
   installationPriceCRC: number;
+  installationAvailable?: boolean;
   discountPercent: number;
   items: string[];
   imageUrl: string;
@@ -142,7 +143,6 @@ export default function ComboDetailPage() {
 
   const [combo, setCombo] = useState<ComboItem | null>(null);
   const [loading, setLoading] = useState(true);
-  const [withInstallation, setWithInstallation] = useState(false);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [selectedImageOverride, setSelectedImageOverride] = useState<string | null>(null);
 
@@ -544,6 +544,8 @@ export default function ComboDetailPage() {
     }
     const uniqueProductSummary = uniqueSummaryParts.join(" | ");
 
+    const includesInstall = combo.installationAvailable !== false;
+
     addItem({
       type: "COMBO",
       id: `combo-${combo.id}${uniqueProductSummary ? `-${encodeURIComponent(uniqueProductSummary).slice(0, 24)}` : ""}`,
@@ -553,9 +555,11 @@ export default function ComboDetailPage() {
       priceCRC: effectivePriceCRC,
       basePriceCRC: combo.priceCRC,
       selectedParameters: combinedCartParameters,
-      installationPriceCRC: combo.installationPriceCRC,
-      withInstallation,
-      homeInstallation: combo.homeInstallationAvailable ?? true,
+      installationAvailable: includesInstall,
+      installationPriceCRC: 0,
+      withInstallation: includesInstall,
+      freeInstallation: includesInstall,
+      homeInstallation: includesInstall ? (combo.homeInstallationAvailable ?? true) : false,
       imageUrl: activeOptionImage || combo.imageUrl,
       supplierUrl: dualResolution.effectiveSupplierUrl || null,
       supplierStockStatus: combo.stockStatus || combo.availability?.status || "IN_STOCK",
@@ -588,12 +592,6 @@ export default function ComboDetailPage() {
     ? currency === "USD"
       ? formatUSD(convertCRCToUSD(combo.originalPriceCRC, sellRate))
       : formatCRC(combo.originalPriceCRC)
-    : "";
-
-  const displayInstallPrice = combo
-    ? currency === "USD"
-      ? formatUSD(convertCRCToUSD(combo.installationPriceCRC, sellRate))
-      : formatCRC(combo.installationPriceCRC)
     : "";
 
   const savingsCRC = combo ? combo.originalPriceCRC - effectivePriceCRC : 0;
@@ -818,15 +816,27 @@ export default function ComboDetailPage() {
                     </span>
                   </div>
 
-                  <div className="p-3.5 rounded-2xl bg-gray-50 border border-gray-200/90 flex flex-col justify-between space-y-1">
-                    <Wrench className="w-5 h-5 text-blue-600" />
-                    <span className="text-xs font-bold text-gray-900 block">
-                      {lang === "es" ? "Instalación Certificada" : "Certified Install"}
-                    </span>
-                    <span className="text-[10px] text-gray-500">
-                      {lang === "es" ? "Santa Ana, San José, Costa Rica" : "Santa Ana, San José, Costa Rica"}
-                    </span>
-                  </div>
+                  {combo.installationAvailable === false ? (
+                    <div className="p-3.5 rounded-2xl bg-sky-50/70 border border-sky-200/90 flex flex-col justify-between space-y-1">
+                      <Truck className="w-5 h-5 text-sky-600" />
+                      <span className="text-xs font-bold text-gray-900 block">
+                        {t.comboDeliveryOnlyBadge || (lang === "es" ? "Solo Envío / Entrega" : "Delivery Only")}
+                      </span>
+                      <span className="text-[10px] text-gray-500">
+                        {lang === "es" ? "Entrega directa en Costa Rica" : "Direct delivery in Costa Rica"}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="p-3.5 rounded-2xl bg-gray-50 border border-gray-200/90 flex flex-col justify-between space-y-1">
+                      <Wrench className="w-5 h-5 text-emerald-600" />
+                      <span className="text-xs font-bold text-gray-900 block">
+                        {lang === "es" ? "Instalación Incluida" : "Installation Included"}
+                      </span>
+                      <span className="text-[10px] text-gray-500">
+                        {lang === "es" ? "Santa Ana, San José, Costa Rica" : "Santa Ana, San José, Costa Rica"}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Included Components (Boxed List) - Positioned on Left Column under media */}
@@ -947,16 +957,21 @@ export default function ComboDetailPage() {
                     </span>
                   )}
 
-                  {combo.homeInstallationAvailable !== false ? (
+                  {combo.installationAvailable === false ? (
+                    <span className="inline-flex items-center gap-1 bg-sky-50 text-sky-800 border border-sky-200 text-[11px] font-semibold px-2.5 py-0.5 rounded-full">
+                      <Truck className="w-3 h-3 text-sky-600" />
+                      <span>{t.devDeliveryOnlyBadge || (lang === "es" ? "Solo Entrega / Envío" : "Delivery Only")}</span>
+                    </span>
+                  ) : combo.homeInstallationAvailable !== false ? (
                     <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-800 border border-emerald-200 text-[11px] font-semibold px-2.5 py-0.5 rounded-full">
                       <Home className="w-3 h-3 text-emerald-600" />
                       <span>{t.cartHomeInstallationEligible}</span>
                     </span>
                   ) : (
-                    <span className="inline-flex items-center gap-1 bg-gray-100 text-gray-600 text-[11px] font-medium px-2.5 py-0.5 rounded-full">
-                      <Wrench className="w-3 h-3 text-gray-400" />
+                    <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-800 border border-emerald-200 text-[11px] font-semibold px-2.5 py-0.5 rounded-full">
+                      <Wrench className="w-3 h-3 text-emerald-600" />
                       <span>
-                        {lang === "es" ? "Instalación en Taller" : "Workshop Install"}
+                        {lang === "es" ? "Instalación en Taller Incluida" : "Workshop Install Included"}
                       </span>
                     </span>
                   )}
@@ -1329,40 +1344,52 @@ export default function ComboDetailPage() {
                   )}
                 </div>
 
-                {/* Optional Workshop Installation Toggle */}
-                <div
-                  onClick={() => setWithInstallation(!withInstallation)}
-                  className={`cursor-pointer p-4 rounded-2xl border transition-all flex items-center justify-between select-none ${
-                    withInstallation
-                      ? "bg-emerald-50/70 border-emerald-400 text-emerald-950 shadow-xs"
-                      : "bg-gray-50 border-gray-200 text-gray-700 hover:border-gray-300"
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <div
-                      className={`w-5 h-5 rounded-md border flex items-center justify-center transition-colors ${
-                        withInstallation
-                          ? "bg-emerald-600 border-emerald-600 text-white"
-                          : "border-gray-300 bg-white"
-                      }`}
-                    >
-                      {withInstallation && <Check className="w-3.5 h-3.5" />}
+                {/* Combo Installation Status Banner (Included in Price vs Delivery Only) */}
+                {combo.installationAvailable === false ? (
+                  <div className="p-4 rounded-2xl border bg-sky-50/70 border-sky-200 text-sky-950 flex items-center justify-between gap-3 select-none">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-9 h-9 rounded-xl bg-sky-600 text-white flex items-center justify-center shrink-0 shadow-2xs">
+                        <Truck className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-extrabold text-sky-950">
+                          {t.comboDeliveryOnlyTitle || (lang === "es" ? "Solo Entrega / Envío (Sin Instalación)" : "Delivery / Shipping Only (No Installation)")}
+                        </p>
+                        <p className="text-[11px] text-sky-800/80 leading-snug mt-0.5">
+                          {t.comboDeliveryOnlyDesc ||
+                            (lang === "es"
+                              ? "Este combo no incluye servicio de instalación; se entrega o envía directamente."
+                              : "This combo does not include installation; delivered or shipped directly.")}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-xs font-bold text-gray-900">
-                        {t.comboInstallAddon}
-                      </p>
-                      <p className="text-[10px] text-gray-500">
-                        {lang === "es"
-                          ? "Instalación por mecánicos certificados en nuestro taller"
-                          : "Installation by certified mechanics at our workshop"}
-                      </p>
-                    </div>
+                    <span className="text-[10px] font-black uppercase tracking-wider bg-sky-100 text-sky-800 border border-sky-300/70 px-2.5 py-1 rounded-full shrink-0">
+                      {t.comboDeliveryOnlyBadge || (lang === "es" ? "Solo Envío" : "Delivery Only")}
+                    </span>
                   </div>
-                  <span className="text-xs font-mono font-bold text-[#C02030]">
-                    {combo.installationPriceCRC === 0 ? t.comboInstallationIncluded : `+${displayInstallPrice}`}
-                  </span>
-                </div>
+                ) : (
+                  <div className="p-4 rounded-2xl border bg-emerald-50/70 border-emerald-200 text-emerald-950 flex items-center justify-between gap-3 select-none">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-2xs">
+                        <Wrench className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-extrabold text-emerald-950">
+                          {t.comboInstallIncludedTitle || (lang === "es" ? "Instalación Profesional Incluida" : "Professional Installation Included")}
+                        </p>
+                        <p className="text-[11px] text-emerald-800/85 leading-snug mt-0.5">
+                          {t.comboInstallIncludedDesc ||
+                            (lang === "es"
+                              ? "Ya está incluida en el precio del combo · Se coordina mediante nuestro sistema de servicios de instalación"
+                              : "Already included in the combo price · Scheduled through our installation services system")}
+                        </p>
+                      </div>
+                    </div>
+                    <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-300/70 px-2.5 py-1 rounded-full shrink-0">
+                      {t.comboInstallationIncluded || (lang === "es" ? "Incluida" : "Included")}
+                    </span>
+                  </div>
+                )}
 
                 {/* Customer Text Input Fields (Immediately Above Add to Cart) */}
                 {textInputParameters.length > 0 && (

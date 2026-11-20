@@ -34,6 +34,7 @@ import {
   Layers,
   Receipt,
   FileText,
+  Truck,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { formatCRC, formatUSD } from "@/lib/i18n";
@@ -870,7 +871,16 @@ export default function CheckoutPage() {
 
                         {/* Installation notice */}
                         <div className="mt-2 text-[11px] select-none">
-                          {item.freeInstallation || item.installationPriceCRC === 0 || item.type === "COMBO" ? (
+                          {item.installationAvailable === false ? (
+                            <div className="flex items-center justify-between w-full bg-sky-50 border border-sky-200 text-sky-800 rounded-xl px-2.5 py-1">
+                              <div className="flex items-center gap-1.5">
+                                <Truck className="w-3.5 h-3.5 text-sky-600 flex-shrink-0" />
+                                <span className="font-semibold text-sky-800">
+                                  {t.devDeliveryOnlyBadge || (lang === "es" ? "Solo Entrega / Envío" : "Delivery Only")}
+                                </span>
+                              </div>
+                            </div>
+                          ) : item.freeInstallation || item.installationPriceCRC === 0 || item.type === "COMBO" ? (
                             <div className="flex items-center justify-between w-full bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl px-2.5 py-1">
                               <div className="flex items-center gap-1.5">
                                 <Wrench className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />

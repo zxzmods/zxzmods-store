@@ -613,7 +613,15 @@ export default function CartPage() {
                           {/* Side-by-side Installation and House Icon */}
                           <div className="flex items-center gap-2 self-start sm:self-auto">
                             {/* Installation: Wrench icon and word 'Gratis' (or selectable button if paid) */}
-                            {item.freeInstallation || item.installationPriceCRC === 0 || item.type === "COMBO" ? (
+                            {item.installationAvailable === false ? (
+                              <div
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-sky-50 border border-sky-200 text-sky-800 shadow-2xs select-none"
+                                title={t.comboDeliveryOnlyDesc}
+                              >
+                                <Truck className="w-3.5 h-3.5 text-sky-600 flex-shrink-0" />
+                                <span>{t.devDeliveryOnlyBadge || (lang === "es" ? "Solo Entrega / Envío" : "Delivery Only")}</span>
+                              </div>
+                            ) : item.freeInstallation || item.installationPriceCRC === 0 || item.type === "COMBO" ? (
                               <div
                                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-50 border border-emerald-200 text-emerald-800 shadow-2xs select-none"
                                 title={lang === "es" ? "Instalación gratis incluida con la pieza" : "Free installation included with item"}

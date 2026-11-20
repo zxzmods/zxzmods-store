@@ -4163,6 +4163,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
     imageUrl: "/images/sxs/z10_front.png",
     imgsText: "",
     featured: true,
+    installationAvailable: true,
     homeInstallationAvailable: true,
     parameters: [] as ConfigurableParameter[],
     suggestedProductIds: [] as string[],
@@ -6253,7 +6254,8 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
         return list.join("\n");
       })(),
       featured: combo.featured ?? true,
-      homeInstallationAvailable: combo.homeInstallationAvailable ?? true,
+      installationAvailable: combo.installationAvailable !== false,
+      homeInstallationAvailable: combo.installationAvailable !== false ? (combo.homeInstallationAvailable ?? true) : false,
       parameters: comboParams,
       suggestedProductIds: (() => {
         if (Array.isArray(combo.suggestedProductIds)) return combo.suggestedProductIds;
@@ -6313,6 +6315,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       imageUrl: "/images/sxs/z10_front.png",
       imgsText: "",
       featured: true,
+      installationAvailable: true,
       homeInstallationAvailable: true,
       parameters: [] as ConfigurableParameter[],
       suggestedProductIds: [] as string[],
@@ -6536,19 +6539,20 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
           descriptionEn: cleanDescriptionText(comboForm.descriptionEn),
           priceCRC: comboForm.priceCRC,
           originalPriceCRC: comboForm.originalPriceCRC,
-          installationPriceCRC: comboForm.installationPriceCRC,
-          installLabourCostCRC: Math.round(Number(comboForm.installLabourCostCRC) || 0),
-          installProfitCRC: Math.round(Number(comboForm.installProfitCRC) || 0),
-          installationDurationMinutes: Math.max(15, Math.round(Number(comboForm.installationDurationMinutes) || 60)),
-          installExtraParts: sanitizeExtraParts(comboForm.installExtraParts || []),
-          installExtraPartsJson: JSON.stringify(sanitizeExtraParts(comboForm.installExtraParts || [])),
+          installationAvailable: comboForm.installationAvailable !== false,
+          installationPriceCRC: comboForm.installationAvailable !== false ? comboForm.installationPriceCRC : 0,
+          installLabourCostCRC: comboForm.installationAvailable !== false ? Math.round(Number(comboForm.installLabourCostCRC) || 0) : 0,
+          installProfitCRC: comboForm.installationAvailable !== false ? Math.round(Number(comboForm.installProfitCRC) || 0) : 0,
+          installationDurationMinutes: comboForm.installationAvailable !== false ? Math.max(15, Math.round(Number(comboForm.installationDurationMinutes) || 60)) : 0,
+          installExtraParts: comboForm.installationAvailable !== false ? sanitizeExtraParts(comboForm.installExtraParts || []) : [],
+          installExtraPartsJson: comboForm.installationAvailable !== false ? JSON.stringify(sanitizeExtraParts(comboForm.installExtraParts || [])) : "[]",
           discountPercent: comboForm.discountPercent,
           itemsJson: JSON.stringify(items),
           imageUrl: chosenComboPrimary,
           imagesJson: JSON.stringify(orderedComboImgs),
           imgs: orderedComboImgs,
           featured: comboForm.featured,
-          homeInstallationAvailable: comboForm.homeInstallationAvailable,
+          homeInstallationAvailable: comboForm.installationAvailable !== false ? comboForm.homeInstallationAvailable : false,
           parameters: comboForm.parameters,
           parametersJson: JSON.stringify(comboForm.parameters || []),
           suggestedProductIds: comboForm.suggestedProductIds || [],
@@ -12718,39 +12722,148 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                   />
                 </div>
 
-                <div className="pt-2 border-t border-slate-100">
-                  <InstallationBreakdownEditor
-                    labourCostCRC={comboForm.installLabourCostCRC}
-                    extraParts={comboForm.installExtraParts}
-                    profitCRC={comboForm.installProfitCRC}
-                    totalCostCRC={comboForm.installationPriceCRC}
-                    durationMinutes={comboForm.installationDurationMinutes}
-                    onDurationChange={(mins) => setComboForm((prev) => ({ ...prev, installationDurationMinutes: mins }))}
-                    lang={lang}
-                    t={t}
-                    showIncludeCheckbox={false}
-                    comboProductsInstallSummary={comboProductsInstallSummary}
-                    onApplyComboProductsInstall={handleApplyComboProductsInstall}
-                    suggestedExtraParts={availableExtraPartsSuggestions}
-                    onChange={(labour, parts, profit) => {
-                      const partsTotal = (parts || []).reduce((sum, pt) => sum + (Number(pt.priceCRC) || 0), 0);
-                      const totalInstall = Math.max(0, labour) + Math.max(0, partsTotal) + Math.max(0, profit);
-                      setComboForm((prev) => ({
-                        ...prev,
-                        installLabourCostCRC: labour,
-                        installExtraParts: parts,
-                        installProfitCRC: profit,
-                        installationPriceCRC: totalInstall,
-                      }));
-                    }}
-                  />
+                {/* Modalidad de Entrega e Instalación del Combo: Incluye Instalación vs Solo Entrega / Envío */}
+                <div className="pt-3 border-t border-slate-100 space-y-3">
+                  <div className="p-4 rounded-2xl bg-slate-50/70 border border-slate-200/90 space-y-3">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                        <Truck className="w-4 h-4 text-[#C02030]" />
+                        <span>{t.devInstallationModeTitle || "Modalidad de Entrega e Instalación"}</span>
+                      </span>
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                          comboForm.installationAvailable !== false
+                            ? "bg-emerald-50 text-emerald-800 border-emerald-300"
+                            : "bg-sky-50 text-sky-800 border-sky-300"
+                        }`}
+                      >
+                        {comboForm.installationAvailable !== false
+                          ? (lang === "es" ? "Instalación Incluida en Precio" : "Installation Included in Price")
+                          : (t.devDeliveryOnlyBadge || "Solo Entrega / Envío")}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setComboForm((prev) => ({
+                            ...prev,
+                            installationAvailable: true,
+                            installationDurationMinutes: prev.installationDurationMinutes > 0 ? prev.installationDurationMinutes : 60,
+                          }));
+                        }}
+                        className={`p-3 rounded-xl border text-left transition flex items-start gap-2.5 cursor-pointer ${
+                          comboForm.installationAvailable !== false
+                            ? "bg-emerald-50/80 border-emerald-400 ring-2 ring-emerald-500/20 shadow-xs"
+                            : "bg-white border-slate-200 hover:border-slate-300"
+                        }`}
+                      >
+                        <div
+                          className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                            comboForm.installationAvailable !== false ? "bg-emerald-600 text-white" : "bg-slate-200 text-slate-600"
+                          }`}
+                        >
+                          <Wrench className="w-4 h-4" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-xs font-bold text-slate-900">
+                            {t.devComboInstallIncludedOption || "Incluye Instalación (Incluida en el Precio)"}
+                          </div>
+                          <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">
+                            {t.devComboInstallIncludedHelp ||
+                              "La instalación ya viene incluida en el precio del combo (₡0 adicional) y pasa por el sistema de servicios de instalación."}
+                          </p>
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setComboForm((prev) => ({
+                            ...prev,
+                            installationAvailable: false,
+                            homeInstallationAvailable: false,
+                            installationPriceCRC: 0,
+                            installLabourCostCRC: 0,
+                            installProfitCRC: 0,
+                            installExtraParts: [],
+                            installationDurationMinutes: 0,
+                          }));
+                        }}
+                        className={`p-3 rounded-xl border text-left transition flex items-start gap-2.5 cursor-pointer ${
+                          comboForm.installationAvailable === false
+                            ? "bg-sky-50/80 border-sky-400 ring-2 ring-sky-500/20 shadow-xs"
+                            : "bg-white border-slate-200 hover:border-slate-300"
+                        }`}
+                      >
+                        <div
+                          className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                            comboForm.installationAvailable === false ? "bg-sky-600 text-white" : "bg-slate-200 text-slate-600"
+                          }`}
+                        >
+                          <Truck className="w-4 h-4" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-xs font-bold text-slate-900">
+                            {t.devDeliveryOnlyOption || "Solo Entrega / Envío (Sin Instalación)"}
+                          </div>
+                          <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">
+                            {t.comboDeliveryOnlyDesc || "Este combo no incluye servicio de instalación; se entrega o envía directamente."}
+                          </p>
+                        </div>
+                      </button>
+                    </div>
+                  </div>
+
+                  {comboForm.installationAvailable !== false ? (
+                    <InstallationBreakdownEditor
+                      labourCostCRC={comboForm.installLabourCostCRC}
+                      extraParts={comboForm.installExtraParts}
+                      profitCRC={comboForm.installProfitCRC}
+                      totalCostCRC={comboForm.installationPriceCRC}
+                      durationMinutes={comboForm.installationDurationMinutes}
+                      onDurationChange={(mins) => setComboForm((prev) => ({ ...prev, installationDurationMinutes: mins }))}
+                      lang={lang}
+                      t={t}
+                      showIncludeCheckbox={false}
+                      comboProductsInstallSummary={comboProductsInstallSummary}
+                      onApplyComboProductsInstall={handleApplyComboProductsInstall}
+                      suggestedExtraParts={availableExtraPartsSuggestions}
+                      onChange={(labour, parts, profit) => {
+                        const partsTotal = (parts || []).reduce((sum, pt) => sum + (Number(pt.priceCRC) || 0), 0);
+                        const totalInstall = Math.max(0, labour) + Math.max(0, partsTotal) + Math.max(0, profit);
+                        setComboForm((prev) => ({
+                          ...prev,
+                          installLabourCostCRC: labour,
+                          installExtraParts: parts,
+                          installProfitCRC: profit,
+                          installationPriceCRC: totalInstall,
+                        }));
+                      }}
+                    />
+                  ) : (
+                    <div className="p-3.5 rounded-2xl bg-sky-50/70 border border-sky-200 text-sky-900 text-xs flex items-center gap-2.5">
+                      <Truck className="w-4 h-4 text-sky-600 shrink-0" />
+                      <span>
+                        {lang === "es"
+                          ? "Combo configurado como Solo Entrega / Envío. No pasará por el sistema de servicios de instalación."
+                          : "Combo set as Delivery / Shipping Only. It will not go through the installation services system."}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="pt-2 border-t border-slate-100 space-y-2">
-                  <label className="flex items-center gap-2.5 cursor-pointer">
+                  <label
+                    className={`flex items-center gap-2.5 ${
+                      comboForm.installationAvailable === false ? "opacity-50 cursor-not-allowed" : "cursor-pointer"
+                    }`}
+                  >
                     <input
                       type="checkbox"
-                      checked={comboForm.homeInstallationAvailable}
+                      disabled={comboForm.installationAvailable === false}
+                      checked={comboForm.installationAvailable !== false && comboForm.homeInstallationAvailable}
                       onChange={(e) => setComboForm({ ...comboForm, homeInstallationAvailable: e.target.checked })}
                       className="rounded border-slate-300 text-[#C02030] focus:ring-[#C02030] w-4 h-4"
                     />
@@ -13958,14 +14071,24 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                       </td>
 
                       <td className="p-3.5 text-slate-700 font-mono font-medium">
-                        <div>
-                          <span className="font-bold">{formatCRC(combo.installationPriceCRC)}</span>
-                          {(combo.installLabourCostCRC || (combo.installExtraParts && combo.installExtraParts.length > 0) || combo.installProfitCRC) ? (
-                            <span className="block text-[9px] text-slate-500 font-sans mt-0.5">
-                              MO: {formatCRC(combo.installLabourCostCRC || 0)} | Rep: {formatCRC((combo.installExtraParts || []).reduce((s, p) => s + (Number(p.priceCRC) || 0), 0))} | Gan: {formatCRC(combo.installProfitCRC || 0)}
+                        {combo.installationAvailable === false ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-sky-50 border border-sky-200 text-sky-800 text-[10px] font-sans font-bold">
+                            <Truck className="w-3 h-3 text-sky-600" />
+                            <span>{t.comboDeliveryOnlyBadge || "Solo Envío"}</span>
+                          </span>
+                        ) : (
+                          <div>
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-[10px] font-sans font-bold">
+                              <Check className="w-3 h-3 text-emerald-600" />
+                              <span>{lang === "es" ? "Incluida en Combo" : "Included in Combo"}</span>
                             </span>
-                          ) : null}
-                        </div>
+                            {(combo.installationPriceCRC > 0 || combo.installLabourCostCRC || (combo.installExtraParts && combo.installExtraParts.length > 0) || combo.installProfitCRC) ? (
+                              <span className="block text-[9px] text-slate-500 font-sans mt-0.5">
+                                Costo interno: {formatCRC(combo.installationPriceCRC || 0)} (MO: {formatCRC(combo.installLabourCostCRC || 0)})
+                              </span>
+                            ) : null}
+                          </div>
+                        )}
                       </td>
 
                       <td className="p-3.5 text-right">

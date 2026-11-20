@@ -26,6 +26,7 @@ import {
   AlertTriangle,
   CreditCard,
   Landmark,
+  Truck,
 } from "lucide-react";
 
 export function CartDrawer() {
@@ -461,7 +462,17 @@ export function CartDrawer() {
                   className="flex items-center justify-between gap-2 pt-1 border-t border-gray-200/60"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  {item.freeInstallation || item.installationPriceCRC === 0 || item.type === "COMBO" ? (
+                  {item.installationAvailable === false ? (
+                    <div
+                      className="flex-1 flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-bold bg-sky-50 border border-sky-200 text-sky-800 shadow-2xs select-none"
+                      title={t.comboDeliveryOnlyDesc}
+                    >
+                      <span className="flex items-center gap-1.5 truncate">
+                        <Truck className="w-3.5 h-3.5 flex-shrink-0 text-sky-600" />
+                        <span className="truncate">{t.devDeliveryOnlyBadge || (lang === "es" ? "Solo Entrega / Envío" : "Delivery Only")}</span>
+                      </span>
+                    </div>
+                  ) : item.freeInstallation || item.installationPriceCRC === 0 || item.type === "COMBO" ? (
                     <div
                       className="flex-1 flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-bold bg-emerald-50 border border-emerald-200 text-emerald-800 shadow-2xs select-none"
                       title={lang === "es" ? "Instalación gratis incluida con la pieza" : "Free installation included with item"}

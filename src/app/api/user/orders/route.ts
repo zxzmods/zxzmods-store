@@ -149,6 +149,7 @@ export async function POST(request: Request) {
             slug: true,
             priceCRC: true,
             installationPriceCRC: true,
+            installationAvailable: true,
             isInstallationIncluded: true,
             processingPriceD: true,
             supplierLastPriceUSD: true,
@@ -162,20 +163,22 @@ export async function POST(request: Request) {
               { slug: { in: identifiers } },
             ],
           },
-          select: { id: true, slug: true, priceCRC: true, installationPriceCRC: true },
+          select: { id: true, slug: true, priceCRC: true, installationPriceCRC: true, installationAvailable: true },
         }),
       ]);
 
       const priceMap = new Map<
         string,
-        { priceCRC: number; installCRC: number; isFreeInstall: boolean; basePriceUSD?: number; supplierUrl?: string | null }
+        { priceCRC: number; installCRC: number; isFreeInstall: boolean; installationAvailable: boolean; basePriceUSD?: number; supplierUrl?: string | null }
       >();
       dbProducts.forEach((p) => {
-        const isFree = Boolean(p.isInstallationIncluded);
+        const isDeliveryOnly = p.installationAvailable === false;
+        const isFree = !isDeliveryOnly && Boolean(p.isInstallationIncluded);
         const entry = {
           priceCRC: p.priceCRC,
-          installCRC: isFree ? 0 : p.installationPriceCRC,
+          installCRC: isDeliveryOnly || isFree ? 0 : p.installationPriceCRC,
           isFreeInstall: isFree,
+          installationAvailable: !isDeliveryOnly,
           basePriceUSD: p.processingPriceD || p.supplierLastPriceUSD || 0,
           supplierUrl: p.supplierUrl || null,
         };
@@ -184,11 +187,12 @@ export async function POST(request: Request) {
         priceMap.set(p.slug, entry);
       });
       dbCombos.forEach((c) => {
-        const isComboFree = (c.installationPriceCRC || 0) === 0;
+        const comboIncludesInstall = c.installationAvailable !== false;
         const entry = {
           priceCRC: c.priceCRC,
-          installCRC: isComboFree ? 0 : c.installationPriceCRC,
-          isFreeInstall: isComboFree,
+          installCRC: 0,
+          isFreeInstall: comboIncludesInstall,
+          installationAvailable: comboIncludesInstall,
         };
         priceMap.set(c.id, entry);
         priceMap.set(c.slug, entry);
@@ -202,19 +206,24 @@ export async function POST(request: Request) {
           priceMap.get(rawId) ||
           (it.sku ? priceMap.get(it.sku) : undefined) ||
           (it.slug ? priceMap.get(it.slug) : undefined);
-        const isFree = Boolean(
+        const isDeliveryOnly = dbItem
+          ? dbItem.installationAvailable === false
+          : it.installationAvailable === false;
+        const isFree = !isDeliveryOnly && Boolean(
           dbItem?.isFreeInstall ||
           it.freeInstallation === true ||
-          it.isInstallationIncluded === true
+          it.isInstallationIncluded === true ||
+          it.type === "COMBO"
         );
         const paramDeltaCRC = Array.isArray(it.selectedParameters)
           ? it.selectedParameters.reduce((acc: number, p: any) => acc + (Number(p?.priceDeltaCRC) || 0), 0)
           : 0;
         const unitPrice = dbItem ? dbItem.priceCRC + paramDeltaCRC : Math.max(0, Number(it.priceCRC) || 0);
-        const installPrice = isFree ? 0 : (dbItem ? dbItem.installCRC : Math.max(0, Number(it.installationPriceCRC) || 0));
+        const installPrice = isDeliveryOnly || isFree ? 0 : (dbItem ? dbItem.installCRC : Math.max(0, Number(it.installationPriceCRC) || 0));
         calculatedPartsCRC += unitPrice * qty;
 
-        if (it.withInstallation && !isFree) {
+        const needsInstall = isDeliveryOnly ? false : (isFree ? true : Boolean(it.withInstallation));
+        if (needsInstall && !isFree) {
           calculatedLaborCRC += installPrice * qty;
         }
 
@@ -226,8 +235,10 @@ export async function POST(request: Request) {
           ...it,
           priceCRC: unitPrice,
           installationPriceCRC: installPrice,
+          installationAvailable: !isDeliveryOnly,
           freeInstallation: isFree,
-          withInstallation: isFree ? true : Boolean(it.withInstallation),
+          withInstallation: needsInstall,
+          homeInstallation: isDeliveryOnly ? false : it.homeInstallation,
           basePriceUSD: it.basePriceUSD ?? dbItem?.basePriceUSD ?? undefined,
           supplierUrl: variantSupplierUrl || it.supplierUrl || dbItem?.supplierUrl || undefined,
         };

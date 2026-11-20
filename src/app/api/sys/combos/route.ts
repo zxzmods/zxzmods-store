@@ -45,14 +45,23 @@ export async function POST(request: Request) {
         .replace(/[^a-z0-9]+/g, "-")
         .replace(/(^-|-$)/g, "");
 
-    const installLabour = body.installLabourCostCRC !== undefined
-      ? Math.round(Number(body.installLabourCostCRC) || 0)
-      : Math.round(Number(installationPriceCRC) || 0);
-    const installProfit = body.installProfitCRC !== undefined ? Math.round(Number(body.installProfitCRC) || 0) : 0;
-    const extraPartsJson = body.installExtraParts !== undefined
-      ? JSON.stringify(sanitizeExtraParts(body.installExtraParts))
-      : typeof body.installExtraPartsJson === "string"
-      ? JSON.stringify(sanitizeExtraParts(body.installExtraPartsJson))
+    const isInstallationAvailable =
+      body.installationAvailable !== undefined ? Boolean(body.installationAvailable) : true;
+
+    const installLabour = isInstallationAvailable
+      ? (body.installLabourCostCRC !== undefined
+          ? Math.round(Number(body.installLabourCostCRC) || 0)
+          : Math.round(Number(installationPriceCRC) || 0))
+      : 0;
+    const installProfit = isInstallationAvailable && body.installProfitCRC !== undefined
+      ? Math.round(Number(body.installProfitCRC) || 0)
+      : 0;
+    const extraPartsJson = isInstallationAvailable
+      ? (body.installExtraParts !== undefined
+          ? JSON.stringify(sanitizeExtraParts(body.installExtraParts))
+          : typeof body.installExtraPartsJson === "string"
+          ? JSON.stringify(sanitizeExtraParts(body.installExtraPartsJson))
+          : "[]")
       : "[]";
 
     let extraPartsSum = 0;
@@ -64,9 +73,11 @@ export async function POST(request: Request) {
     } catch {}
 
     const calculatedInstallPrice = installLabour + extraPartsSum + installProfit;
-    const finalInstallPrice = body.installationPriceCRC !== undefined
-      ? Math.round(Number(body.installationPriceCRC) || 0)
-      : calculatedInstallPrice > 0 ? calculatedInstallPrice : 0;
+    const finalInstallPrice = isInstallationAvailable
+      ? (body.installationPriceCRC !== undefined
+          ? Math.round(Number(body.installationPriceCRC) || 0)
+          : calculatedInstallPrice > 0 ? calculatedInstallPrice : 0)
+      : 0;
 
     const newCombo = await prisma.combo.create({
       data: {
@@ -81,7 +92,9 @@ export async function POST(request: Request) {
         priceCRC: Math.round(Number(priceCRC) || 0),
         originalPriceCRC: Math.round(Number(originalPriceCRC) || 0),
         installationPriceCRC: finalInstallPrice,
-        installationDurationMinutes: Math.max(15, Math.round(Number(body.installationDurationMinutes) || 60)),
+        installationDurationMinutes: isInstallationAvailable
+          ? Math.max(15, Math.round(Number(body.installationDurationMinutes) || 60))
+          : 0,
         installLabourCostCRC: installLabour,
         installProfitCRC: installProfit,
         installExtraPartsJson: extraPartsJson,
@@ -110,7 +123,8 @@ export async function POST(request: Request) {
           ? JSON.stringify(body.uniqueProduct)
           : (typeof body.uniqueProductJson === "string" ? body.uniqueProductJson : "{}"),
         featured: Boolean(featured),
-        homeInstallationAvailable: Boolean(homeInstallationAvailable),
+        installationAvailable: isInstallationAvailable,
+        homeInstallationAvailable: isInstallationAvailable ? Boolean(homeInstallationAvailable) : false,
       },
     });
 
