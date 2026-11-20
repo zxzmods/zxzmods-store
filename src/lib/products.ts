@@ -113,6 +113,10 @@ export interface ProductItem {
   suggestedComboIds?: string[];
   suggestedProducts?: ProductItem[];
   suggestedCombos?: any[];
+  isCombo?: boolean;
+  comboBadgeEs?: string;
+  comboBadgeEn?: string;
+  comboItemsCount?: number;
 }
 
 export interface ParameterOptionConnection {
@@ -246,8 +250,11 @@ export interface ConfigurableParameter {
   id: string;
   nameEs: string;
   nameEn?: string;
-  type?: "color" | "button" | "select" | "product_linking" | "product_link" | "cart_addon";
+  type?: "color" | "button" | "select" | "product_linking" | "product_link" | "cart_addon" | "text_input";
   supplierUrl?: string;
+  placeholderEs?: string;
+  placeholderEn?: string;
+  required?: boolean;
   options: ParameterOption[];
 }
 
@@ -335,6 +342,7 @@ export function isLocalVariantParameter(param?: ConfigurableParameter | null): b
   if (!param) return false;
   if (
     param.type === "cart_addon" ||
+    param.type === "text_input" ||
     param.type === "product_linking" ||
     param.type === "product_link" ||
     param.options?.some((o) => Boolean(o.linkedProductId))

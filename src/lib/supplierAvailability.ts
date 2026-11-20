@@ -1182,7 +1182,7 @@ export async function syncProductAvailability(
     if (baseCleanUrl) allowedCleanUrls.add(baseCleanUrl);
 
     for (const param of parsedParameters) {
-      if (param?.type === "cart_addon") continue;
+      if (param?.type === "cart_addon" || param?.type === "text_input") continue;
       if (typeof param?.supplierUrl === "string" && param.supplierUrl.trim()) {
         allowedCleanUrls.add(cleanSupplierUrl(param.supplierUrl));
       }
@@ -1274,7 +1274,7 @@ export async function syncProductAvailability(
       }
 
       for (const param of paramsList) {
-        if (param?.type === "cart_addon") continue;
+        if (param?.type === "cart_addon" || param?.type === "text_input") continue;
         if (Array.isArray(param?.options)) {
           for (const opt of param.options) {
             if (typeof opt?.supplierUrl === "string" && opt.supplierUrl.trim() && opt.supplierStockStatus) {
@@ -1347,7 +1347,7 @@ export async function syncProductAvailability(
     const targetShopifyBase = getShopifyBaseUrl(effectiveTargetUrl);
 
     for (const param of parsedParameters) {
-      if (param?.type === "cart_addon" || param?.type === "product_linking" || param?.type === "product_link") continue;
+      if (param?.type === "cart_addon" || param?.type === "text_input" || param?.type === "product_linking" || param?.type === "product_link") continue;
       if (Array.isArray(param?.options)) {
         for (const opt of param.options) {
           if (opt?.linkedProductId) continue;
@@ -1433,7 +1433,7 @@ export async function syncProductAvailability(
     }
 
     for (const param of parsedParameters) {
-      if (param?.type === "cart_addon") continue;
+      if (param?.type === "cart_addon" || param?.type === "text_input") continue;
       if (Array.isArray(param?.options)) {
         for (const opt of param.options) {
           if (typeof opt?.supplierUrl === "string" && opt.supplierUrl.trim()) {

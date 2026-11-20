@@ -154,7 +154,7 @@ function ProductCatalogCard({
   const selectedParametersList: SelectedParameterItem[] = useMemo(() => {
     if (!product.parameters || product.parameters.length === 0) return [];
     return product.parameters
-      .filter((param) => (param as any).type !== "cart_addon")
+      .filter((param) => (param as any).type !== "cart_addon" && (param as any).type !== "text_input")
       .map((param) => {
         const isLinked = (param as any).type === "product_linking" || (param as any).type === "product_link";
       const matchingLinkedOption = isLinked
@@ -184,6 +184,12 @@ function ProductCatalogCard({
     return selectedParametersList.reduce((acc, p) => acc + (p.priceDeltaCRC || 0), 0);
   }, [selectedParametersList]);
 
+  const hasRequiredTextInputs = useMemo(() => {
+    return (product.parameters || []).some(
+      (param: any) => param.type === "text_input" && param.required !== false
+    );
+  }, [product.parameters]);
+
   const effectivePriceCRC = (product.price?.T_price ?? 0) + totalDeltaCRC;
 
   // The preview image in searching must always show the product's primary image
@@ -206,14 +212,22 @@ function ProductCatalogCard({
         {/* Header: Category & Brand Badges */}
         <div className="flex items-center justify-between gap-2 mb-2.5">
           <div className="flex flex-wrap items-center gap-1.5">
-            {product.category?.map((cat) => (
-              <span
-                key={cat}
-                className="text-[10px] font-bold uppercase tracking-wider text-[#C02030] bg-[#C02030]/10 px-2.5 py-0.5 rounded-full"
-              >
-                {getCategoryLabel(cat, lang)}
+            {product.isCombo && (
+              <span className="text-[10px] font-black uppercase tracking-wider text-white bg-[#111827] px-2.5 py-0.5 rounded-full flex items-center gap-1 shadow-2xs">
+                <Layers className="w-2.5 h-2.5 text-[#C02030]" />
+                <span>{t.catalogComboBadge || "COMBO"}</span>
               </span>
-            ))}
+            )}
+            {product.category
+              ?.filter((cat) => !(product.isCombo && cat.toLowerCase() === "combos"))
+              .map((cat) => (
+                <span
+                  key={cat}
+                  className="text-[10px] font-bold uppercase tracking-wider text-[#C02030] bg-[#C02030]/10 px-2.5 py-0.5 rounded-full"
+                >
+                  {getCategoryLabel(cat, lang)}
+                </span>
+              ))}
           </div>
 
           <div className="flex items-center gap-1">
@@ -347,13 +361,37 @@ function ProductCatalogCard({
 
         {/* Actions: Add to Cart & WhatsApp */}
         <div className="flex items-center gap-2 pt-1">
-          <button
-            onClick={(e) => onAddToCart(e, product, selectedParametersList, effectivePriceCRC, cardImageUrl)}
-            className="flex-1 py-3 px-4 rounded-full bg-[#111827] hover:bg-[#C02030] text-white text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-sm hover:scale-[1.02] cursor-pointer"
-          >
-            <ShoppingCart className="w-4 h-4" />
-            <span>{t.productsAddToCart}</span>
-          </button>
+          {product.isCombo ? (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onClick();
+              }}
+              className="flex-1 py-3 px-4 rounded-full bg-[#111827] hover:bg-[#C02030] text-white text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-sm hover:scale-[1.02] cursor-pointer"
+            >
+              <Layers className="w-4 h-4" />
+              <span>{t.catalogViewComboBtn || (lang === "es" ? "Ver Combo" : "View Combo")}</span>
+            </button>
+          ) : hasRequiredTextInputs ? (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onClick();
+              }}
+              className="flex-1 py-3 px-4 rounded-full bg-[#111827] hover:bg-[#C02030] text-white text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-sm hover:scale-[1.02] cursor-pointer"
+            >
+              <ShoppingCart className="w-4 h-4" />
+              <span>{t.catalogConfigureBtn || (lang === "es" ? "Configurar" : "Configure")}</span>
+            </button>
+          ) : (
+            <button
+              onClick={(e) => onAddToCart(e, product, selectedParametersList, effectivePriceCRC, cardImageUrl)}
+              className="flex-1 py-3 px-4 rounded-full bg-[#111827] hover:bg-[#C02030] text-white text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-sm hover:scale-[1.02] cursor-pointer"
+            >
+              <ShoppingCart className="w-4 h-4" />
+              <span>{t.productsAddToCart}</span>
+            </button>
+          )}
 
           <a
             href={getWhatsAppUrl(
@@ -665,6 +703,7 @@ function ProductsContent() {
       if (vehicle.year) params.set("vehicleYear", String(vehicle.year));
     }
 
+    params.set("includeCombos", "true");
     fetch(`/api/products?${params.toString()}`)
       .then((res) => res.json())
       .then((data) => {
@@ -829,6 +868,17 @@ function ProductsContent() {
     chosenImage?: string
   ) => {
     e.stopPropagation();
+    if (product.isCombo) {
+      router.push(`/combos/${product.slug}`);
+      return;
+    }
+    const needsRequiredText = (product.parameters || []).some(
+      (p: any) => p.type === "text_input" && p.required !== false
+    );
+    if (needsRequiredText) {
+      router.push(`/productos/${product.id}`);
+      return;
+    }
     const isIncluded = Boolean(
       product.price?.I_price?.includes ||
       (product as any).isInstallationIncluded
@@ -1929,7 +1979,7 @@ function ProductsContent() {
                       vehicle={vehicle}
                       checkVehicleCompatibility={checkVehicleCompatibility}
                       onAddToCart={handleAddToCart}
-                      onClick={() => router.push(`/productos/${product.id}`)}
+                      onClick={() => router.push(product.isCombo ? `/combos/${product.slug}` : `/productos/${product.id}`)}
                     />
                   </motion.div>
                 ))}

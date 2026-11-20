@@ -3036,6 +3036,249 @@ function ParametersEditorSection({
   );
 }
 
+function CustomerTextInputsSection({
+  parameters,
+  onChange,
+  t,
+  lang,
+}: {
+  parameters: ConfigurableParameter[];
+  onChange: (newParams: ConfigurableParameter[]) => void;
+  t: any;
+  lang: "es" | "en";
+}) {
+  const safeParams = Array.isArray(parameters) ? parameters : [];
+  const otherParams = safeParams.filter((p) => p.type !== "text_input");
+  const textInputs = safeParams.filter((p) => p.type === "text_input");
+
+  const commitTextInputs = (nextTextInputs: ConfigurableParameter[]) => {
+    onChange([...otherParams, ...nextTextInputs]);
+  };
+
+  const handleAddTextInput = () => {
+    const newField: ConfigurableParameter = {
+      id: `txt-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      nameEs: "",
+      nameEn: "",
+      type: "text_input",
+      placeholderEs: "",
+      placeholderEn: "",
+      required: true,
+      options: [],
+    };
+    commitTextInputs([...textInputs, newField]);
+  };
+
+  const handleUpdateTextInput = (
+    idx: number,
+    key: "nameEs" | "nameEn" | "placeholderEs" | "placeholderEn" | "required",
+    val: string | boolean
+  ) => {
+    const updated = textInputs.map((item, i) =>
+      i === idx ? { ...item, [key]: val } : item
+    );
+    commitTextInputs(updated);
+  };
+
+  const handleRemoveTextInput = (idx: number) => {
+    commitTextInputs(textInputs.filter((_, i) => i !== idx));
+  };
+
+  return (
+    <div className="p-6 rounded-3xl bg-white border border-red-200 shadow-xs space-y-4">
+      <div className="flex items-center justify-between border-b border-red-100 pb-3 flex-wrap gap-2">
+        <div>
+          <span className="text-xs font-extrabold uppercase tracking-wider text-slate-900 flex items-center gap-1.5">
+            <FileText className="w-4 h-4 text-[#C02030]" />
+            <span>{t.devTextInputsTitle || (lang === "es" ? "Campos de Texto para el Cliente" : "Customer Text Input Fields")}</span>
+            {textInputs.length > 0 && (
+              <span className="px-2 py-0.5 rounded-full bg-[#C02030]/10 text-[#C02030] text-[10px] font-black">
+                {textInputs.length}
+              </span>
+            )}
+          </span>
+          <p className="text-[11px] text-slate-500 mt-0.5">
+            {t.devTextInputsDesc ||
+              (lang === "es"
+                ? "Agrega campos de texto que el cliente debe llenar antes de agregar al carrito (ej. número de VIN, modelo exacto, notas)."
+                : "Add text inputs that customers fill out before adding to cart (e.g. VIN number, exact model, notes).")}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={handleAddTextInput}
+          className="px-3.5 py-2 rounded-full bg-[#111827] hover:bg-[#C02030] text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          <span>{t.devAddTextInputBtn || (lang === "es" ? "+ Agregar Campo de Texto" : "+ Add Text Input")}</span>
+        </button>
+      </div>
+
+      {textInputs.length === 0 ? (
+        <div className="p-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 text-center text-xs text-slate-500">
+          {t.devTextInputsEmptyNotice ||
+            (lang === "es"
+              ? 'No hay campos de texto configurados. Haz clic en "+ Agregar Campo de Texto" para solicitar información adicional al cliente.'
+              : 'No text inputs configured. Click "+ Add Text Input" to request additional information from the customer.')}
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {textInputs.map((field, idx) => {
+            const isRequired = field.required !== false;
+            const previewTitle =
+              (lang === "es" ? field.nameEs : field.nameEn || field.nameEs) ||
+              (lang === "es" ? `Campo #${idx + 1}` : `Field #${idx + 1}`);
+            const previewPlaceholder =
+              (lang === "es"
+                ? field.placeholderEs
+                : field.placeholderEn || field.placeholderEs) ||
+              (lang === "es" ? "Escribe tu respuesta aquí..." : "Type your answer here...");
+
+            return (
+              <div
+                key={field.id || idx}
+                className="p-4 rounded-2xl bg-slate-50/90 border border-slate-200/90 space-y-3 transition-all"
+              >
+                <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-200/70 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <span className="w-6 h-6 rounded-full bg-[#111827] text-white text-[11px] font-black flex items-center justify-center">
+                      {idx + 1}
+                    </span>
+                    <span className="text-xs font-extrabold text-slate-900">
+                      {field.nameEs?.trim() || (lang === "es" ? "Nuevo Campo de Texto" : "New Text Input")}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    {/* Website-styled Required/Optional Toggle */}
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={isRequired}
+                      onClick={() => handleUpdateTextInput(idx, "required", !isRequired)}
+                      className="flex items-center gap-2 cursor-pointer select-none"
+                    >
+                      <span
+                        className={`text-[11px] font-bold transition-colors ${
+                          isRequired ? "text-[#C02030]" : "text-slate-500"
+                        }`}
+                      >
+                        {isRequired
+                          ? t.devTextInputRequiredLabel || (lang === "es" ? "Obligatorio" : "Required")
+                          : t.devTextInputOptionalLabel || (lang === "es" ? "Opcional" : "Optional")}
+                      </span>
+                      <div
+                        className={`w-10 h-5 rounded-full p-0.5 transition-colors duration-200 flex items-center ${
+                          isRequired ? "bg-[#C02030]" : "bg-slate-300"
+                        }`}
+                      >
+                        <div
+                          className={`w-4 h-4 rounded-full bg-white shadow-xs transform transition-transform duration-200 ${
+                            isRequired ? "translate-x-5" : "translate-x-0"
+                          }`}
+                        />
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveTextInput(idx)}
+                      className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition cursor-pointer"
+                      title={t.devRemoveTextInputBtn || (lang === "es" ? "Eliminar campo de texto" : "Remove text input")}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Bilingual Title Inputs */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-700 block mb-1">
+                      {t.devTextInputTitleEsLabel || "Título del Campo (Español)"} <span className="text-[#C02030]">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={field.nameEs || ""}
+                      onChange={(e) => handleUpdateTextInput(idx, "nameEs", e.target.value)}
+                      placeholder="Ej: Número de VIN / Año y Modelo Exacto"
+                      className="w-full bg-white border border-slate-200 focus:border-[#C02030] focus:ring-2 focus:ring-[#C02030]/10 rounded-xl px-3 py-2 text-xs font-semibold text-slate-900 focus:outline-none transition"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-700 block mb-1">
+                      {t.devTextInputTitleEnLabel || "Título del Campo (Inglés - Opcional)"}
+                    </label>
+                    <input
+                      type="text"
+                      value={field.nameEn || ""}
+                      onChange={(e) => handleUpdateTextInput(idx, "nameEn", e.target.value)}
+                      placeholder="e.g. VIN Number / Exact Year & Model"
+                      className="w-full bg-white border border-slate-200 focus:border-[#C02030] focus:ring-2 focus:ring-[#C02030]/10 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none transition"
+                    />
+                  </div>
+                </div>
+
+                {/* Bilingual Placeholder Inputs */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-700 block mb-1">
+                      {t.devTextInputPlaceholderEsLabel || "Placeholder / Ejemplo (Español)"}
+                    </label>
+                    <input
+                      type="text"
+                      value={field.placeholderEs || ""}
+                      onChange={(e) => handleUpdateTextInput(idx, "placeholderEs", e.target.value)}
+                      placeholder="Ej: Ingresa los 17 dígitos de tu VIN..."
+                      className="w-full bg-white border border-slate-200 focus:border-[#C02030] focus:ring-2 focus:ring-[#C02030]/10 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none transition"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-700 block mb-1">
+                      {t.devTextInputPlaceholderEnLabel || "Placeholder / Ejemplo (Inglés - Opcional)"}
+                    </label>
+                    <input
+                      type="text"
+                      value={field.placeholderEn || ""}
+                      onChange={(e) => handleUpdateTextInput(idx, "placeholderEn", e.target.value)}
+                      placeholder="e.g. Enter your 17-digit VIN..."
+                      className="w-full bg-white border border-slate-200 focus:border-[#C02030] focus:ring-2 focus:ring-[#C02030]/10 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none transition"
+                    />
+                  </div>
+                </div>
+
+                {/* Mini Storefront Preview */}
+                <div className="p-3 rounded-2xl bg-white border border-gray-200/80 space-y-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-bold text-[#111827]">
+                      {previewTitle}
+                      {isRequired && <span className="text-[#C02030] ml-0.5">*</span>}
+                    </span>
+                    <span
+                      className={`text-[9px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                        isRequired
+                          ? "bg-[#C02030]/10 text-[#C02030]"
+                          : "bg-gray-100 text-gray-500"
+                      }`}
+                    >
+                      {isRequired
+                        ? t.customerTextInputRequiredBadge || "Requerido"
+                        : t.customerTextInputOptionalBadge || "Opcional"}
+                    </span>
+                  </div>
+                  <div className="w-full rounded-2xl bg-gray-50 border border-gray-200 px-3.5 py-2 text-xs text-gray-400">
+                    {previewPlaceholder}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function InstallationBreakdownEditor({
   labourCostCRC,
   extraParts,
@@ -5397,6 +5640,12 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
     if (!productForm.imgsText.trim() && !productForm.imageUrl.trim()) missing.push("Imágenes (imgs)");
     if (!productForm.descriptionEs.trim()) missing.push("Descripción en Español");
     if (!productForm.descriptionEn.trim()) missing.push("Descripción en Inglés");
+    const emptyTextInputs = (productForm.parameters || []).filter(
+      (p) => p.type === "text_input" && !p.nameEs?.trim()
+    );
+    if (emptyTextInputs.length > 0) {
+      missing.push(t.devTextInputTitleEsLabel || "Título del Campo de Texto (Español)");
+    }
 
     if (missing.length > 0) {
       setValidationErrors(missing);
@@ -6233,6 +6482,21 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       if (!items.includes(uniqueTag)) {
         items.unshift(uniqueTag);
       }
+    }
+
+    const emptyComboTextInputs = (comboForm.parameters || []).filter(
+      (p) => p.type === "text_input" && !p.nameEs?.trim()
+    );
+    if (emptyComboTextInputs.length > 0) {
+      setFeedback({
+        type: "error",
+        msg:
+          lang === "es"
+            ? "Todos los campos de texto agregados para el cliente deben tener un título en español."
+            : "All added customer text input fields must have a title in Spanish.",
+      });
+      setSaving(false);
+      return;
     }
 
     const comboImgs = Array.from(
@@ -8707,8 +8971,16 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
 
               {/* CONFIGURABLE PARAMETERS & VARIANTS (Moved below requirements & reviews on left side to balance columns) */}
               <ParametersEditorSection
-                parameters={productForm.parameters}
-                onChange={(newParams) => setProductForm((prev) => ({ ...prev, parameters: newParams }))}
+                parameters={(productForm.parameters || []).filter((p) => p.type !== "text_input")}
+                onChange={(newParams) =>
+                  setProductForm((prev) => ({
+                    ...prev,
+                    parameters: [
+                      ...newParams,
+                      ...(prev.parameters || []).filter((p) => p.type === "text_input"),
+                    ],
+                  }))
+                }
                 t={t}
                 availableProducts={products.filter((p) => (p.sku || p.id) !== (productForm.sku || productForm.slug))}
                 currentProductPrice={productForm.T_price || productForm.priceCRC}
@@ -8717,6 +8989,14 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                 currentProductImage={productForm.imageUrl || parsedImgsList[0] || ""}
                 currentProductSupplierUrl={productForm.supplierUrl || ""}
                 liveExchangeRate={liveExchangeRate || 515}
+              />
+
+              {/* CUSTOMER TEXT INPUT FIELDS (Below Parameter Config) */}
+              <CustomerTextInputsSection
+                parameters={productForm.parameters || []}
+                onChange={(newParams) => setProductForm((prev) => ({ ...prev, parameters: newParams }))}
+                t={t}
+                lang={lang}
               />
             </div>
 
@@ -12749,8 +13029,16 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
 
             {/* Card 6: Configurable Parameters & Variants */}
             <ParametersEditorSection
-              parameters={comboForm.parameters}
-              onChange={(newParams) => setComboForm((prev) => ({ ...prev, parameters: newParams }))}
+              parameters={(comboForm.parameters || []).filter((p) => p.type !== "text_input")}
+              onChange={(newParams) =>
+                setComboForm((prev) => ({
+                  ...prev,
+                  parameters: [
+                    ...newParams,
+                    ...(prev.parameters || []).filter((p) => p.type === "text_input"),
+                  ],
+                }))
+              }
               t={t}
               availableProducts={products}
               currentProductPrice={comboForm.priceCRC}
@@ -12758,6 +13046,14 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
               currentProductImage={comboForm.imageUrl || ""}
               currentProductSupplierUrl=""
               liveExchangeRate={liveExchangeRate || 515}
+            />
+
+            {/* CUSTOMER TEXT INPUT FIELDS (Below Parameter Config) */}
+            <CustomerTextInputsSection
+              parameters={comboForm.parameters || []}
+              onChange={(newParams) => setComboForm((prev) => ({ ...prev, parameters: newParams }))}
+              t={t}
+              lang={lang}
             />
 
             {/* Minimalistic Suggestions Tagger for Prevention & Performance */}

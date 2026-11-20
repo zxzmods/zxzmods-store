@@ -14,7 +14,9 @@ import {
   getRecommendedFillerCombos,
   sortVehicleModels,
   sortVehicleBrands,
+  deriveComboCompatibilityFromProducts,
 } from "@/lib/products";
+import { calculateComboAvailability } from "@/lib/comboAvailability";
 import { prisma } from "@/lib/prisma";
 import { SXS_BRAND_PLATFORMS, SXS_BRANDS, getBrandLogo } from "@/lib/sxsBrands";
 import { getStealthSession } from "@/lib/stealthAuth";
@@ -261,6 +263,166 @@ function dbProductToProductItem(dbProd: any, jsonProd?: ProductItem | null, isSt
   };
 }
 
+function dbComboToProductItem(combo: any, activeDbProducts: any[]): ProductItem {
+  const availability = calculateComboAvailability(combo.itemsJson, activeDbProducts);
+  const comp = deriveComboCompatibilityFromProducts(combo, activeDbProducts);
+
+  // Extract distributor brands from the combo's listed products
+  const brandSet = new Set<string>();
+  let parsedItems: string[] = [];
+  if (combo.itemsJson) {
+    try {
+      const items = JSON.parse(combo.itemsJson);
+      if (Array.isArray(items)) {
+        parsedItems = items.filter((i: any) => typeof i === "string");
+        parsedItems.forEach((rawItem) => {
+          const match = rawItem.match(/\[([A-Za-z0-9\-_]+)\]/);
+          const sku = match ? match[1].toLowerCase() : null;
+          const matchedProd = activeDbProducts.find((p) => {
+            if (sku && (p.sku?.toLowerCase() === sku || p.slug?.toLowerCase() === sku || p.id.toLowerCase() === sku)) return true;
+            const rawLower = rawItem.toLowerCase();
+            if (p.nameEs && rawLower.includes(p.nameEs.toLowerCase())) return true;
+            if (p.nameEn && rawLower.includes(p.nameEn.toLowerCase())) return true;
+            return false;
+          });
+          if (matchedProd) {
+            if (matchedProd.brandName) brandSet.add(normalizeBrandName(matchedProd.brandName));
+            if (matchedProd.brandJson) {
+              try {
+                const bArr = JSON.parse(matchedProd.brandJson);
+                if (Array.isArray(bArr)) {
+                  bArr.forEach((b: string) => {
+                    if (b) brandSet.add(normalizeBrandName(b));
+                  });
+                }
+              } catch {}
+            }
+          }
+        });
+      }
+    } catch {}
+  }
+  const brands = Array.from(brandSet).filter(Boolean);
+  if (brands.length === 0) brands.push("ZxZ Performance");
+
+  // Extract images
+  const imgs: string[] = [];
+  if (combo.imageUrl && typeof combo.imageUrl === "string" && combo.imageUrl.trim()) {
+    imgs.push(combo.imageUrl.trim());
+  }
+  if (combo.imagesJson) {
+    try {
+      const parsed = JSON.parse(combo.imagesJson);
+      if (Array.isArray(parsed)) {
+        parsed.forEach((img: any) => {
+          const s = typeof img === "string" ? img.trim() : "";
+          if (s && !imgs.includes(s)) imgs.push(s);
+        });
+      }
+    } catch {}
+  }
+  if (imgs.length === 0) imgs.push("/images/sxs/z10_front.png");
+
+  // Categories: include both its assigned category AND "combos" so it appears under both!
+  const catList: string[] = [];
+  if (combo.category && typeof combo.category === "string" && combo.category.trim()) {
+    catList.push(combo.category.trim().toLowerCase());
+  }
+  if (!catList.includes("combos")) {
+    catList.push("combos");
+  }
+
+  const parameters = (() => {
+    if (combo.parametersJson) {
+      try {
+        const parsed = JSON.parse(combo.parametersJson);
+        if (Array.isArray(parsed)) return parsed;
+      } catch {}
+    }
+    return [];
+  })();
+
+  const reviews = (() => {
+    if (combo.reviews) {
+      try {
+        const parsed = JSON.parse(combo.reviews);
+        if (parsed && typeof parsed.stars === "number") return parsed;
+      } catch {}
+    }
+    return null;
+  })();
+
+  const isInstallIncluded = combo.installationAvailable !== false && (Number(combo.installationPriceCRC) || 0) === 0;
+
+  return {
+    id: `combo-${combo.id}`,
+    slug: combo.slug,
+    sku: `COMBO-${combo.slug.toUpperCase()}`,
+    p_title: combo.titleEs || combo.titleEn,
+    nameEs: combo.titleEs,
+    nameEn: combo.titleEn,
+    comp: comp.length > 0 ? comp : ["all"],
+    category: catList,
+    brand: brands,
+    price: {
+      P_price_D: 0,
+      P_price: 0,
+      S_price: 0,
+      I_price: {
+        includes: isInstallIncluded,
+        I_price: combo.installationAvailable === false ? 0 : (Number(combo.installationPriceCRC) || 0),
+      },
+      profit: 0,
+      iva: {
+        rate: 13,
+        amount: Math.round((combo.priceCRC || 0) * (13 / 113)),
+      },
+      T_price: combo.priceCRC,
+      T_price_D: "calculate in checkout",
+    },
+    priceCRC: combo.priceCRC,
+    originalPriceCRC: combo.originalPriceCRC || combo.priceCRC,
+    discountPercent: combo.discountPercent || 0,
+    ivaPercent: 13,
+    ivaCRC: Math.round((combo.priceCRC || 0) * (13 / 113)),
+    imgs,
+    imageUrl: imgs[0],
+    vids: [],
+    audios: [],
+    description: {
+      es: [{ title: "Descripción", content: combo.descriptionEs || "" }],
+      en: [{ title: "Description", content: combo.descriptionEn || combo.descriptionEs || "" }],
+    },
+    requirements: null,
+    reviews,
+    homeInstallation: Boolean(combo.homeInstallationAvailable),
+    installationAvailable: combo.installationAvailable !== false,
+    installationDurationMinutes: combo.installationDurationMinutes ?? 60,
+    modelYearCompatibility: [],
+    supplierUrl: null,
+    supplierPlatform: null,
+    stockStatus: availability.status || "IN_STOCK",
+    supplierStockStatus: availability.status || "IN_STOCK",
+    supplierStockCount: null,
+    supplierStockMessageEs: availability.summaryEs || null,
+    supplierStockMessageEn: availability.summaryEn || null,
+    supplierStockCheckedAt: null,
+    supplierLeadDaysMin: availability.leadDaysMin ?? 7,
+    supplierLeadDaysMax: availability.leadDaysMax ?? 21,
+    supplierLastPriceUSD: null,
+    parameters,
+    voidsWarranty: false,
+    relatedProductIds: [],
+    requiredProductIds: [],
+    suggestedProductIds: [],
+    suggestedComboIds: [],
+    isCombo: true,
+    comboBadgeEs: combo.badgeEs || "COMBO",
+    comboBadgeEn: combo.badgeEn || "COMBO",
+    comboItemsCount: parsedItems.length,
+  };
+}
+
 export async function GET(request: Request) {
   try {
     const session = await getStealthSession();
@@ -285,7 +447,7 @@ export async function GET(request: Request) {
           k &&
           !v &&
           !distributorBrand &&
-          !["q", "category", "sxs", "vehicleBrand", "distributorBrand", "inStock", "discounted", "sort", "intro", "comp", "vehicleModel", "modelCategory", "vehicleCategory", "slug", "id"].includes(k)
+          !["q", "category", "sxs", "vehicleBrand", "distributorBrand", "inStock", "discounted", "sort", "intro", "comp", "vehicleModel", "modelCategory", "vehicleCategory", "slug", "id", "includeCombos"].includes(k)
         ) {
           distributorBrand = k;
         }
@@ -306,6 +468,9 @@ export async function GET(request: Request) {
 
     // Discounted filter (separated toggle: "true" or "1")
     const discounted = searchParams.get("discounted") === "true" || searchParams.get("discounted") === "1";
+
+    // Include combos in /productos catalog listing (products are NEVER included in /combos)
+    const includeCombos = searchParams.get("includeCombos") === "true" || searchParams.get("includeCombos") === "1";
 
     const comp = searchParams.get("comp") || undefined;
     const vehicleModel = searchParams.get("vehicleModel") || undefined;
@@ -359,6 +524,7 @@ export async function GET(request: Request) {
         for (const param of finalProduct.parameters) {
           const isLinkedParam =
             (param as any).type !== "cart_addon" &&
+            (param as any).type !== "text_input" &&
             ((param as any).type === "product_linking" ||
               (param as any).type === "product_link" ||
               (param as any).options?.some((o: any) => Boolean(o.linkedProductId)));
@@ -639,8 +805,8 @@ export async function GET(request: Request) {
       return NextResponse.json({ success: true, product: finalProduct });
     }
 
-    // Load active DB products and brands (Zero Mock Data: strictly live database)
-    const [activeDbProducts, dbBrands, dbDealerBrands] = await Promise.all([
+    // Load active DB products, active combos (when requested by /productos), and brands (Zero Mock Data: strictly live database)
+    const [activeDbProducts, dbBrands, dbDealerBrands, activeDbCombos] = await Promise.all([
       prisma.product.findMany({
         where: { isArchived: false },
         include: {
@@ -658,6 +824,12 @@ export async function GET(request: Request) {
       prisma.dealerBrand.findMany({
         where: { isActive: true },
       }),
+      includeCombos
+        ? prisma.combo.findMany({
+            where: { isArchived: false },
+            orderBy: [{ featured: "desc" }, { createdAt: "desc" }],
+          })
+        : Promise.resolve([]),
     ]);
 
     const dealerBrandSearchRefs = buildDealerBrandSearchRefs(dbDealerBrands);
@@ -690,9 +862,14 @@ export async function GET(request: Request) {
       );
     }
 
-    const unifiedProducts: ProductItem[] = activeDbProducts.map((dbProd) =>
-      dbProductToProductItem(dbProd, null, isStaff)
-    );
+    const unifiedProducts: ProductItem[] = [
+      ...activeDbProducts.map((dbProd) =>
+        dbProductToProductItem(dbProd, null, isStaff)
+      ),
+      ...(includeCombos
+        ? activeDbCombos.map((dbCombo) => dbComboToProductItem(dbCombo, activeDbProducts))
+        : []),
+    ];
 
     // Dynamic computation of parameters present across active catalog products
     // (Strict Zero Mock Data: only include options that actually exist!)

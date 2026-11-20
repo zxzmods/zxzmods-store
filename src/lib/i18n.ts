@@ -1099,6 +1099,25 @@ export interface Translations {
   productCartAddonToggleOn: string;
   productCartAddonSelectedSummary: string;
   productOutOfStock: string;
+  devTextInputsTitle: string;
+  devTextInputsDesc: string;
+  devAddTextInputBtn: string;
+  devTextInputTitleEsLabel: string;
+  devTextInputTitleEnLabel: string;
+  devTextInputPlaceholderEsLabel: string;
+  devTextInputPlaceholderEnLabel: string;
+  devTextInputRequiredLabel: string;
+  devTextInputOptionalLabel: string;
+  devTextInputsEmptyNotice: string;
+  devRemoveTextInputBtn: string;
+  customerTextInputsTitle: string;
+  customerTextInputsDesc: string;
+  customerTextInputRequiredBadge: string;
+  customerTextInputOptionalBadge: string;
+  customerTextInputMissingError: string;
+  catalogComboBadge: string;
+  catalogViewComboBtn: string;
+  catalogConfigureBtn: string;
 
   // Pick-up, Delivery & Home Installation
   servicesTitle: string;
@@ -3026,6 +3045,25 @@ export const translations: Record<Language, Translations> = {
     productCartAddonToggleOn: "Agregado",
     productCartAddonSelectedSummary: "complemento(s) para agregar junto al carrito",
     productOutOfStock: "Agotado",
+    devTextInputsTitle: "Campos de Texto para el Cliente",
+    devTextInputsDesc: "Agrega campos de texto que el cliente debe llenar antes de agregar al carrito (ej. número de VIN, modelo exacto, talla, notas de calibración).",
+    devAddTextInputBtn: "+ Agregar Campo de Texto",
+    devTextInputTitleEsLabel: "Título del Campo (Español)",
+    devTextInputTitleEnLabel: "Título del Campo (Inglés - Opcional)",
+    devTextInputPlaceholderEsLabel: "Placeholder / Ejemplo (Español)",
+    devTextInputPlaceholderEnLabel: "Placeholder / Ejemplo (Inglés - Opcional)",
+    devTextInputRequiredLabel: "Obligatorio",
+    devTextInputOptionalLabel: "Opcional",
+    devTextInputsEmptyNotice: "No hay campos de texto configurados. Haz clic en \"+ Agregar Campo de Texto\" para solicitar información adicional al cliente.",
+    devRemoveTextInputBtn: "Eliminar campo de texto",
+    customerTextInputsTitle: "Información Requerida para tu Pedido",
+    customerTextInputsDesc: "Completa los siguientes datos para personalizar y procesar tu pedido correctamente.",
+    customerTextInputRequiredBadge: "Requerido",
+    customerTextInputOptionalBadge: "Opcional",
+    customerTextInputMissingError: "Por favor completa los siguientes campos obligatorios antes de continuar:",
+    catalogComboBadge: "COMBO",
+    catalogViewComboBtn: "Ver Combo",
+    catalogConfigureBtn: "Configurar",
     devComboIncludedProducts: "Productos Incluidos en el Combo",
     devComboSearchProductPlaceholder: "Buscar producto del catálogo para agregar al combo...",
     devComboAddProduct: "Agregar al Combo",
@@ -5082,6 +5120,25 @@ export const translations: Record<Language, Translations> = {
     productCartAddonToggleOn: "Added",
     productCartAddonSelectedSummary: "add-on(s) to add together to cart",
     productOutOfStock: "Out of Stock",
+    devTextInputsTitle: "Customer Text Input Fields",
+    devTextInputsDesc: "Add text inputs that customers fill out before adding to cart (e.g. VIN number, exact model, size, tuning notes).",
+    devAddTextInputBtn: "+ Add Text Input",
+    devTextInputTitleEsLabel: "Field Title (Spanish)",
+    devTextInputTitleEnLabel: "Field Title (English - Optional)",
+    devTextInputPlaceholderEsLabel: "Placeholder / Example (Spanish)",
+    devTextInputPlaceholderEnLabel: "Placeholder / Example (English - Optional)",
+    devTextInputRequiredLabel: "Required",
+    devTextInputOptionalLabel: "Optional",
+    devTextInputsEmptyNotice: "No text inputs configured. Click \"+ Add Text Input\" to request additional information from the customer.",
+    devRemoveTextInputBtn: "Remove text input",
+    customerTextInputsTitle: "Required Information for Your Order",
+    customerTextInputsDesc: "Please fill out the following details to customize and process your order accurately.",
+    customerTextInputRequiredBadge: "Required",
+    customerTextInputOptionalBadge: "Optional",
+    customerTextInputMissingError: "Please fill out the following required fields before continuing:",
+    catalogComboBadge: "COMBO",
+    catalogViewComboBtn: "View Combo",
+    catalogConfigureBtn: "Configure",
     devComboIncludedProducts: "Products Included in Combo",
     devComboSearchProductPlaceholder: "Search catalog product to add to combo...",
     devComboAddProduct: "Add to Combo",
@@ -6283,6 +6340,8 @@ export const categoryTranslations: Record<string, { es: string; en: string }> = 
   safety: { es: "Seguridad", en: "Safety" },
   mantenimiento: { es: "Mantenimiento", en: "Maintenance" },
   maintenance: { es: "Mantenimiento", en: "Maintenance" },
+  combos: { es: "Combos", en: "Combos" },
+  combo: { es: "Combos", en: "Combos" },
 };
 
 export function getCategoryLabel(categoryKey: string, lang: Language = "es"): string {

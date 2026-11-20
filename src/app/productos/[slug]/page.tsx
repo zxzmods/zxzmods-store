@@ -383,6 +383,9 @@ export default function ProductDetailPage() {
   const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>({});
   // Toggled Cart Add-on Option IDs (attached to this specific product; cleared on product linking switch, kept on local parameter changes)
   const [selectedAddonIds, setSelectedAddonIds] = useState<Record<string, boolean>>({});
+  const [textInputValues, setTextInputValues] = useState<Record<string, string>>({});
+  const [textInputErrors, setTextInputErrors] = useState<Record<string, boolean>>({});
+  const [textInputErrorMsg, setTextInputErrorMsg] = useState<string | null>(null);
   const [switchingLinkedProduct, setSwitchingLinkedProduct] = useState(false);
   const [switchingTargetId, setSwitchingTargetId] = useState<string | null>(null);
 
@@ -460,6 +463,7 @@ export default function ProductDetailPage() {
   ) => {
     const isProductLinking =
       param.type !== "cart_addon" &&
+      param.type !== "text_input" &&
       (param.type === "product_linking" ||
         param.type === "product_link" ||
         Boolean(opt.linkedProductId));
@@ -484,6 +488,9 @@ export default function ProductDetailPage() {
           setActiveImageIndex(0);
           // Cart add-ons are strictly attached to each specific product and do NOT carry over across product linking
           setSelectedAddonIds({});
+    setTextInputValues({});
+    setTextInputErrors({});
+    setTextInputErrorMsg(null);
 
           // Update URL in browser silently without full page refresh (Amazon style)
           const nextSlug = nextProd.slug || nextProd.sku || nextProd.id;
@@ -495,7 +502,7 @@ export default function ProductDetailPage() {
           const nextOpts: Record<string, string> = {};
           if (nextProd.parameters && Array.isArray(nextProd.parameters)) {
             nextProd.parameters.forEach((p: any) => {
-              if (p.type === "cart_addon") return;
+              if (p.type === "cart_addon" || p.type === "text_input") return;
               const isPLinked =
                 p.type === "product_linking" ||
                 p.type === "product_link" ||
@@ -521,6 +528,9 @@ export default function ProductDetailPage() {
             });
           }
           setSelectedOptions(nextOpts);
+          setTextInputValues({});
+          setTextInputErrors({});
+          setTextInputErrorMsg(null);
         }
       } catch (err) {
         console.error("Error switching linked product:", err);
@@ -561,7 +571,7 @@ export default function ProductDetailPage() {
           if (data.product.parameters && Array.isArray(data.product.parameters)) {
             const initialOpts: Record<string, string> = {};
             data.product.parameters.forEach((param: any) => {
-              if (param.type === "cart_addon") return;
+              if (param.type === "cart_addon" || param.type === "text_input") return;
               if (param.options && param.options.length > 0) {
                 const isLinked =
                   param.type === "product_linking" ||
@@ -700,9 +710,11 @@ export default function ProductDetailPage() {
     };
   }, [isLightboxOpen]);
 
-  // Separate standard variant parameters from cart_addon parameters
+  // Separate standard variant parameters, cart_addon parameters, and customer text_input parameters
   const standardParameters = useMemo(() => {
-    return (product?.parameters || []).filter((p) => p.type !== "cart_addon");
+    return (product?.parameters || []).filter(
+      (p) => p.type !== "cart_addon" && p.type !== "text_input"
+    );
   }, [product?.parameters]);
 
   const cartAddonParameters = useMemo(() => {
@@ -710,6 +722,27 @@ export default function ProductDetailPage() {
       (p) => p.type === "cart_addon" && Array.isArray(p.options) && p.options.length > 0
     );
   }, [product?.parameters]);
+
+  const textInputParameters = useMemo(() => {
+    return (product?.parameters || []).filter((p) => p.type === "text_input");
+  }, [product?.parameters]);
+
+  const filledTextParameterItems: SelectedParameterItem[] = useMemo(() => {
+    const list: SelectedParameterItem[] = [];
+    textInputParameters.forEach((param) => {
+      const val = (textInputValues[param.id] || "").trim();
+      if (val) {
+        list.push({
+          parameterId: param.id,
+          parameterName: lang === "es" ? param.nameEs : (param.nameEn || param.nameEs),
+          optionId: `txt_${encodeURIComponent(val).slice(0, 32)}`,
+          optionLabel: val,
+          priceDeltaCRC: 0,
+        });
+      }
+    });
+    return list;
+  }, [textInputParameters, textInputValues, lang]);
 
   const selectedAddonOptions = useMemo(() => {
     const list: ParameterOption[] = [];
@@ -1054,12 +1087,16 @@ export default function ProductDetailPage() {
 
   const effectivePriceCRC = (product?.price?.T_price || 0) + totalDeltaCRC;
 
+  const combinedCartParameters = useMemo(() => {
+    return [...selectedParametersList, ...filledTextParameterItems];
+  }, [selectedParametersList, filledTextParameterItems]);
+
   const computedVariantId = useMemo(() => {
     if (!product) return "";
-    if (selectedParametersList.length === 0) return product.id;
-    const paramSlug = selectedParametersList.map((p) => `${p.parameterId}_${p.optionId}`).join("__");
+    if (combinedCartParameters.length === 0) return product.id;
+    const paramSlug = combinedCartParameters.map((p) => `${p.parameterId}_${p.optionId}`).join("__");
     return `${product.id}__${paramSlug}`;
-  }, [product, selectedParametersList]);
+  }, [product, combinedCartParameters]);
 
   // Gallery navigation functions for touch swipe and tap
   const handleNextImage = useCallback(() => {
@@ -1173,8 +1210,35 @@ export default function ProductDetailPage() {
       .filter((x): x is NonNullable<typeof x> => Boolean(x));
   }, [product, selectedAddonOptions, lang]);
 
+  const validateCustomerTextInputs = (): boolean => {
+    if (textInputParameters.length === 0) return true;
+    const missingIds: Record<string, boolean> = {};
+    const missingNames: string[] = [];
+    textInputParameters.forEach((param) => {
+      const isReq = param.required !== false;
+      const val = (textInputValues[param.id] || "").trim();
+      if (isReq && !val) {
+        missingIds[param.id] = true;
+        missingNames.push(lang === "es" ? param.nameEs : (param.nameEn || param.nameEs));
+      }
+    });
+    if (missingNames.length > 0) {
+      setTextInputErrors(missingIds);
+      setTextInputErrorMsg(
+        `${t.customerTextInputMissingError || (lang === "es" ? "Por favor completa los siguientes campos obligatorios antes de continuar:" : "Please fill out the following required fields before continuing:")} ${missingNames.join(", ")}`
+      );
+      const el = document.getElementById("product-customer-text-inputs");
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+      return false;
+    }
+    setTextInputErrors({});
+    setTextInputErrorMsg(null);
+    return true;
+  };
+
   const handleAddToCart = () => {
     if (!product) return;
+    if (!validateCustomerTextInputs()) return;
     if (availability?.status === "OUT_OF_STOCK" || availability?.status === "UNAVAILABLE") {
       handleReserveQuotation();
       return;
@@ -1202,7 +1266,7 @@ export default function ProductDetailPage() {
         basePriceCRC: product.price.T_price,
         basePriceUSD: Number(product.price?.P_price_D || product.supplierLastPriceUSD || 0),
         supplierUrl: variantSupplierUrl || product.supplierUrl || null,
-        selectedParameters: selectedParametersList,
+        selectedParameters: combinedCartParameters,
         installationPriceCRC: isDeliveryOnly ? 0 : (isIncluded ? 0 : (Number(product.price?.I_price?.I_price) || 0)),
         withInstallation: isDeliveryOnly ? false : isIncluded,
         freeInstallation: isDeliveryOnly ? false : isIncluded,
@@ -1220,6 +1284,7 @@ export default function ProductDetailPage() {
   // Solicitar Cotización de Reserva (Creates a #COT order and redirects or opens WhatsApp)
   const handleReserveQuotation = async () => {
     if (!product) return;
+    if (!validateCustomerTextInputs()) return;
     setSubmittingReservationQuote(true);
     try {
       const isDeliveryOnly = product.installationAvailable === false || (product as any).installationAvailable === false;
@@ -1247,7 +1312,7 @@ export default function ProductDetailPage() {
             basePriceCRC: product.price.T_price,
             basePriceUSD: Number(product.price?.P_price_D || product.supplierLastPriceUSD || 0),
             supplierUrl: variantSupplierUrl || product.supplierUrl || null,
-            selectedParameters: selectedParametersList,
+            selectedParameters: combinedCartParameters,
             installationPriceCRC: isDeliveryOnly ? 0 : (isIncluded ? 0 : (Number(product.price?.I_price?.I_price) || 0)),
             withInstallation: isDeliveryOnly ? false : isIncluded,
             freeInstallation: isDeliveryOnly ? false : isIncluded,
@@ -2419,6 +2484,105 @@ export default function ProductDetailPage() {
                         <ChevronRight className="w-3.5 h-3.5" />
                       </Link>
                     </div>
+                  </div>
+                )}
+
+                {/* Customer Text Input Fields (Below Stock Check / Complementos, Immediately Above Add to Cart) */}
+                {textInputParameters.length > 0 && (
+                  <div
+                    id="product-customer-text-inputs"
+                    className="p-4 sm:p-5 rounded-3xl bg-gray-50 border border-gray-200/80 shadow-xs space-y-4"
+                  >
+                    <div className="flex items-start justify-between gap-2 border-b border-gray-200/70 pb-2.5">
+                      <div>
+                        <span className="text-xs font-black uppercase tracking-wider text-[#111827] flex items-center gap-1.5">
+                          <FileText className="w-4 h-4 text-[#C02030]" />
+                          <span>
+                            {t.customerTextInputsTitle ||
+                              (lang === "es"
+                                ? "Información Requerida para tu Pedido"
+                                : "Required Information for Your Order")}
+                          </span>
+                        </span>
+                        <p className="text-[11px] text-gray-500 mt-0.5 leading-snug">
+                          {t.customerTextInputsDesc ||
+                            (lang === "es"
+                              ? "Completa los siguientes datos para personalizar y procesar tu pedido correctamente."
+                              : "Please fill out the following details to customize and process your order accurately.")}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      {textInputParameters.map((field) => {
+                        const isReq = field.required !== false;
+                        const hasError = Boolean(textInputErrors[field.id]);
+                        const fieldLabel =
+                          lang === "es"
+                            ? field.nameEs || field.nameEn || ""
+                            : field.nameEn || field.nameEs || "";
+                        const fieldPlaceholder =
+                          lang === "es"
+                            ? field.placeholderEs || field.placeholderEn || "Escribe aquí..."
+                            : field.placeholderEn || field.placeholderEs || "Type here...";
+
+                        return (
+                          <div key={field.id} className="space-y-1.5">
+                            <div className="flex items-center justify-between gap-2">
+                              <label
+                                htmlFor={`prod-txt-${field.id}`}
+                                className="text-xs font-bold text-[#111827] flex items-center gap-1"
+                              >
+                                <span>{fieldLabel}</span>
+                                {isReq && <span className="text-[#C02030]">*</span>}
+                              </label>
+                              <span
+                                className={`text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                                  isReq
+                                    ? "bg-[#C02030]/10 text-[#C02030]"
+                                    : "bg-gray-200/80 text-gray-600"
+                                }`}
+                              >
+                                {isReq
+                                  ? t.customerTextInputRequiredBadge || (lang === "es" ? "Requerido" : "Required")
+                                  : t.customerTextInputOptionalBadge || (lang === "es" ? "Opcional" : "Optional")}
+                              </span>
+                            </div>
+                            <input
+                              id={`prod-txt-${field.id}`}
+                              type="text"
+                              required={isReq}
+                              value={textInputValues[field.id] || ""}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setTextInputValues((prev) => ({ ...prev, [field.id]: val }));
+                                if (textInputErrors[field.id] && val.trim()) {
+                                  setTextInputErrors((prev) => {
+                                    const next = { ...prev };
+                                    delete next[field.id];
+                                    return next;
+                                  });
+                                  setTextInputErrorMsg(null);
+                                }
+                              }}
+                              placeholder={fieldPlaceholder}
+                              className={`w-full rounded-2xl bg-white border px-4 py-3 text-xs sm:text-sm font-medium text-[#111827] placeholder:text-gray-400 focus:outline-none focus:ring-2 transition-all ${
+                                hasError
+                                  ? "border-[#C02030] ring-2 ring-[#C02030]/20 bg-rose-50/30"
+                                  : "border-gray-200 hover:border-gray-300 focus:border-[#C02030] focus:ring-[#C02030]/15"
+                              }`}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {textInputErrorMsg && (
+                      <div className="p-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold flex items-start gap-2">
+                        <AlertCircle className="w-4 h-4 text-[#C02030] shrink-0 mt-0.5" />
+                        <span>{textInputErrorMsg}</span>
+                      </div>
+                    )}
                   </div>
                 )}
 

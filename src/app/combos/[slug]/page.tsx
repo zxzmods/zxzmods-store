@@ -56,6 +56,7 @@ import {
   Calendar,
   AlertTriangle,
   Sliders,
+  FileText,
 } from "lucide-react";
 import { ProductReviewsSection } from "@/components/reviews/ProductReviewsSection";
 import { SuggestedSection } from "@/components/product/SuggestedSection";
@@ -152,6 +153,11 @@ export default function ComboDetailPage() {
   const [uniqueAnswers, setUniqueAnswers] = useState<Record<string, string>>({});
   const [uniqueError, setUniqueError] = useState<string | null>(null);
 
+  // Customer Text Input Fields State (parameterId -> value)
+  const [textInputValues, setTextInputValues] = useState<Record<string, string>>({});
+  const [textInputErrors, setTextInputErrors] = useState<Record<string, boolean>>({});
+  const [textInputErrorMsg, setTextInputErrorMsg] = useState<string | null>(null);
+
   // Lightbox Modal state
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
   const [lightboxImageIndex, setLightboxImageIndex] = useState(0);
@@ -208,9 +214,13 @@ export default function ComboDetailPage() {
           setCombo(data.data.combo);
           setActiveImageIndex(0);
           setSelectedImageOverride(null);
+          setTextInputValues({});
+          setTextInputErrors({});
+          setTextInputErrorMsg(null);
           if (data.data.combo.parameters && Array.isArray(data.data.combo.parameters)) {
             const initialOpts: Record<string, string> = {};
             data.data.combo.parameters.forEach((param: any) => {
+              if (param.type === "text_input" || param.type === "cart_addon") return;
               if (param.options && param.options.length > 0) {
                 initialOpts[param.id] = param.options[0].id;
               }
@@ -291,11 +301,38 @@ export default function ComboDetailPage() {
     };
   }, [isLightboxOpen]);
 
+  const standardParameters = useMemo(() => {
+    return (combo?.parameters || []).filter(
+      (p) => p.type !== "text_input" && p.type !== "cart_addon"
+    );
+  }, [combo?.parameters]);
+
+  const textInputParameters = useMemo(() => {
+    return (combo?.parameters || []).filter((p) => p.type === "text_input");
+  }, [combo?.parameters]);
+
+  const filledTextParameterItems: SelectedParameterItem[] = useMemo(() => {
+    const list: SelectedParameterItem[] = [];
+    textInputParameters.forEach((param) => {
+      const val = (textInputValues[param.id] || "").trim();
+      if (val) {
+        list.push({
+          parameterId: param.id,
+          parameterName: lang === "es" ? param.nameEs : (param.nameEn || param.nameEs),
+          optionId: `txt_${encodeURIComponent(val).slice(0, 32)}`,
+          optionLabel: val,
+          priceDeltaCRC: 0,
+        });
+      }
+    });
+    return list;
+  }, [textInputParameters, textInputValues, lang]);
+
   // Dynamic Calculation of Parameters & Price Delta
   const selectedParametersList: SelectedParameterItem[] = useMemo(() => {
-    if (!combo?.parameters || combo.parameters.length === 0) return [];
+    if (standardParameters.length === 0) return [];
     const list: SelectedParameterItem[] = [];
-    combo.parameters.forEach((param) => {
+    standardParameters.forEach((param) => {
       const selectedOptionId = selectedOptions[param.id] || param.options?.[0]?.id;
       const option = param.options?.find((o) => o.id === selectedOptionId);
       if (option) {
@@ -314,12 +351,12 @@ export default function ComboDetailPage() {
       }
     });
     return list;
-  }, [combo, selectedOptions, lang]);
+  }, [standardParameters, selectedOptions, lang]);
 
   // Dual parameter matrix resolution (Param 1 x Param 2 expansion)
   const dualResolution = useMemo(() => {
-    return resolveDualParameterConnection(combo?.parameters, selectedOptions);
-  }, [combo?.parameters, selectedOptions]);
+    return resolveDualParameterConnection(standardParameters, selectedOptions);
+  }, [standardParameters, selectedOptions]);
 
   // Complete combo image gallery (selected parameter variant images first, followed by deduplicated gallery images)
   const allImages = useMemo(() => {
@@ -390,12 +427,16 @@ export default function ComboDetailPage() {
 
   const effectivePriceCRC = (combo?.priceCRC || 0) + totalDeltaCRC;
 
+  const combinedCartParameters = useMemo(() => {
+    return [...selectedParametersList, ...filledTextParameterItems];
+  }, [selectedParametersList, filledTextParameterItems]);
+
   const computedVariantId = useMemo(() => {
     if (!combo) return "";
-    if (selectedParametersList.length === 0) return `combo-${combo.id}`;
-    const paramSlug = selectedParametersList.map((p) => `${p.parameterId}_${p.optionId}`).join("__");
+    if (combinedCartParameters.length === 0) return `combo-${combo.id}`;
+    const paramSlug = combinedCartParameters.map((p) => `${p.parameterId}_${p.optionId}`).join("__");
     return `combo-${combo.id}__${paramSlug}`;
-  }, [combo, selectedParametersList]);
+  }, [combo, combinedCartParameters]);
 
   // Gallery navigation functions for touch swipe and tap
   const handleNextImage = useCallback(() => {
@@ -445,8 +486,35 @@ export default function ComboDetailPage() {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
+  const validateCustomerTextInputs = (): boolean => {
+    if (textInputParameters.length === 0) return true;
+    const missingIds: Record<string, boolean> = {};
+    const missingNames: string[] = [];
+    textInputParameters.forEach((param) => {
+      const isReq = param.required !== false;
+      const val = (textInputValues[param.id] || "").trim();
+      if (isReq && !val) {
+        missingIds[param.id] = true;
+        missingNames.push(lang === "es" ? param.nameEs : (param.nameEn || param.nameEs));
+      }
+    });
+    if (missingNames.length > 0) {
+      setTextInputErrors(missingIds);
+      setTextInputErrorMsg(
+        `${t.customerTextInputMissingError || (lang === "es" ? "Por favor completa los siguientes campos obligatorios antes de continuar:" : "Please fill out the following required fields before continuing:")} ${missingNames.join(", ")}`
+      );
+      const el = document.getElementById("combo-customer-text-inputs");
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+      return false;
+    }
+    setTextInputErrors({});
+    setTextInputErrorMsg(null);
+    return true;
+  };
+
   const handleAddToCart = () => {
     if (!combo) return;
+    if (!validateCustomerTextInputs()) return;
 
     if (combo.uniqueProduct?.enabled && Array.isArray(combo.uniqueProduct.fields)) {
       const missingRequired = combo.uniqueProduct.fields.filter(
@@ -484,7 +552,7 @@ export default function ComboDetailPage() {
       comp: combo.comp && combo.comp.length > 0 ? combo.comp : ["all"],
       priceCRC: effectivePriceCRC,
       basePriceCRC: combo.priceCRC,
-      selectedParameters: selectedParametersList,
+      selectedParameters: combinedCartParameters,
       installationPriceCRC: combo.installationPriceCRC,
       withInstallation,
       homeInstallation: combo.homeInstallationAvailable ?? true,
@@ -972,7 +1040,7 @@ export default function ComboDetailPage() {
                 )}
 
                 {/* Configurable Parameters & Options */}
-                {combo.parameters && combo.parameters.length > 0 && (
+                {standardParameters.length > 0 && (
                   <div className="p-4 rounded-2xl bg-gray-50 border border-gray-200 space-y-3.5">
                     <div className="flex items-center justify-between border-b border-gray-200 pb-2">
                       <span className="text-xs font-black uppercase tracking-wider text-gray-900 flex items-center gap-1.5">
@@ -982,7 +1050,7 @@ export default function ComboDetailPage() {
                     </div>
 
                     <div className="space-y-3">
-                      {combo.parameters.map((param) => {
+                      {standardParameters.map((param) => {
                         const activeOptionId = selectedOptions[param.id] || param.options?.[0]?.id;
                         const paramTitle = lang === "es" ? param.nameEs : (param.nameEn || param.nameEs);
 
@@ -1295,6 +1363,105 @@ export default function ComboDetailPage() {
                     {combo.installationPriceCRC === 0 ? t.comboInstallationIncluded : `+${displayInstallPrice}`}
                   </span>
                 </div>
+
+                {/* Customer Text Input Fields (Immediately Above Add to Cart) */}
+                {textInputParameters.length > 0 && (
+                  <div
+                    id="combo-customer-text-inputs"
+                    className="p-4 sm:p-5 rounded-3xl bg-gray-50 border border-gray-200/80 shadow-xs space-y-4"
+                  >
+                    <div className="flex items-start justify-between gap-2 border-b border-gray-200/70 pb-2.5">
+                      <div>
+                        <span className="text-xs font-black uppercase tracking-wider text-[#111827] flex items-center gap-1.5">
+                          <FileText className="w-4 h-4 text-[#C02030]" />
+                          <span>
+                            {t.customerTextInputsTitle ||
+                              (lang === "es"
+                                ? "Información Requerida para tu Pedido"
+                                : "Required Information for Your Order")}
+                          </span>
+                        </span>
+                        <p className="text-[11px] text-gray-500 mt-0.5 leading-snug">
+                          {t.customerTextInputsDesc ||
+                            (lang === "es"
+                              ? "Completa los siguientes datos para personalizar y procesar tu pedido correctamente."
+                              : "Please fill out the following details to customize and process your order accurately.")}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      {textInputParameters.map((field) => {
+                        const isReq = field.required !== false;
+                        const hasError = Boolean(textInputErrors[field.id]);
+                        const fieldLabel =
+                          lang === "es"
+                            ? field.nameEs || field.nameEn || ""
+                            : field.nameEn || field.nameEs || "";
+                        const fieldPlaceholder =
+                          lang === "es"
+                            ? field.placeholderEs || field.placeholderEn || "Escribe aquí..."
+                            : field.placeholderEn || field.placeholderEs || "Type here...";
+
+                        return (
+                          <div key={field.id} className="space-y-1.5">
+                            <div className="flex items-center justify-between gap-2">
+                              <label
+                                htmlFor={`combo-txt-${field.id}`}
+                                className="text-xs font-bold text-[#111827] flex items-center gap-1"
+                              >
+                                <span>{fieldLabel}</span>
+                                {isReq && <span className="text-[#C02030]">*</span>}
+                              </label>
+                              <span
+                                className={`text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                                  isReq
+                                    ? "bg-[#C02030]/10 text-[#C02030]"
+                                    : "bg-gray-200/80 text-gray-600"
+                                }`}
+                              >
+                                {isReq
+                                  ? t.customerTextInputRequiredBadge || (lang === "es" ? "Requerido" : "Required")
+                                  : t.customerTextInputOptionalBadge || (lang === "es" ? "Opcional" : "Optional")}
+                              </span>
+                            </div>
+                            <input
+                              id={`combo-txt-${field.id}`}
+                              type="text"
+                              required={isReq}
+                              value={textInputValues[field.id] || ""}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setTextInputValues((prev) => ({ ...prev, [field.id]: val }));
+                                if (textInputErrors[field.id] && val.trim()) {
+                                  setTextInputErrors((prev) => {
+                                    const next = { ...prev };
+                                    delete next[field.id];
+                                    return next;
+                                  });
+                                  setTextInputErrorMsg(null);
+                                }
+                              }}
+                              placeholder={fieldPlaceholder}
+                              className={`w-full rounded-2xl bg-white border px-4 py-3 text-xs sm:text-sm font-medium text-[#111827] placeholder:text-gray-400 focus:outline-none focus:ring-2 transition-all ${
+                                hasError
+                                  ? "border-[#C02030] ring-2 ring-[#C02030]/20 bg-rose-50/30"
+                                  : "border-gray-200 hover:border-gray-300 focus:border-[#C02030] focus:ring-[#C02030]/15"
+                              }`}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {textInputErrorMsg && (
+                      <div className="p-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold flex items-start gap-2">
+                        <AlertCircle className="w-4 h-4 text-[#C02030] shrink-0 mt-0.5" />
+                        <span>{textInputErrorMsg}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Add to Cart & Inquiry Actions */}
                 <div ref={buySectionRef} className="space-y-3 pt-2">
