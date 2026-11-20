@@ -124,6 +124,15 @@ export interface ParameterOptionConnection {
   imageUrl?: string;            // Primary image for this combo
   priceDeltaUSD?: number;       // Specific price override for this combo (if differs from sum)
   priceDeltaCRC?: number;
+  supplierStockStatus?: string;
+  supplierStockCount?: number | null;
+  supplierPlatform?: string | null;
+  supplierStockMessageEs?: string | null;
+  supplierStockMessageEn?: string | null;
+  supplierStockCheckedAt?: string | null;
+  supplierLeadDaysMin?: number;
+  supplierLeadDaysMax?: number;
+  supplierLastPriceUSD?: number | null;
 }
 
 export interface ParameterOption {
@@ -144,6 +153,15 @@ export interface ParameterOption {
   isDefault?: boolean;
   isCurrentProduct?: boolean;
   connections?: ParameterOptionConnection[]; // Matrix connections to 2nd parameter options (expansion)
+  supplierStockStatus?: string;
+  supplierStockCount?: number | null;
+  supplierPlatform?: string | null;
+  supplierStockMessageEs?: string | null;
+  supplierStockMessageEn?: string | null;
+  supplierStockCheckedAt?: string | null;
+  supplierLeadDaysMin?: number;
+  supplierLeadDaysMax?: number;
+  supplierLastPriceUSD?: number | null;
 }
 
 export interface ComboUniqueProductField {
@@ -306,6 +324,22 @@ export function synchronizeDualParameterConnections(
 }
 
 /**
+ * Helper to check if a parameter is a local variant parameter (not cart_addon and not product_linking)
+ */
+export function isLocalVariantParameter(param?: ConfigurableParameter | null): boolean {
+  if (!param) return false;
+  if (
+    param.type === "cart_addon" ||
+    param.type === "product_linking" ||
+    param.type === "product_link" ||
+    param.options?.some((o) => Boolean(o.linkedProductId))
+  ) {
+    return false;
+  }
+  return true;
+}
+
+/**
  * Resolves the active connection/matrix data for a dual-parameter selection
  */
 export function resolveDualParameterConnection(
@@ -320,7 +354,8 @@ export function resolveDualParameterConnection(
   effectivePriceDeltaCRC: number;
   effectivePriceDeltaUSD: number;
 } {
-  if (!parameters || parameters.length < 2) {
+  const localParams = (parameters || []).filter(isLocalVariantParameter);
+  if (localParams.length < 2) {
     return {
       connection: null,
       opt1: null,
@@ -330,8 +365,8 @@ export function resolveDualParameterConnection(
     };
   }
 
-  const param1 = parameters[0];
-  const param2 = parameters[1];
+  const param1 = localParams[0];
+  const param2 = localParams[1];
   const opt1Id = selectedOptions[param1.id] || param1.options?.[0]?.id;
   const opt2Id = selectedOptions[param2.id] || param2.options?.[0]?.id;
 
@@ -341,11 +376,11 @@ export function resolveDualParameterConnection(
   const connection =
     opt1?.connections?.find((c) => c.secondOptionId === opt2Id) || null;
 
-  // Supplier URL resolution: connection URL > opt2 URL > opt1 URL
+  // Supplier URL resolution: connection URL > opt1 URL (primary variant) > opt2 URL
   const effectiveSupplierUrl =
     connection?.supplierUrl?.trim() ||
-    opt2?.supplierUrl?.trim() ||
     opt1?.supplierUrl?.trim() ||
+    opt2?.supplierUrl?.trim() ||
     undefined;
 
   // Images resolution: connection images > opt2 images > opt1 images

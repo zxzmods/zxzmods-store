@@ -568,59 +568,6 @@ export default function ProductDetailPage() {
       .finally(() => setLoading(false));
   }, [slug]);
 
-  // Synchronize and verify live supplier availability (enforces 8-hour freshness policy)
-  useEffect(() => {
-    if (!product) return;
-
-    // Seed immediate state from database cache
-    if (product.supplierStockStatus) {
-      setAvailability({
-        status: product.supplierStockStatus,
-        available: product.supplierStockStatus !== "OUT_OF_STOCK" && product.supplierStockStatus !== "UNAVAILABLE",
-        stockCount: product.supplierStockCount ?? null,
-        platform: product.supplierPlatform || "SHOPIFY",
-        messageEs: product.supplierStockMessageEs || "Disponible para entrega o importación inmediata",
-        messageEn: product.supplierStockMessageEn || "In stock ready for immediate delivery or import",
-        leadDaysMin: product.supplierLeadDaysMin || 7,
-        leadDaysMax: product.supplierLeadDaysMax || 21,
-        supplierUrl: product.supplierUrl || null,
-        supplierPriceUSD: product.supplierLastPriceUSD ?? null,
-        checkedAt: product.supplierStockCheckedAt ? new Date(product.supplierStockCheckedAt).toISOString() : new Date().toISOString(),
-        isStale: false,
-      });
-    }
-
-    // Query availability endpoint to check against 8-hour TTL or revalidate
-    if (product.supplierUrl || product.id) {
-      setCheckingAvailability(true);
-      fetch(`/api/products/${encodeURIComponent(product.id)}/availability`)
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.success && data.availability) {
-            setAvailability(data.availability);
-          }
-        })
-        .catch((err) => console.warn("Live availability check warning:", err))
-        .finally(() => setCheckingAvailability(false));
-    }
-  }, [product?.id]);
-
-  const handleRefreshAvailability = async () => {
-    if (!product) return;
-    setCheckingAvailability(true);
-    try {
-      const res = await fetch(`/api/products/${encodeURIComponent(product.id)}/availability?fresh=true`);
-      const data = await res.json();
-      if (data.success && data.availability) {
-        setAvailability(data.availability);
-      }
-    } catch (err) {
-      console.error("Failed to refresh supplier availability:", err);
-    } finally {
-      setCheckingAvailability(false);
-    }
-  };
-
   // Fetch suggested combos strictly prioritizing vehicle compatibility and category
   useEffect(() => {
     if (!product) return;
@@ -792,7 +739,7 @@ export default function ProductDetailPage() {
           colorHex: option.colorHex,
           imageUrl: option.imageUrl,
           images: option.images || (option.imageUrl ? [option.imageUrl] : []),
-          supplierUrl: option.supplierUrl,
+          supplierUrl: isLinkedParam ? undefined : option.supplierUrl,
           linkedProductId: option.linkedProductId,
         });
       }
@@ -804,6 +751,222 @@ export default function ProductDetailPage() {
   const dualResolution = useMemo(() => {
     return resolveDualParameterConnection(standardParameters, selectedOptions);
   }, [standardParameters, selectedOptions]);
+
+  // Effective supplier URL for the currently selected parameter option / combination
+  const activeVariantSupplierUrl = useMemo(() => {
+    if (dualResolution.effectiveSupplierUrl && dualResolution.effectiveSupplierUrl.trim()) {
+      return dualResolution.effectiveSupplierUrl.trim();
+    }
+    for (const p of selectedParametersList) {
+      if (!p.linkedProductId && p.supplierUrl && p.supplierUrl.trim()) {
+        return p.supplierUrl.trim();
+      }
+    }
+    return product?.supplierUrl?.trim() || null;
+  }, [dualResolution.effectiveSupplierUrl, selectedParametersList, product?.supplierUrl]);
+
+  // Pre-cached availability on the selected parameter option / connection if already persisted in parametersJson
+  const activeOptionCachedAvailability = useMemo((): NonNullable<typeof availability> | null => {
+    if (!product) return null;
+    const conn = dualResolution.connection;
+    if (conn && conn.supplierUrl?.trim() && conn.supplierStockStatus) {
+      return {
+        status: conn.supplierStockStatus,
+        available:
+          conn.supplierStockStatus !== "OUT_OF_STOCK" &&
+          conn.supplierStockStatus !== "UNAVAILABLE",
+        stockCount: conn.supplierStockCount ?? null,
+        platform: conn.supplierPlatform || product.supplierPlatform || "SHOPIFY",
+        messageEs:
+          conn.supplierStockMessageEs ||
+          (conn.supplierStockStatus === "OUT_OF_STOCK"
+            ? "Agotado temporalmente (Disponible para cotización de reserva)"
+            : "Disponible para entrega o importación inmediata"),
+        messageEn:
+          conn.supplierStockMessageEn ||
+          (conn.supplierStockStatus === "OUT_OF_STOCK"
+            ? "Temporarily out of stock (Available for reservation quote)"
+            : "In stock ready for immediate delivery or import"),
+        leadDaysMin: conn.supplierLeadDaysMin || product.supplierLeadDaysMin || 7,
+        leadDaysMax: conn.supplierLeadDaysMax || product.supplierLeadDaysMax || 21,
+        supplierUrl: conn.supplierUrl.trim(),
+        supplierPriceUSD:
+          conn.supplierLastPriceUSD ?? product.supplierLastPriceUSD ?? null,
+        checkedAt:
+          conn.supplierStockCheckedAt ||
+          (product.supplierStockCheckedAt
+            ? new Date(product.supplierStockCheckedAt).toISOString()
+            : new Date().toISOString()),
+        isStale: false,
+      };
+    }
+
+    for (const param of standardParameters) {
+      const isLinked =
+        param.type === "product_linking" ||
+        param.type === "product_link" ||
+        param.options?.some((o) => Boolean(o.linkedProductId));
+      if (isLinked) continue;
+      const selId = selectedOptions[param.id] || param.options?.[0]?.id;
+      const opt = param.options?.find((o) => o.id === selId);
+      if (opt && opt.supplierUrl?.trim() && opt.supplierStockStatus) {
+        return {
+          status: opt.supplierStockStatus,
+          available:
+            opt.supplierStockStatus !== "OUT_OF_STOCK" &&
+            opt.supplierStockStatus !== "UNAVAILABLE",
+          stockCount: opt.supplierStockCount ?? null,
+          platform: opt.supplierPlatform || product.supplierPlatform || "SHOPIFY",
+          messageEs:
+            opt.supplierStockMessageEs ||
+            (opt.supplierStockStatus === "OUT_OF_STOCK"
+              ? "Agotado temporalmente (Disponible para cotización de reserva)"
+              : "Disponible para entrega o importación inmediata"),
+          messageEn:
+            opt.supplierStockMessageEn ||
+            (opt.supplierStockStatus === "OUT_OF_STOCK"
+              ? "Temporarily out of stock (Available for reservation quote)"
+              : "In stock ready for immediate delivery or import"),
+          leadDaysMin: opt.supplierLeadDaysMin || product.supplierLeadDaysMin || 7,
+          leadDaysMax: opt.supplierLeadDaysMax || product.supplierLeadDaysMax || 21,
+          supplierUrl: opt.supplierUrl.trim(),
+          supplierPriceUSD:
+            opt.supplierLastPriceUSD ?? product.supplierLastPriceUSD ?? null,
+          checkedAt:
+            opt.supplierStockCheckedAt ||
+            (product.supplierStockCheckedAt
+              ? new Date(product.supplierStockCheckedAt).toISOString()
+              : new Date().toISOString()),
+          isStale: false,
+        };
+      }
+    }
+    return null;
+  }, [product, dualResolution.connection, standardParameters, selectedOptions]);
+
+  // Client-side session cache of verified availability per supplierUrl
+  const variantAvailabilitiesRef = useRef<Record<string, NonNullable<typeof availability>>>({});
+
+  useEffect(() => {
+    variantAvailabilitiesRef.current = {};
+  }, [product?.id]);
+
+  // Synchronize and verify live supplier availability for the active parameter variant (enforces 8-hour freshness policy)
+  useEffect(() => {
+    if (!product) return;
+
+    const targetUrl = activeVariantSupplierUrl;
+    const baseUrl = product.supplierUrl?.trim() || null;
+
+    // 1. If we already verified this exact variant URL during this page session, apply immediately
+    if (targetUrl && variantAvailabilitiesRef.current[targetUrl]) {
+      setAvailability(variantAvailabilitiesRef.current[targetUrl]);
+      setCheckingAvailability(false);
+      return;
+    }
+
+    // 2. Seed immediate state if option already has cached availability in parametersJson, or if targetUrl matches base product URL
+    if (activeOptionCachedAvailability) {
+      setAvailability(activeOptionCachedAvailability);
+    } else if (
+      (!targetUrl || targetUrl === baseUrl) &&
+      product.supplierStockStatus
+    ) {
+      setAvailability({
+        status: product.supplierStockStatus,
+        available:
+          product.supplierStockStatus !== "OUT_OF_STOCK" &&
+          product.supplierStockStatus !== "UNAVAILABLE",
+        stockCount: product.supplierStockCount ?? null,
+        platform: product.supplierPlatform || "SHOPIFY",
+        messageEs:
+          product.supplierStockMessageEs ||
+          "Disponible para entrega o importación inmediata",
+        messageEn:
+          product.supplierStockMessageEn ||
+          "In stock ready for immediate delivery or import",
+        leadDaysMin: product.supplierLeadDaysMin || 7,
+        leadDaysMax: product.supplierLeadDaysMax || 21,
+        supplierUrl: product.supplierUrl || null,
+        supplierPriceUSD: product.supplierLastPriceUSD ?? null,
+        checkedAt: product.supplierStockCheckedAt
+          ? new Date(product.supplierStockCheckedAt).toISOString()
+          : new Date().toISOString(),
+        isStale: false,
+      });
+    } else {
+      // Variant has a distinct supplierUrl that has not been verified yet: clear stale base status while verifying
+      setAvailability(null);
+    }
+
+    // 3. Query availability endpoint for the specific activeVariantSupplierUrl
+    if (targetUrl || product.id) {
+      let isCurrent = true;
+      setCheckingAvailability(true);
+      const query = targetUrl
+        ? `?supplierUrl=${encodeURIComponent(targetUrl)}`
+        : "";
+
+      fetch(`/api/products/${encodeURIComponent(product.id)}/availability${query}`, {
+        cache: "no-store",
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success) {
+            if (data.variantAvailabilities && typeof data.variantAvailabilities === "object") {
+              Object.assign(variantAvailabilitiesRef.current, data.variantAvailabilities);
+            }
+            if (data.availability) {
+              if (targetUrl) {
+                variantAvailabilitiesRef.current[targetUrl] = data.availability;
+              }
+              if (isCurrent) {
+                setAvailability(data.availability);
+              }
+            }
+          }
+        })
+        .catch((err) => console.warn("Live availability check warning:", err))
+        .finally(() => {
+          if (isCurrent) setCheckingAvailability(false);
+        });
+
+      return () => {
+        isCurrent = false;
+      };
+    }
+  }, [product?.id, activeVariantSupplierUrl]);
+
+  const handleRefreshAvailability = async () => {
+    if (!product) return;
+    setCheckingAvailability(true);
+    try {
+      const targetUrl = activeVariantSupplierUrl;
+      const query = targetUrl
+        ? `?fresh=true&supplierUrl=${encodeURIComponent(targetUrl)}`
+        : "?fresh=true";
+      const res = await fetch(
+        `/api/products/${encodeURIComponent(product.id)}/availability${query}`,
+        { cache: "no-store" }
+      );
+      const data = await res.json();
+      if (data.success) {
+        if (data.variantAvailabilities && typeof data.variantAvailabilities === "object") {
+          Object.assign(variantAvailabilitiesRef.current, data.variantAvailabilities);
+        }
+        if (data.availability) {
+          if (targetUrl) {
+            variantAvailabilitiesRef.current[targetUrl] = data.availability;
+          }
+          setAvailability(data.availability);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to refresh supplier availability:", err);
+    } finally {
+      setCheckingAvailability(false);
+    }
+  };
 
   // Complete image gallery (selected parameter variant images first, then base product images)
   const allImages = useMemo(() => {

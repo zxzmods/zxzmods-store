@@ -3,6 +3,7 @@ import { syncProductAvailability, isAvailabilityStale } from "@/lib/supplierAvai
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export async function GET(
   request: Request,
@@ -12,6 +13,7 @@ export async function GET(
     const slug = params.slug;
     const { searchParams } = new URL(request.url);
     const forceFresh = searchParams.get("fresh") === "true";
+    const requestedSupplierUrl = searchParams.get("supplierUrl")?.trim() || null;
 
     if (!slug) {
       return NextResponse.json(
@@ -20,8 +22,8 @@ export async function GET(
       );
     }
 
-    // Attempt sync / check with 8-hour freshness policy
-    const syncRes = await syncProductAvailability(slug, forceFresh);
+    // Attempt sync / check with 8-hour freshness policy (supports variant/parameter supplierUrl)
+    const syncRes = await syncProductAvailability(slug, forceFresh, requestedSupplierUrl);
 
     if (!syncRes.success || !syncRes.product) {
       // Check if product exists without supplier URL
@@ -39,45 +41,78 @@ export async function GET(
       }
 
       // Return default US warehouse status if no supplier URL linked
-      return NextResponse.json({
-        success: true,
-        availability: {
-          status: prod.supplierStockStatus || "IN_STOCK",
-          available: prod.supplierStockStatus !== "OUT_OF_STOCK" && prod.supplierStockStatus !== "UNAVAILABLE",
-          stockCount: prod.supplierStockCount || null,
-          platform: "MANUAL",
-          messageEs: prod.supplierStockMessageEs || "Disponible para entrega o importación inmediata",
-          messageEn: prod.supplierStockMessageEn || "In stock ready for immediate delivery or import",
-          leadDaysMin: prod.supplierLeadDaysMin || 7,
-          leadDaysMax: prod.supplierLeadDaysMax || 21,
-          supplierUrl: prod.supplierUrl || null,
-          supplierPriceUSD: prod.supplierLastPriceUSD || null,
-          checkedAt: prod.supplierStockCheckedAt ? new Date(prod.supplierStockCheckedAt).toISOString() : new Date().toISOString(),
-          isStale: false,
+      return NextResponse.json(
+        {
+          success: true,
+          availability: {
+            status: prod.supplierStockStatus || "IN_STOCK",
+            available:
+              prod.supplierStockStatus !== "OUT_OF_STOCK" &&
+              prod.supplierStockStatus !== "UNAVAILABLE",
+            stockCount: prod.supplierStockCount || null,
+            platform: "MANUAL",
+            messageEs:
+              prod.supplierStockMessageEs ||
+              "Disponible para entrega o importación inmediata",
+            messageEn:
+              prod.supplierStockMessageEn ||
+              "In stock ready for immediate delivery or import",
+            leadDaysMin: prod.supplierLeadDaysMin || 7,
+            leadDaysMax: prod.supplierLeadDaysMax || 21,
+            supplierUrl: prod.supplierUrl || null,
+            supplierPriceUSD: prod.supplierLastPriceUSD || null,
+            checkedAt: prod.supplierStockCheckedAt
+              ? new Date(prod.supplierStockCheckedAt).toISOString()
+              : new Date().toISOString(),
+            isStale: false,
+          },
+          variantAvailabilities: {},
         },
-      });
+        {
+          headers: {
+            "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+          },
+        }
+      );
     }
 
     const p = syncRes.product;
     const isStale = isAvailabilityStale(p.supplierStockCheckedAt);
+    const availability = syncRes.targetAvailability || {
+      status: p.supplierStockStatus || "IN_STOCK",
+      available:
+        p.supplierStockStatus !== "OUT_OF_STOCK" &&
+        p.supplierStockStatus !== "UNAVAILABLE",
+      stockCount: p.supplierStockCount || null,
+      platform: p.supplierPlatform || "SHOPIFY",
+      messageEs:
+        p.supplierStockMessageEs ||
+        "Disponible para entrega o importación inmediata",
+      messageEn:
+        p.supplierStockMessageEn ||
+        "In stock ready for immediate delivery or import",
+      leadDaysMin: p.supplierLeadDaysMin || 7,
+      leadDaysMax: p.supplierLeadDaysMax || 21,
+      supplierUrl: p.supplierUrl || null,
+      supplierPriceUSD: p.supplierLastPriceUSD || null,
+      checkedAt: p.supplierStockCheckedAt
+        ? new Date(p.supplierStockCheckedAt).toISOString()
+        : new Date().toISOString(),
+      isStale,
+    };
 
-    return NextResponse.json({
-      success: true,
-      availability: {
-        status: p.supplierStockStatus || "IN_STOCK",
-        available: p.supplierStockStatus !== "OUT_OF_STOCK" && p.supplierStockStatus !== "UNAVAILABLE",
-        stockCount: p.supplierStockCount || null,
-        platform: p.supplierPlatform || "SHOPIFY",
-        messageEs: p.supplierStockMessageEs || "Disponible para entrega o importación inmediata",
-        messageEn: p.supplierStockMessageEn || "In stock ready for immediate delivery or import",
-        leadDaysMin: p.supplierLeadDaysMin || 7,
-        leadDaysMax: p.supplierLeadDaysMax || 21,
-        supplierUrl: p.supplierUrl || null,
-        supplierPriceUSD: p.supplierLastPriceUSD || null,
-        checkedAt: p.supplierStockCheckedAt ? new Date(p.supplierStockCheckedAt).toISOString() : new Date().toISOString(),
-        isStale,
+    return NextResponse.json(
+      {
+        success: true,
+        availability,
+        variantAvailabilities: syncRes.variantAvailabilities || {},
       },
-    });
+      {
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+        },
+      }
+    );
   } catch (error: any) {
     console.error("Error in GET /api/products/[slug]/availability:", error);
     return NextResponse.json(
