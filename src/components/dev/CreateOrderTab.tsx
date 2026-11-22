@@ -4,6 +4,11 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useLanguage } from "@/context/LanguageContext";
 import { formatCRC } from "@/lib/i18n";
 import {
+  evaluateProductSearch,
+  evaluateComboSearch,
+  buildDealerBrandSearchRefs,
+} from "@/lib/search";
+import {
   UserCheck,
   Search,
   Plus,
@@ -100,6 +105,7 @@ export function CreateOrderTab({
   // Catalog items
   const [catalogProducts, setCatalogProducts] = useState<ProductItem[]>([]);
   const [catalogCombos, setCatalogCombos] = useState<ComboItem[]>([]);
+  const [catalogDealerBrands, setCatalogDealerBrands] = useState<any[]>([]);
   const [selectedItems, setSelectedItems] = useState<SelectedItem[]>([]);
 
   // Item Search
@@ -139,6 +145,7 @@ export function CreateOrderTab({
         if (data.success) {
           setCatalogProducts(data.products || []);
           setCatalogCombos(data.combos || []);
+          setCatalogDealerBrands(data.dealerBrands || []);
         }
       })
       .catch((err) => console.error("Catalog fetch error:", err));
@@ -174,20 +181,26 @@ export function CreateOrderTab({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Filtered search results for items
+  const dealerBrandRefs = useMemo(
+    () => buildDealerBrandSearchRefs(catalogDealerBrands),
+    [catalogDealerBrands]
+  );
+
+  // Filtered search results for items (Patch 2.0 smart multi-term, bilingual, brand & compatibility search)
   const matchedCatalogItems = useMemo(() => {
-    if (!itemSearchQuery.trim()) return [];
-    const q = itemSearchQuery.toLowerCase().trim();
+    const q = itemSearchQuery.trim();
+    if (!q) return [];
 
     const matchedProds = catalogProducts
-      .filter(
-        (p) =>
-          p.sku.toLowerCase().includes(q) ||
-          p.nameEs.toLowerCase().includes(q) ||
-          p.nameEn.toLowerCase().includes(q)
-      )
-      .slice(0, 5)
-      .map((p) => {
+      .map((p: any) => {
+        if (p.isArchived) return null;
+        const res = evaluateProductSearch(p, q, { dealerBrands: dealerBrandRefs });
+        return res.matches ? { p, score: res.score } : null;
+      })
+      .filter((x): x is { p: ProductItem; score: number } => Boolean(x))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 8)
+      .map(({ p }) => {
         const isDeliveryOnly = p.installationAvailable === false;
         const isFreeInstall = !isDeliveryOnly && Boolean(p.isInstallationIncluded);
         const resolvedBrand =
@@ -214,15 +227,15 @@ export function CreateOrderTab({
       });
 
     const matchedCmb = catalogCombos
-      .filter(
-        (c) =>
-          c.slug.toLowerCase().includes(q) ||
-          c.titleEs.toLowerCase().includes(q) ||
-          c.titleEn.toLowerCase().includes(q) ||
-          c.category.toLowerCase().includes(q)
-      )
+      .map((c: any) => {
+        if (c.isArchived) return null;
+        const res = evaluateComboSearch(c, q, { dealerBrands: dealerBrandRefs });
+        return res.matches ? { c, score: res.score } : null;
+      })
+      .filter((x): x is { c: ComboItem; score: number } => Boolean(x))
+      .sort((a, b) => b.score - a.score)
       .slice(0, 5)
-      .map((c) => {
+      .map(({ c }) => {
         const comboIncludesInstall = c.installationAvailable !== false;
         const displayName = lang === "es" ? (c.titleEs || c.titleEn) : (c.titleEn || c.titleEs);
         return {
@@ -245,7 +258,7 @@ export function CreateOrderTab({
       });
 
     return [...matchedProds, ...matchedCmb];
-  }, [itemSearchQuery, catalogProducts, catalogCombos, lang]);
+  }, [itemSearchQuery, catalogProducts, catalogCombos, dealerBrandRefs, lang]);
 
   const handleAddItem = (item: {
     id: string;

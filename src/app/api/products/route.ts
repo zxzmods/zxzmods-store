@@ -21,7 +21,7 @@ import { prisma } from "@/lib/prisma";
 import { SXS_BRAND_PLATFORMS, SXS_BRANDS, getBrandLogo } from "@/lib/sxsBrands";
 import { getStealthSession } from "@/lib/stealthAuth";
 import { sanitizeSearchQuery } from "@/lib/security/inputSanitizer";
-import { evaluateProductSearch, buildDealerBrandSearchRefs } from "@/lib/search";
+import { evaluateProductSearch, buildDealerBrandSearchRefs, sortCatalogProductsByBrandAndUniversal } from "@/lib/search";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -953,11 +953,34 @@ export async function GET(request: Request) {
       return a.title.localeCompare(b.title);
     });
 
-    // ONLY show distributor brands present in products
+    // ONLY show distributor brands present in products (enriched with dealer code/slug for smart search)
+    const dealerMetaByName = new Map<string, { code?: string | null; slug?: string | null }>();
+    dbDealerBrands.forEach((db: any) => {
+      if (db?.name) {
+        dealerMetaByName.set(normalizeBrandName(db.name).toLowerCase(), {
+          code: db.code || null,
+          slug: db.slug || null,
+        });
+      }
+    });
+
     const availableDistributorBrands = Object.entries(distributorBrandCounts)
       .filter(([_, count]) => count > 0)
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => a.name.localeCompare(b.name));
+      .map(([name, count]) => {
+        const meta = dealerMetaByName.get(name.toLowerCase());
+        return { name, count, code: meta?.code || null, slug: meta?.slug || null };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name, "es", { sensitivity: "base", numeric: true }));
+
+    // Global category list across all active products so smart search can switch categories anytime
+    const globalCategorySet = new Set<string>();
+    unifiedProducts.forEach((p) => {
+      p.category.forEach((c) => {
+        const clean = c.trim();
+        if (clean) globalCategorySet.add(clean);
+      });
+    });
+    const allCategories = Array.from(globalCategorySet).sort((a, b) => a.localeCompare(b));
 
     const productSearchScoreMap = new Map<string, number>();
 
@@ -1193,31 +1216,35 @@ export async function GET(request: Request) {
       return true;
     });
 
-    // Sort
-    const filtered = [...filteredProducts];
-    if (sort === "price-asc") {
-      filtered.sort((a, b) => a.price.T_price - b.price.T_price);
-    } else if (sort === "price-desc") {
-      filtered.sort((a, b) => b.price.T_price - a.price.T_price);
-    } else if (sort === "stars") {
-      filtered.sort(
-        (a, b) => ((b.reviews as any)?.stars || 0) - ((a.reviews as any)?.stars || 0)
-      );
-    } else if (q && q.trim()) {
-      filtered.sort(
-        (a, b) => (productSearchScoreMap.get(b.id) || 0) - (productSearchScoreMap.get(a.id) || 0)
-      );
-    }
+    // Patch 2.0 Sort (Fix 1 + Fix 2):
+    // - Universal compatibility products ALWAYS placed at the very last position
+    // - Default view & all filter/search modes order alphabetically by Distributor Brand (A -> Z, numeric-aware)
+    // - Manual Price/Rating sorts respect user choice while still placing Universal last when a compatibility filter is active
+    const hasCompatibilityFilter = Boolean(
+      (comp && comp.toLowerCase() !== "all") ||
+      Boolean(vehicleModel) ||
+      (modelCategory && modelCategory.toLowerCase() !== "all") ||
+      (vehicleBrand && vehicleBrand.toLowerCase() !== "all") ||
+      (q && q.trim() && Boolean(detectVehiclePlatform(q) || getVehicleFamily(q)))
+    );
+
+    const filtered = sortCatalogProductsByBrandAndUniversal(filteredProducts, {
+      sort: sort || "relevant",
+      hasCompatibilityFilter,
+      scoreMap: q && q.trim() ? productSearchScoreMap : undefined,
+    });
 
     return NextResponse.json({
       success: true,
       products: filtered,
       total: filtered.length,
       categories,
+      allCategories,
       categoryCounts: categoryCountsMap,
       brands: availableDistributorBrands.map((b) => b.name),
       availableVehicleBrands,
       availableDistributorBrands,
+      dealerBrandSearchRefs,
       hasInStock: globalHasInStock,
       hasDiscounted: globalHasDiscounted,
       sxsBrandModels,

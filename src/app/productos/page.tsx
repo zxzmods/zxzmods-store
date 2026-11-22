@@ -20,6 +20,13 @@ import { CatalogPagination } from "@/components/ui/CatalogPagination";
 import { CustomSelect } from "@/components/ui/CustomSelect";
 import { motion, AnimatePresence } from "framer-motion";
 import { ProductItem, normalizeBrandList, isPlatformOrVehicleMatch, detectVehiclePlatform, isUniversalFit, SelectedParameterItem } from "@/lib/products";
+import {
+  parseSmartSearchQuery,
+  buildSmartSearchSuggestions,
+  sortCatalogProductsByBrandAndUniversal,
+  DealerBrandSearchRef,
+  SmartSearchSuggestion,
+} from "@/lib/search";
 import { getSxsBrandBySlug, getBrandLogo } from "@/lib/sxsBrands";
 import { SxsBrandIntro } from "@/components/intro/SxsBrandIntro";
 import {
@@ -45,6 +52,7 @@ import {
   LayoutGrid,
   Layers,
   Tag,
+  Sparkles,
 } from "lucide-react";
 
 // Stars component - displays empty stars if no reviews submitted
@@ -454,6 +462,7 @@ function ProductsContent() {
   const [sortBy, setSortBy] = useState<"relevant" | "price-asc" | "price-desc" | "stars">("relevant");
 
   const [availableCategories, setAvailableCategories] = useState<string[]>([]);
+  const [allCatalogCategories, setAllCatalogCategories] = useState<string[]>([]);
   const [categoryCounts, setCategoryCounts] = useState<Record<string, number>>({});
   const [isCategoriesExpanded, setIsCategoriesExpanded] = useState(false);
   const [categoryFilterQuery, setCategoryFilterQuery] = useState("");
@@ -469,7 +478,15 @@ function ProductsContent() {
       count: number;
     }>
   >([]);
-  const [availableDistributorBrands, setAvailableDistributorBrands] = useState<Array<{ name: string; count: number }>>([]);
+  const [availableDistributorBrands, setAvailableDistributorBrands] = useState<
+    Array<{ name: string; count: number; code?: string | null; slug?: string | null }>
+  >([]);
+  const [dealerBrandSearchRefs, setDealerBrandSearchRefs] = useState<DealerBrandSearchRef[]>([]);
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const [autoAppliedFeedback, setAutoAppliedFeedback] = useState<string | null>(null);
+  const searchBarContainerRef = useRef<HTMLDivElement>(null);
+  const lastAutoParsedUrlQRef = useRef<string>("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState(initialQuery);
   const [hasInStock, setHasInStock] = useState(false);
   const [hasDiscounted, setHasDiscounted] = useState(false);
   const [sxsBrandModels, setSxsBrandModels] = useState<
@@ -676,13 +693,164 @@ function ProductsContent() {
     router.replace(`/productos?${params.toString()}`, { scroll: false });
   };
 
+  // Debounce text search slightly so live typing doesn't hammer the API
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 180);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Close smart suggestions dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (searchBarContainerRef.current && !searchBarContainerRef.current.contains(event.target as Node)) {
+        setIsSearchFocused(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // Build Smart Search context from live catalog metadata
+  const smartSearchContext = useMemo(
+    () => ({
+      distributorBrands: availableDistributorBrands,
+      vehicleBrands: availableVehicleBrands,
+      sxsBrandModels,
+      categories: allCatalogCategories.length > 0 ? allCatalogCategories : availableCategories,
+      dealerBrandRefs: dealerBrandSearchRefs.length > 0 ? dealerBrandSearchRefs : undefined,
+    }),
+    [
+      availableDistributorBrands,
+      availableVehicleBrands,
+      sxsBrandModels,
+      allCatalogCategories,
+      availableCategories,
+      dealerBrandSearchRefs,
+    ]
+  );
+
+  // Instant smart suggestion pills while typing
+  const smartSearchSuggestions = useMemo(() => {
+    if (!searchQuery.trim() || searchQuery.trim().length < 2) return [];
+    return buildSmartSearchSuggestions(searchQuery, smartSearchContext, lang);
+  }, [searchQuery, smartSearchContext, lang]);
+
+  const applySmartFiltersPayload = useCallback(
+    (
+      payload: {
+        distributorBrand?: string;
+        vehicleBrand?: string;
+        modelCategory?: string;
+        vehicleModel?: string;
+        category?: string;
+        remainingQuery?: string;
+      },
+      feedbackLabel?: string
+    ) => {
+      const nextUrlUpdates: Record<string, string | null> = {};
+
+      if (payload.distributorBrand) {
+        setSelectedDistributorBrand(payload.distributorBrand);
+        nextUrlUpdates.distributorBrand = payload.distributorBrand;
+        nextUrlUpdates.brand = null;
+        nextUrlUpdates.marca = null;
+      }
+
+      if (payload.vehicleBrand) {
+        setSelectedVehicleBrand(payload.vehicleBrand);
+        nextUrlUpdates.vehicleBrand = payload.vehicleBrand;
+        nextUrlUpdates.sxs = null;
+
+        if (payload.modelCategory) {
+          setSelectedModelCategory(payload.modelCategory);
+          nextUrlUpdates.modelCategory = payload.modelCategory;
+        } else {
+          setSelectedModelCategory("all");
+          nextUrlUpdates.modelCategory = null;
+        }
+
+        if (payload.vehicleModel) {
+          setSelectedModelSlug(payload.vehicleModel);
+          nextUrlUpdates.vehicleModel = payload.vehicleModel;
+        } else {
+          setSelectedModelSlug("");
+          nextUrlUpdates.vehicleModel = null;
+        }
+      }
+
+      if (payload.category) {
+        setSelectedCategory(payload.category);
+        nextUrlUpdates.category = payload.category;
+      }
+
+      const nextQ = (payload.remainingQuery || "").trim();
+      setSearchQuery(nextQ);
+      setDebouncedSearchQuery(nextQ);
+      nextUrlUpdates.q = nextQ || null;
+      setIsSearchFocused(false);
+
+      if (feedbackLabel) {
+        setAutoAppliedFeedback(feedbackLabel);
+        setTimeout(() => {
+          setAutoAppliedFeedback((prev) => (prev === feedbackLabel ? null : prev));
+        }, 4000);
+      }
+
+      updateUrlParams(nextUrlUpdates);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [searchParams, router]
+  );
+
+  // Auto-parse incoming URL ?q=... (e.g. from Navbar search) once live catalog metadata has loaded
+  useEffect(() => {
+    const urlQ = (searchParams.get("q") || "").trim();
+    if (!urlQ) {
+      lastAutoParsedUrlQRef.current = "";
+      return;
+    }
+    const metadataReady =
+      availableDistributorBrands.length > 0 ||
+      availableVehicleBrands.length > 0 ||
+      Object.keys(sxsBrandModels).length > 0;
+    if (!metadataReady) return;
+    if (lastAutoParsedUrlQRef.current === urlQ) return;
+
+    lastAutoParsedUrlQRef.current = urlQ;
+    const parsed = parseSmartSearchQuery(urlQ, smartSearchContext, lang);
+    if (parsed.hasDetectedFilters) {
+      const labelText = parsed.matchedLabels.map((m) => m.label).join(" + ");
+      applySmartFiltersPayload(
+        {
+          distributorBrand: parsed.distributorBrand,
+          vehicleBrand: parsed.vehicleBrand,
+          modelCategory: parsed.modelCategory,
+          vehicleModel: parsed.vehicleModel,
+          category: parsed.category,
+          remainingQuery: parsed.remainingQuery,
+        },
+        labelText
+      );
+    }
+  }, [
+    searchParams,
+    availableDistributorBrands,
+    availableVehicleBrands,
+    sxsBrandModels,
+    smartSearchContext,
+    lang,
+    applySmartFiltersPayload,
+  ]);
+
   // Fetch products dynamically from backend API (Zero Mock Data)
   useEffect(() => {
     let isMounted = true;
     setLoading(true);
 
     const params = new URLSearchParams();
-    if (searchQuery.trim()) params.set("q", searchQuery.trim());
+    if (debouncedSearchQuery.trim()) params.set("q", debouncedSearchQuery.trim());
     if (selectedCategory && selectedCategory !== "all") params.set("category", selectedCategory);
     if (selectedVehicleBrand && selectedVehicleBrand !== "all") params.set("vehicleBrand", selectedVehicleBrand);
     if (selectedDistributorBrand && selectedDistributorBrand !== "all") params.set("distributorBrand", selectedDistributorBrand);
@@ -717,6 +885,10 @@ function ProductsContent() {
             setCategoryCounts(data.categoryCounts);
           }
 
+          if (Array.isArray(data.allCategories) && data.allCategories.length > 0) {
+            setAllCatalogCategories(data.allCategories);
+          }
+
           if (Array.isArray(data.categories)) {
             setAvailableCategories(data.categories);
             const lowerCat = selectedCategory.toLowerCase();
@@ -739,6 +911,10 @@ function ProductsContent() {
             setAvailableDistributorBrands(data.availableDistributorBrands);
           }
 
+          if (Array.isArray(data.dealerBrandSearchRefs)) {
+            setDealerBrandSearchRefs(data.dealerBrandSearchRefs);
+          }
+
           setHasInStock(Boolean(data.hasInStock));
           setHasDiscounted(Boolean(data.hasDiscounted));
 
@@ -756,7 +932,7 @@ function ProductsContent() {
       isMounted = false;
     };
   }, [
-    searchQuery,
+    debouncedSearchQuery,
     selectedCategory,
     selectedVehicleBrand,
     selectedDistributorBrand,
@@ -769,16 +945,53 @@ function ProductsContent() {
     vehicle,
   ]);
 
-  // Handle Search Input Submission
+  // Handle Search Input Submission (Patch 2.0 Smart Auto-Selection on Enter / Buscar)
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    updateUrlParams({ q: searchQuery.trim() || null });
+    const trimmed = searchQuery.trim();
+    if (!trimmed) {
+      setDebouncedSearchQuery("");
+      setIsSearchFocused(false);
+      updateUrlParams({ q: null });
+      return;
+    }
+
+    const parsed = parseSmartSearchQuery(trimmed, smartSearchContext, lang);
+    if (parsed.hasDetectedFilters) {
+      const labelText = parsed.matchedLabels.map((m) => m.label).join(" + ");
+      lastAutoParsedUrlQRef.current = parsed.remainingQuery;
+      applySmartFiltersPayload(
+        {
+          distributorBrand: parsed.distributorBrand,
+          vehicleBrand: parsed.vehicleBrand,
+          modelCategory: parsed.modelCategory,
+          vehicleModel: parsed.vehicleModel,
+          category: parsed.category,
+          remainingQuery: parsed.remainingQuery,
+        },
+        labelText
+      );
+    } else {
+      lastAutoParsedUrlQRef.current = trimmed;
+      setDebouncedSearchQuery(trimmed);
+      setIsSearchFocused(false);
+      updateUrlParams({ q: trimmed });
+    }
+  };
+
+  const handleSelectSmartSuggestion = (sug: SmartSearchSuggestion) => {
+    lastAutoParsedUrlQRef.current = sug.apply.remainingQuery || "";
+    applySmartFiltersPayload(sug.apply, sug.label);
   };
 
   const handleClearFilters = () => {
+    lastAutoParsedUrlQRef.current = "";
     setSearchQuery("");
+    setDebouncedSearchQuery("");
+    setAutoAppliedFeedback(null);
     setSelectedCategory("all");
     setSelectedVehicleBrand("all");
+    setSelectedModelCategory("all");
     setSelectedDistributorBrand("all");
     setSelectedModelSlug("");
     setInStockOnly(false);
@@ -984,13 +1197,18 @@ function ProductsContent() {
   ]);
 
   // Filter products by vehicle compatibility when onlyCompatibleWithGarage is active
+  // (and always enforce Universal-last + Brand A->Z order)
   const displayedProducts = useMemo(() => {
     if (!onlyCompatibleWithGarage || !vehicle) return products;
-    return products.filter((p) => {
+    const filtered = products.filter((p) => {
       const { isCompatible, isUniversal } = checkVehicleCompatibility(p);
       return isCompatible || isUniversal;
     });
-  }, [products, onlyCompatibleWithGarage, vehicle]);
+    return sortCatalogProductsByBrandAndUniversal(filtered, {
+      sort: sortBy,
+      hasCompatibilityFilter: true,
+    });
+  }, [products, onlyCompatibleWithGarage, vehicle, sortBy]);
 
   const totalPages = Math.max(1, Math.ceil(displayedProducts.length / ITEMS_PER_PAGE));
   const safeCurrentPage = Math.min(Math.max(1, currentPage), totalPages);
@@ -1243,41 +1461,117 @@ function ProductsContent() {
 
         {/* Prominent Search & Filter Toolbar */}
         <div className="bg-[#F8F9FA] border border-gray-200 rounded-3xl p-4 sm:p-5 mb-8 shadow-sm space-y-3.5">
-          {/* Search Input Bar */}
-          <form onSubmit={handleSearchSubmit} className="relative flex flex-col sm:flex-row gap-2.5">
-            <div className="relative flex-1">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder={t.productsSearchPlaceholder}
-                className="w-full pl-11 pr-10 py-2.5 rounded-2xl bg-white border border-gray-200 text-xs sm:text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#C02030]/20 focus:border-[#C02030] transition-all shadow-sm"
-              />
-              {searchQuery && (
+          {/* Search Input Bar with Patch 2.0 Smart Auto-Selection & Instant Suggestions */}
+          <div ref={searchBarContainerRef} className="relative space-y-2">
+            <form onSubmit={handleSearchSubmit} className="relative flex flex-col sm:flex-row gap-2.5">
+              <div className="relative flex-1">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onFocus={() => setIsSearchFocused(true)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") {
+                      setIsSearchFocused(false);
+                    }
+                  }}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setIsSearchFocused(true);
+                  }}
+                  placeholder={t.productsSearchPlaceholder}
+                  className="w-full pl-11 pr-10 py-2.5 rounded-2xl bg-white border border-gray-200 text-xs sm:text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#C02030]/20 focus:border-[#C02030] transition-all shadow-sm"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      lastAutoParsedUrlQRef.current = "";
+                      setSearchQuery("");
+                      setDebouncedSearchQuery("");
+                      setIsSearchFocused(false);
+                      const params = new URLSearchParams(searchParams.toString());
+                      params.delete("q");
+                      router.replace(`/productos?${params.toString()}`, { scroll: false });
+                    }}
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-700 cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+
+                {/* Smart Auto-Select Suggestions Dropdown */}
+                {isSearchFocused && smartSearchSuggestions.length > 0 && (
+                  <div className="absolute left-0 right-0 top-full mt-1.5 bg-white border border-gray-200 rounded-2xl shadow-xl z-40 overflow-hidden p-2 space-y-1.5">
+                    <div className="flex items-center justify-between px-2.5 pt-0.5 pb-1 border-b border-gray-100">
+                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-gray-500 flex items-center gap-1.5">
+                        <Sparkles className="w-3 h-3 text-[#C02030]" />
+                        <span>{t.smartSearchSuggestionsHeader}</span>
+                      </span>
+                      <span className="text-[10px] text-gray-400 hidden sm:inline">
+                        {t.smartSearchApplyHint}
+                      </span>
+                    </div>
+
+                    <div className="flex flex-wrap gap-1.5 px-1 pb-0.5">
+                      {smartSearchSuggestions.map((sug) => (
+                        <button
+                          key={sug.id}
+                          type="button"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => handleSelectSmartSuggestion(sug)}
+                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
+                            sug.kind === "combined"
+                              ? "bg-[#111827] text-white border-[#111827] hover:bg-[#C02030] hover:border-[#C02030] shadow-xs"
+                              : sug.kind === "vehicle"
+                              ? "bg-rose-50/70 text-[#C02030] border-rose-200 hover:bg-[#C02030] hover:text-white"
+                              : sug.kind === "brand"
+                              ? "bg-slate-50 text-slate-900 border-slate-200 hover:bg-slate-900 hover:text-white"
+                              : "bg-emerald-50/70 text-emerald-800 border-emerald-200 hover:bg-emerald-600 hover:text-white"
+                          }`}
+                        >
+                          {sug.kind === "combined" && <Sparkles className="w-3 h-3 shrink-0" />}
+                          {sug.kind === "vehicle" && <Car className="w-3 h-3 shrink-0" />}
+                          {sug.kind === "category" && <Tag className="w-3 h-3 shrink-0" />}
+                          {sug.kind === "brand" && <Wrench className="w-3 h-3 shrink-0" />}
+                          <span>{sug.label}</span>
+                          {sug.sublabel && (
+                            <span className="text-[10px] font-medium opacity-75 hidden sm:inline">
+                              • {sug.sublabel}
+                            </span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <button
+                type="submit"
+                className="py-2.5 px-6 rounded-2xl bg-[#111827] hover:bg-[#C02030] text-white text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-sm cursor-pointer"
+              >
+                <Search className="w-3.5 h-3.5" />
+                <span>{lang === "es" ? "Buscar" : "Search"}</span>
+              </button>
+            </form>
+
+            {autoAppliedFeedback && (
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-semibold">
+                <Sparkles className="w-3 h-3 text-emerald-600" />
+                <span>
+                  {t.smartSearchAutoAppliedNotice}: <strong>{autoAppliedFeedback}</strong>
+                </span>
                 <button
                   type="button"
-                  onClick={() => {
-                    setSearchQuery("");
-                    const params = new URLSearchParams(searchParams.toString());
-                    params.delete("q");
-                    router.replace(`/productos?${params.toString()}`);
-                  }}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-700"
+                  onClick={() => setAutoAppliedFeedback(null)}
+                  className="ml-1 text-emerald-700 hover:text-emerald-950 cursor-pointer"
                 >
-                  <X className="w-4 h-4" />
+                  <X className="w-3 h-3" />
                 </button>
-              )}
-            </div>
-
-            <button
-              type="submit"
-              className="py-2.5 px-6 rounded-2xl bg-[#111827] hover:bg-[#C02030] text-white text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-sm"
-            >
-              <Search className="w-3.5 h-3.5" />
-              <span>Buscar</span>
-            </button>
-          </form>
+              </div>
+            )}
+          </div>
 
           {/* Dual-Mode Category Navigation (Horizontal Carousel + Expandable Grid) */}
           <div className="relative w-full border-t border-b border-gray-200/80 py-2 bg-gradient-to-r from-gray-50/40 via-white to-gray-50/40 rounded-xl">
@@ -1502,7 +1796,9 @@ function ProductsContent() {
                 value={selectedVehicleBrand}
                 onChange={(newVb) => {
                   setSelectedVehicleBrand(newVb);
-                  updateUrlParams({ vehicleBrand: newVb, sxs: null });
+                  setSelectedModelCategory("all");
+                  setSelectedModelSlug("");
+                  updateUrlParams({ vehicleBrand: newVb, sxs: null, modelCategory: null, vehicleModel: null });
                 }}
                 labelPrefix={`${t.productsFilterVehicleBrand}:`}
                 options={[

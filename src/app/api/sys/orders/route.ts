@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireStealthSession } from "@/lib/stealthAuth";
 import { prisma } from "@/lib/prisma";
 import { isRejectedPaymentCorrected } from "@/lib/orderWorkflow";
+import { normalizeSearchTerm } from "@/lib/search";
 
 export async function GET(request: Request) {
   const auth = await requireStealthSession();
@@ -33,18 +34,15 @@ export async function GET(request: Request) {
       }
     }
 
-    if (search) {
-      where.OR = [
-        { orderNumber: { contains: search } },
-        { customerName: { contains: search } },
-        { customerPhone: { contains: search } },
-        { guestEmail: { contains: search } },
-        { user: { email: { contains: search } } },
-        { user: { displayName: { contains: search } } },
-      ];
-    }
+    const trimmedSearch = (search || "").trim();
+    const searchTokens = trimmedSearch
+      ? normalizeSearchTerm(trimmedSearch).split(/\s+/).filter(Boolean)
+      : [];
 
-    const [rawOrders, total, rejectedOrders] = await Promise.all([
+    let rawOrders: any[] = [];
+    let total = 0;
+
+    const [fetchedOrders, dbCount, rejectedOrders] = await Promise.all([
       prisma.order.findMany({
         where,
         include: {
@@ -58,10 +56,9 @@ export async function GET(request: Request) {
           },
         },
         orderBy: { createdAt: "desc" },
-        take: limit,
-        skip,
+        ...(searchTokens.length > 0 ? {} : { take: limit, skip }),
       }),
-      prisma.order.count({ where }),
+      searchTokens.length > 0 ? Promise.resolve(0) : prisma.order.count({ where }),
       prisma.order.findMany({
         where: {
           status: "PAYMENT_REJECTED",
@@ -74,6 +71,33 @@ export async function GET(request: Request) {
         select: { id: true, status: true, serviceDocumentsJson: true },
       }),
     ]);
+
+    if (searchTokens.length > 0) {
+      const matched = fetchedOrders.filter((o) => {
+        const haystack = normalizeSearchTerm(
+          [
+            o.orderNumber,
+            o.customerName,
+            o.customerPhone,
+            o.guestEmail,
+            o.user?.email,
+            o.user?.displayName,
+            o.user?.phoneNumber,
+            o.itemsJson,
+            o.notes,
+            o.staffNotes,
+          ]
+            .filter(Boolean)
+            .join(" ")
+        );
+        return searchTokens.every((tok) => haystack.includes(tok));
+      });
+      total = matched.length;
+      rawOrders = matched.slice(skip, skip + limit);
+    } else {
+      rawOrders = fetchedOrders;
+      total = dbCount;
+    }
 
     const correctedRejectedCount = rejectedOrders.filter((o) => isRejectedPaymentCorrected(o)).length;
 

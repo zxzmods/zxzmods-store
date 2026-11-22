@@ -4,6 +4,15 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { useLanguage } from "@/context/LanguageContext";
 import { formatCRC } from "@/lib/i18n";
 import {
+  evaluateProductSearch,
+  evaluateComboSearch,
+  buildDealerBrandSearchRefs,
+  parseSmartSearchQuery,
+  buildSmartSearchSuggestions,
+  sortCatalogProductsByBrandAndUniversal,
+  SmartSearchSuggestion,
+} from "@/lib/search";
+import {
   Search,
   Plus,
   Edit2,
@@ -7360,6 +7369,117 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
     [computeComboProductsPricing, isComboCompManuallyEdited, products]
   );
 
+  // Patch 2.0 Smart Backdoor Search Context & Evaluators
+  const [isBackdoorSearchFocused, setIsBackdoorSearchFocused] = useState(false);
+
+  const backdoorDealerBrandRefs = useMemo(
+    () => buildDealerBrandSearchRefs(dealerBrands),
+    [dealerBrands]
+  );
+
+  const backdoorSmartSearchContext = useMemo(() => {
+    const distBrandMap = new Map<string, { name: string; code?: string | null; slug?: string | null }>();
+    dealerBrands.forEach((db: any) => {
+      if (db?.name) {
+        const norm = normalizeBrandName(db.name);
+        distBrandMap.set(norm.toLowerCase(), { name: norm, code: db.code || null, slug: db.slug || null });
+      }
+    });
+    products.forEach((p: any) => {
+      const rawBrands = Array.isArray(p.brand) && p.brand.length > 0 ? p.brand : p.brandName ? [p.brandName] : [];
+      rawBrands.forEach((b: string) => {
+        const norm = normalizeBrandName(b || "");
+        if (norm && !distBrandMap.has(norm.toLowerCase())) {
+          distBrandMap.set(norm.toLowerCase(), { name: norm });
+        }
+      });
+    });
+
+    const vBrands = brands.map((b: any) => ({
+      slug: (b.slug || b.name || "").toLowerCase(),
+      title: b.name || b.slug || "",
+    }));
+    const modelMap: Record<string, any[]> = {};
+    brands.forEach((b: any) => {
+      const key = (b.slug || b.name || "").toLowerCase();
+      modelMap[key] = (b.models || []).map((m: any) => ({
+        id: m.id,
+        name: m.name,
+        code: m.code,
+        slug: m.slug,
+        category: m.category,
+        modelCategory: m.modelCategory || null,
+      }));
+    });
+
+    const catSet = new Set<string>();
+    categories.forEach((c: any) => {
+      if (c?.slug) catSet.add(c.slug);
+    });
+    products.forEach((p: any) => {
+      const pCats = Array.isArray(p.category) ? p.category : p.category ? [p.category] : [];
+      pCats.forEach((c: any) => {
+        const s = typeof c === "string" ? c.trim() : c?.slug;
+        if (s) catSet.add(s);
+      });
+    });
+
+    return {
+      distributorBrands: Array.from(distBrandMap.values()),
+      vehicleBrands: vBrands,
+      sxsBrandModels: modelMap,
+      categories: Array.from(catSet),
+      dealerBrandRefs: backdoorDealerBrandRefs,
+    };
+  }, [dealerBrands, products, brands, categories, backdoorDealerBrandRefs]);
+
+  const backdoorSmartSuggestions = useMemo(() => {
+    if (!search.trim() || search.trim().length < 2) return [];
+    return buildSmartSearchSuggestions(search, backdoorSmartSearchContext, lang);
+  }, [search, backdoorSmartSearchContext, lang]);
+
+  const applyBackdoorSmartFilters = (payload: {
+    distributorBrand?: string;
+    vehicleBrand?: string;
+    category?: string;
+    remainingQuery?: string;
+  }) => {
+    if (payload.distributorBrand) setBackdoorDistributorBrand(payload.distributorBrand);
+    if (payload.vehicleBrand) setBackdoorVehicleBrand(payload.vehicleBrand);
+    if (payload.category) setBackdoorCategory(payload.category);
+    setSearch((payload.remainingQuery || "").trim());
+    setIsBackdoorSearchFocused(false);
+  };
+
+  const handleBackdoorSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Escape") {
+      setIsBackdoorSearchFocused(false);
+      return;
+    }
+    if (e.key === "Enter" && search.trim()) {
+      e.preventDefault();
+      const parsed = parseSmartSearchQuery(search.trim(), backdoorSmartSearchContext, lang);
+      if (parsed.hasDetectedFilters) {
+        // Keep model token in search if a specific lineup/model was also typed (since backdoor filters by vehicleBrand)
+        const leftoverParts: string[] = [];
+        if (parsed.vehicleModel && !parsed.remainingQuery) {
+          leftoverParts.push(parsed.vehicleModel.replace(/-/g, " "));
+        } else if (parsed.modelCategory && !parsed.remainingQuery) {
+          leftoverParts.push(parsed.modelCategory);
+        }
+        if (parsed.remainingQuery) leftoverParts.push(parsed.remainingQuery);
+        applyBackdoorSmartFilters({
+          distributorBrand: parsed.distributorBrand,
+          vehicleBrand: parsed.vehicleBrand,
+          category: parsed.category,
+          remainingQuery: leftoverParts.join(" ").trim(),
+        });
+      } else {
+        setIsBackdoorSearchFocused(false);
+      }
+    }
+  };
+
   // Filtered lists
   const normalizeSearchStr = (val: any) =>
     String(val || "")
@@ -7367,93 +7487,85 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       .replace(/[\u0300-\u036f]/g, "")
       .toLowerCase();
 
-  const filteredProducts = products.filter((p) => {
-    const qNorm = normalizeSearchStr(search).trim();
-    if (qNorm) {
-      const catNames = (Array.isArray(p.category) ? p.category : p.category ? [p.category] : []).flatMap((cSlug) => {
-        const cObj = categories.find((cat: any) => cat.slug === cSlug || cat.id === cSlug);
-        return cObj ? [cSlug, cObj.nameEn, cObj.nameEs] : [cSlug];
-      });
-      const haystack = normalizeSearchStr(
-        [
-          p.nameEn,
-          p.nameEs,
-          p.p_title,
-          p.sku,
-          p.slug,
-          p.brandName,
-          ...(Array.isArray(p.brand) ? p.brand : []),
-          ...catNames,
-          p.descriptionEn,
-          p.descriptionEs,
-          typeof p.description === "object" && p.description ? `${p.description.en || ""} ${p.description.es || ""}` : "",
-        ].join(" ")
-      );
-      if (!haystack.includes(qNorm)) return false;
-    }
+  const filteredProducts = useMemo(() => {
+    const scoreMap = new Map<string, number>();
+    const qTrim = search.trim();
 
-    if (productFilterStatus === "active" && p.isArchived) return false;
-    if (productFilterStatus === "archived" && !p.isArchived) return false;
-
-    if (backdoorCategory !== "all") {
-      let cats: string[] = [];
-      if (Array.isArray(p.category) && p.category.length > 0) {
-        cats = p.category;
-      } else if (typeof p.category === "string" && p.category) {
-        cats = [p.category];
-      } else if ((p as any).category?.slug) {
-        cats = [(p as any).category.slug];
+    const matched = products.filter((p) => {
+      if (qTrim) {
+        const res = evaluateProductSearch(p, qTrim, {
+          dealerBrands: backdoorDealerBrandRefs,
+        });
+        if (!res.matches) return false;
+        scoreMap.set(p.id, res.score);
       }
-      const matchCat = cats.some((c) => String(c).trim().toLowerCase() === backdoorCategory.toLowerCase());
-      if (!matchCat) return false;
-    }
 
-    if (backdoorVehicleBrand !== "all") {
-      const vBrands = detectProductVehicleBrands(p);
-      if (!vBrands.includes(backdoorVehicleBrand.toLowerCase())) return false;
-    }
+      if (productFilterStatus === "active" && p.isArchived) return false;
+      if (productFilterStatus === "archived" && !p.isArchived) return false;
 
-    if (backdoorDistributorBrand !== "all") {
-      const pBrands = (Array.isArray(p.brand) && p.brand.length > 0 ? p.brand : [p.brandName || ""]).map((b) => normalizeBrandName(b || ""));
-      if (!pBrands.includes(normalizeBrandName(backdoorDistributorBrand))) return false;
-    }
+      if (backdoorCategory !== "all") {
+        let cats: string[] = [];
+        if (Array.isArray(p.category) && p.category.length > 0) {
+          cats = p.category;
+        } else if (typeof p.category === "string" && p.category) {
+          cats = [p.category];
+        } else if ((p as any).category?.slug) {
+          cats = [(p as any).category.slug];
+        }
+        const matchCat = cats.some((c) => String(c).trim().toLowerCase() === backdoorCategory.toLowerCase());
+        if (!matchCat) return false;
+      }
 
-    if (backdoorInStockOnly) {
-      const isOut = p.supplierStockStatus === "OUT_OF_STOCK" || p.supplierStockStatus === "UNAVAILABLE" || p.stockStatus === "Agotado";
-      if (isOut) return false;
-    }
+      if (backdoorVehicleBrand !== "all") {
+        const vBrands = detectProductVehicleBrands(p);
+        if (!vBrands.includes(backdoorVehicleBrand.toLowerCase())) return false;
+      }
 
-    if (backdoorDiscountedOnly) {
-      const hasDiscount = (p.discountPercent && p.discountPercent > 0) || (p.originalPriceCRC && p.originalPriceCRC > p.priceCRC);
-      if (!hasDiscount) return false;
-    }
+      if (backdoorDistributorBrand !== "all") {
+        const pBrands = (Array.isArray(p.brand) && p.brand.length > 0 ? p.brand : [p.brandName || ""]).map((b) => normalizeBrandName(b || ""));
+        if (!pBrands.includes(normalizeBrandName(backdoorDistributorBrand))) return false;
+      }
 
-    return true;
-  });
+      if (backdoorInStockOnly) {
+        const isOut = p.supplierStockStatus === "OUT_OF_STOCK" || p.supplierStockStatus === "UNAVAILABLE" || p.stockStatus === "Agotado";
+        if (isOut) return false;
+      }
+
+      if (backdoorDiscountedOnly) {
+        const hasDiscount = (p.discountPercent && p.discountPercent > 0) || (p.originalPriceCRC && p.originalPriceCRC > p.priceCRC);
+        if (!hasDiscount) return false;
+      }
+
+      return true;
+    });
+
+    return sortCatalogProductsByBrandAndUniversal(matched, {
+      sort: "relevant",
+      hasCompatibilityFilter: backdoorVehicleBrand !== "all",
+      scoreMap: qTrim ? scoreMap : undefined,
+    });
+  }, [
+    products,
+    search,
+    backdoorDealerBrandRefs,
+    productFilterStatus,
+    backdoorCategory,
+    backdoorVehicleBrand,
+    backdoorDistributorBrand,
+    backdoorInStockOnly,
+    backdoorDiscountedOnly,
+  ]);
 
   const activeProductsCount = products.filter((p) => !p.isArchived).length;
   const archivedProductsCount = products.filter((p) => Boolean(p.isArchived)).length;
 
   const filteredCombos = combos.filter((c) => {
-    const qNorm = normalizeSearchStr(search).trim();
-    if (qNorm) {
-      const cCatObj = categories.find((cat: any) => cat.slug === c.category || cat.id === c.category);
-      const haystack = normalizeSearchStr(
-        [
-          c.titleEn,
-          c.titleEs,
-          c.slug,
-          c.category,
-          cCatObj?.nameEn,
-          cCatObj?.nameEs,
-          c.badgeEn,
-          c.badgeEs,
-          c.descriptionEn,
-          c.descriptionEs,
-          c.itemsJson,
-        ].join(" ")
-      );
-      if (!haystack.includes(qNorm)) return false;
+    const qTrim = search.trim();
+    if (qTrim) {
+      const res = evaluateComboSearch(c, qTrim, {
+        dealerBrands: backdoorDealerBrandRefs,
+      });
+      if (!res.matches) return false;
     }
 
     if (comboFilterStatus === "active" && c.isArchived) return false;
@@ -8942,16 +9054,16 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                     {isRequiredSearchDropdownOpen && requiredProductSearch.trim().length > 0 && (
                       <div className="absolute z-20 left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-2xl shadow-xl max-h-64 overflow-y-auto divide-y divide-slate-100">
                         {products
-                          .filter((p) => {
-                            if (editingProduct && (p.id === editingProduct.id || p.sku === editingProduct.sku)) return false;
-                            if ((productForm.requiredProductIds || []).includes(p.id) || (p.sku && (productForm.requiredProductIds || []).includes(p.sku))) return false;
-                            const q = normalizeSearchStr(requiredProductSearch).trim();
-                            const haystack = normalizeSearchStr(
-                              [p.nameEs, p.nameEn, p.p_title, p.sku, p.slug, p.brandName, ...(Array.isArray(p.brand) ? p.brand : [])].join(" ")
-                            );
-                            return haystack.includes(q);
+                          .map((p) => {
+                            if (editingProduct && (p.id === editingProduct.id || p.sku === editingProduct.sku)) return null;
+                            if ((productForm.requiredProductIds || []).includes(p.id) || (p.sku && (productForm.requiredProductIds || []).includes(p.sku))) return null;
+                            const res = evaluateProductSearch(p, requiredProductSearch, { dealerBrands: backdoorDealerBrandRefs });
+                            return res.matches ? { p, score: res.score } : null;
                           })
-                          .slice(0, 8)
+                          .filter((x): x is { p: Product; score: number } => Boolean(x))
+                          .sort((a, b) => b.score - a.score)
+                          .slice(0, 10)
+                          .map((x) => x.p)
                           .map((candidate) => (
                             <button
                               key={candidate.id}
@@ -11229,16 +11341,16 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                   {isRelatedSearchDropdownOpen && relatedProductSearch.trim().length > 0 && (
                     <div className="absolute z-20 left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-2xl shadow-xl max-h-64 overflow-y-auto divide-y divide-slate-100">
                       {products
-                        .filter((p) => {
-                          if (editingProduct && (p.id === editingProduct.id || p.sku === editingProduct.sku)) return false;
-                          if ((productForm.relatedProductIds || []).includes(p.id) || (p.sku && (productForm.relatedProductIds || []).includes(p.sku))) return false;
-                          const q = normalizeSearchStr(relatedProductSearch).trim();
-                          const haystack = normalizeSearchStr(
-                            [p.nameEs, p.nameEn, p.p_title, p.sku, p.slug, p.brandName, ...(Array.isArray(p.brand) ? p.brand : [])].join(" ")
-                          );
-                          return haystack.includes(q);
+                        .map((p) => {
+                          if (editingProduct && (p.id === editingProduct.id || p.sku === editingProduct.sku)) return null;
+                          if ((productForm.relatedProductIds || []).includes(p.id) || (p.sku && (productForm.relatedProductIds || []).includes(p.sku))) return null;
+                          const res = evaluateProductSearch(p, relatedProductSearch, { dealerBrands: backdoorDealerBrandRefs });
+                          return res.matches ? { p, score: res.score } : null;
                         })
-                        .slice(0, 8)
+                        .filter((x): x is { p: Product; score: number } => Boolean(x))
+                        .sort((a, b) => b.score - a.score)
+                        .slice(0, 10)
+                        .map((x) => x.p)
                         .map((candidate) => (
                           <button
                             key={candidate.id}
@@ -11448,14 +11560,14 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
 
     const filteredProductOptions: Product[] = comboProductSearch.trim()
       ? products
-          .filter((p: Product) => {
-            const q = normalizeSearchStr(comboProductSearch).trim();
-            const haystack = normalizeSearchStr(
-              [p.nameEs, p.nameEn, p.p_title, p.sku, p.slug, p.brandName, ...(Array.isArray(p.brand) ? p.brand : [])].join(" ")
-            );
-            return haystack.includes(q);
+          .map((p: Product) => {
+            const res = evaluateProductSearch(p, comboProductSearch, { dealerBrands: backdoorDealerBrandRefs });
+            return res.matches ? { p, score: res.score } : null;
           })
-          .slice(0, 8)
+          .filter((x): x is { p: Product; score: number } => Boolean(x))
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 12)
+          .map((x) => x.p)
       : [];
 
     return (
@@ -13679,22 +13791,85 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
 
         <div className="flex items-center gap-3">
           <div className="relative">
-            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
             <input
               type="text"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onFocus={() => setIsBackdoorSearchFocused(true)}
+              onBlur={() => setTimeout(() => setIsBackdoorSearchFocused(false), 180)}
+              onKeyDown={handleBackdoorSearchKeyDown}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setIsBackdoorSearchFocused(true);
+              }}
               placeholder={
                 activeCatalogType === "products"
                   ? lang === "es"
-                    ? "Filtrar por SKU, nombre (ES/EN) o marca..."
-                    : "Search by SKU, name (EN/ES), or brand..."
+                    ? "Buscar marca (DRT), vehículo (z10, x3), categoría o SKU..."
+                    : "Search brand (DRT), vehicle (z10, x3), category or SKU..."
                   : lang === "es"
-                  ? "Filtrar combos (ES/EN)..."
-                  : "Search combos (EN/ES)..."
+                  ? "Filtrar combos (ES/EN, marca, vehículo)..."
+                  : "Search combos (EN/ES, brand, vehicle)..."
               }
-              className="w-56 sm:w-64 bg-slate-50 border border-slate-200 rounded-xl pl-8 pr-3 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-slate-900 focus:bg-white"
+              className="w-64 sm:w-80 bg-slate-50 border border-slate-200 rounded-xl pl-8 pr-7 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-slate-900 focus:bg-white"
             />
+            {search && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearch("");
+                  setIsBackdoorSearchFocused(false);
+                }}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-0.5 cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+            {isBackdoorSearchFocused && backdoorSmartSuggestions.length > 0 && (
+              <div className="absolute left-0 top-full mt-1.5 w-80 sm:w-96 bg-white border border-slate-200 rounded-2xl shadow-xl z-40 p-2 space-y-1.5">
+                <div className="flex items-center justify-between px-2 pb-1 border-b border-slate-100">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1">
+                    <Sparkles className="w-3 h-3 text-[#C02030]" />
+                    <span>{t.smartSearchSuggestionsHeader}</span>
+                  </span>
+                  <span className="text-[9px] text-slate-400">Enter</span>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {backdoorSmartSuggestions.map((sug: SmartSearchSuggestion) => (
+                    <button
+                      key={sug.id}
+                      type="button"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => {
+                        const leftover =
+                          sug.apply.vehicleModel && !sug.apply.remainingQuery
+                            ? sug.apply.vehicleModel.replace(/-/g, " ")
+                            : sug.apply.modelCategory && !sug.apply.remainingQuery
+                            ? sug.apply.modelCategory
+                            : sug.apply.remainingQuery || "";
+                        applyBackdoorSmartFilters({
+                          distributorBrand: sug.apply.distributorBrand,
+                          vehicleBrand: sug.apply.vehicleBrand,
+                          category: sug.apply.category,
+                          remainingQuery: leftover,
+                        });
+                      }}
+                      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold border transition cursor-pointer ${
+                        sug.kind === "combined"
+                          ? "bg-slate-900 text-white border-slate-900 hover:bg-[#C02030] hover:border-[#C02030]"
+                          : sug.kind === "vehicle"
+                          ? "bg-rose-50 text-[#C02030] border-rose-200 hover:bg-[#C02030] hover:text-white"
+                          : sug.kind === "brand"
+                          ? "bg-slate-50 text-slate-900 border-slate-200 hover:bg-slate-900 hover:text-white"
+                          : "bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-600 hover:text-white"
+                      }`}
+                    >
+                      <span>{sug.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-2">

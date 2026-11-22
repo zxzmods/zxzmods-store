@@ -2124,6 +2124,9 @@ export interface Translations {
   devOrderClaimLinkGenerateBtn: string;
   devOrderClaimLinkGenerating: string;
   devOrderClaimLinkHelp: string;
+  smartSearchSuggestionsHeader: string;
+  smartSearchApplyHint: string;
+  smartSearchAutoAppliedNotice: string;
 }
 
 
@@ -4229,6 +4232,9 @@ export const translations: Record<Language, Translations> = {
     devOrderClaimLinkGenerateBtn: "Generar enlace de canje",
     devOrderClaimLinkGenerating: "Generando...",
     devOrderClaimLinkHelp: "Comparte este enlace con el cliente para que reclame el pedido y quede registrado permanentemente en su cuenta.",
+    smartSearchSuggestionsHeader: "Sugerencias inteligentes",
+    smartSearchApplyHint: "Presiona Enter para auto-seleccionar",
+    smartSearchAutoAppliedNotice: "Filtro auto-seleccionado",
   },
 
   en: {
@@ -6332,6 +6338,9 @@ export const translations: Record<Language, Translations> = {
     devOrderClaimLinkGenerateBtn: "Generate claim link",
     devOrderClaimLinkGenerating: "Generating...",
     devOrderClaimLinkHelp: "Share this link with the customer so they can claim the order and permanently link it to their account.",
+    smartSearchSuggestionsHeader: "Smart suggestions",
+    smartSearchApplyHint: "Press Enter to auto-select",
+    smartSearchAutoAppliedNotice: "Auto-selected filter",
   },
 
 };
