@@ -34,7 +34,104 @@ export async function GET() {
 
     const scheduledSet = new Set(schedules.map((s) => s.orderId));
 
+    // Hydrate any legacy/custom quotation items missing title or imageUrl in a single batched DB lookup
+    const parsedItemsByOrderId = new Map<string, any[]>();
+    const missingMetaIdentifiers = new Set<string>();
+    orders.forEach((o) => {
+      try {
+        const parsed = typeof o.itemsJson === "string" ? JSON.parse(o.itemsJson) : [];
+        if (Array.isArray(parsed)) {
+          parsedItemsByOrderId.set(o.id, parsed);
+          parsed.forEach((it: any) => {
+            if (!it?.title || !it?.imageUrl || it.imageUrl === "/images/logo.png") {
+              if (typeof it?.id === "string" && it.id.trim()) missingMetaIdentifiers.add(it.id.trim());
+              if (typeof it?.sku === "string" && it.sku.trim()) missingMetaIdentifiers.add(it.sku.trim());
+              if (typeof it?.slug === "string" && it.slug.trim()) missingMetaIdentifiers.add(it.slug.trim());
+            }
+          });
+        }
+      } catch {}
+    });
+
+    const itemMetaMap = new Map<string, { title: string; nameEs: string; nameEn: string; slug: string; sku?: string; imageUrl: string; type: "PRODUCT" | "COMBO" }>();
+    if (missingMetaIdentifiers.size > 0) {
+      const idsArr = Array.from(missingMetaIdentifiers);
+      const [dbProds, dbCmbs] = await Promise.all([
+        prisma.product.findMany({
+          where: { OR: [{ id: { in: idsArr } }, { sku: { in: idsArr } }, { slug: { in: idsArr } }] },
+          select: { id: true, sku: true, slug: true, nameEs: true, nameEn: true, imageUrl: true, imagesJson: true },
+        }),
+        prisma.combo.findMany({
+          where: { OR: [{ id: { in: idsArr } }, { slug: { in: idsArr } }] },
+          select: { id: true, slug: true, titleEs: true, titleEn: true, imageUrl: true, imagesJson: true },
+        }),
+      ]);
+      const pickImg = (primary?: string | null, imagesJson?: string | null) => {
+        if (primary && primary.trim()) return primary.trim();
+        if (imagesJson) {
+          try {
+            const p = JSON.parse(imagesJson);
+            if (Array.isArray(p) && typeof p[0] === "string" && p[0].trim()) return p[0].trim();
+          } catch {}
+        }
+        return "/images/logo.png";
+      };
+      dbProds.forEach((p) => {
+        const meta = {
+          title: p.nameEs || p.nameEn,
+          nameEs: p.nameEs || p.nameEn,
+          nameEn: p.nameEn || p.nameEs,
+          slug: p.slug || p.sku,
+          sku: p.sku,
+          imageUrl: pickImg(p.imageUrl, p.imagesJson),
+          type: "PRODUCT" as const,
+        };
+        itemMetaMap.set(p.id, meta);
+        if (p.sku) itemMetaMap.set(p.sku, meta);
+        if (p.slug) itemMetaMap.set(p.slug, meta);
+      });
+      dbCmbs.forEach((c) => {
+        const meta = {
+          title: c.titleEs || c.titleEn,
+          nameEs: c.titleEs || c.titleEn,
+          nameEn: c.titleEn || c.titleEs,
+          slug: c.slug,
+          sku: c.slug,
+          imageUrl: pickImg(c.imageUrl, c.imagesJson),
+          type: "COMBO" as const,
+        };
+        itemMetaMap.set(c.id, meta);
+        if (c.slug) itemMetaMap.set(c.slug, meta);
+      });
+    }
+
     const enrichedOrders = orders.map((o) => {
+      let hydratedItemsJson = o.itemsJson;
+      const orderItems = parsedItemsByOrderId.get(o.id);
+      if (orderItems && orderItems.length > 0) {
+        const hydrated = orderItems.map((it: any) => {
+          const meta =
+            itemMetaMap.get(it?.id) ||
+            (it?.sku ? itemMetaMap.get(it.sku) : undefined) ||
+            (it?.slug ? itemMetaMap.get(it.slug) : undefined);
+          const resolvedTitle = it?.title || it?.nameEs || it?.name || meta?.title || it?.nameEn || "Artículo";
+          return {
+            ...it,
+            slug: it?.slug || meta?.slug || it?.sku,
+            sku: it?.sku || meta?.sku,
+            title: resolvedTitle,
+            name: it?.name || resolvedTitle,
+            nameEs: it?.nameEs || meta?.nameEs || resolvedTitle,
+            nameEn: it?.nameEn || meta?.nameEn || resolvedTitle,
+            imageUrl:
+              it?.imageUrl && it.imageUrl !== "/images/logo.png"
+                ? it.imageUrl
+                : meta?.imageUrl || it?.imageUrl || "/images/logo.png",
+            type: it?.type || meta?.type,
+          };
+        });
+        hydratedItemsJson = JSON.stringify(hydrated);
+      }
       let isInstallationPaymentConfirmed = false;
       let installationPaymentProofUrl = o.installationPaymentProofUrl;
       let servicePaymentProofUrl = o.servicePaymentProofUrl;
@@ -63,6 +160,7 @@ export async function GET() {
 
       return {
         ...o,
+        itemsJson: hydratedItemsJson,
         serviceDocumentsJson: userSafeServiceDocumentsJson,
         isServiceScheduled: scheduledSet.has(o.id) || scheduledSet.has(o.orderNumber),
         isInstallationPaymentConfirmed,

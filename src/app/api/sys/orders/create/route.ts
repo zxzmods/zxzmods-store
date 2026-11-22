@@ -119,6 +119,149 @@ export async function POST(request: Request) {
       }
     }
 
+    // Hydrate quoted items with canonical product/combo metadata (title, nameEs/nameEn, slug, sku, imageUrl, brand)
+    const itemIdentifiers = Array.from(
+      new Set(
+        items
+          .flatMap((it: any) => [it?.id, it?.sku, it?.slug])
+          .map((v: any) => (typeof v === "string" ? v.trim() : ""))
+          .filter(Boolean)
+      )
+    );
+    const [dbProducts, dbCombos] = itemIdentifiers.length > 0
+      ? await Promise.all([
+          prisma.product.findMany({
+            where: {
+              OR: [
+                { id: { in: itemIdentifiers } },
+                { sku: { in: itemIdentifiers } },
+                { slug: { in: itemIdentifiers } },
+              ],
+            },
+            select: {
+              id: true,
+              sku: true,
+              slug: true,
+              nameEs: true,
+              nameEn: true,
+              brandName: true,
+              imageUrl: true,
+              imagesJson: true,
+              installationAvailable: true,
+              isInstallationIncluded: true,
+              homeInstallationAvailable: true,
+            },
+          }),
+          prisma.combo.findMany({
+            where: {
+              OR: [
+                { id: { in: itemIdentifiers } },
+                { slug: { in: itemIdentifiers } },
+              ],
+            },
+            select: {
+              id: true,
+              slug: true,
+              titleEs: true,
+              titleEn: true,
+              imageUrl: true,
+              imagesJson: true,
+              installationAvailable: true,
+              homeInstallationAvailable: true,
+            },
+          }),
+        ])
+      : [[], []];
+
+    const resolveFirstImg = (primary?: string | null, imagesJson?: string | null) => {
+      if (primary && primary.trim()) return primary.trim();
+      if (imagesJson) {
+        try {
+          const parsed = JSON.parse(imagesJson);
+          if (Array.isArray(parsed) && typeof parsed[0] === "string" && parsed[0].trim()) {
+            return parsed[0].trim();
+          }
+        } catch {}
+      }
+      return "/images/logo.png";
+    };
+
+    const prodLookup = new Map<string, any>();
+    dbProducts.forEach((p) => {
+      prodLookup.set(p.id, p);
+      if (p.sku) prodLookup.set(p.sku, p);
+      if (p.slug) prodLookup.set(p.slug, p);
+    });
+    const comboLookup = new Map<string, any>();
+    dbCombos.forEach((c) => {
+      comboLookup.set(c.id, c);
+      if (c.slug) comboLookup.set(c.slug, c);
+    });
+
+    const enrichedItems = items.map((it: any) => {
+      const matchedProd =
+        prodLookup.get(it?.id) ||
+        (it?.sku ? prodLookup.get(it.sku) : undefined) ||
+        (it?.slug ? prodLookup.get(it.slug) : undefined);
+      const matchedCombo =
+        comboLookup.get(it?.id) ||
+        (it?.slug ? comboLookup.get(it.slug) : undefined) ||
+        (it?.sku ? comboLookup.get(it.sku) : undefined);
+
+      if (matchedProd) {
+        const resolvedTitle = it.title || it.nameEs || matchedProd.nameEs || matchedProd.nameEn || it.name || "Producto";
+        const isDeliveryOnly = matchedProd.installationAvailable === false;
+        const isFreeInstall = !isDeliveryOnly && Boolean(matchedProd.isInstallationIncluded);
+        return {
+          ...it,
+          id: matchedProd.id,
+          slug: it.slug || matchedProd.slug || matchedProd.sku,
+          sku: it.sku || matchedProd.sku,
+          title: resolvedTitle,
+          name: it.name || resolvedTitle,
+          nameEs: it.nameEs || matchedProd.nameEs || resolvedTitle,
+          nameEn: it.nameEn || matchedProd.nameEn || resolvedTitle,
+          brand: it.brand || matchedProd.brandName || undefined,
+          imageUrl: it.imageUrl && it.imageUrl !== "/images/logo.png" ? it.imageUrl : resolveFirstImg(matchedProd.imageUrl, matchedProd.imagesJson),
+          installationAvailable: !isDeliveryOnly,
+          freeInstallation: isFreeInstall,
+          homeInstallation: isDeliveryOnly ? false : (it.homeInstallation ?? matchedProd.homeInstallationAvailable ?? true),
+          type: it.type || "PRODUCT",
+        };
+      }
+
+      if (matchedCombo) {
+        const resolvedTitle = it.title || it.nameEs || matchedCombo.titleEs || matchedCombo.titleEn || it.name || "Combo";
+        const comboIncludesInstall = matchedCombo.installationAvailable !== false;
+        return {
+          ...it,
+          id: matchedCombo.id,
+          slug: it.slug || matchedCombo.slug,
+          sku: it.sku || matchedCombo.slug,
+          title: resolvedTitle,
+          name: it.name || resolvedTitle,
+          nameEs: it.nameEs || matchedCombo.titleEs || resolvedTitle,
+          nameEn: it.nameEn || matchedCombo.titleEn || resolvedTitle,
+          brand: it.brand || "ZxZ Mods",
+          imageUrl: it.imageUrl && it.imageUrl !== "/images/logo.png" ? it.imageUrl : resolveFirstImg(matchedCombo.imageUrl, matchedCombo.imagesJson),
+          installationPriceCRC: 0,
+          installationAvailable: comboIncludesInstall,
+          freeInstallation: comboIncludesInstall,
+          homeInstallation: comboIncludesInstall ? (it.homeInstallation ?? matchedCombo.homeInstallationAvailable ?? true) : false,
+          type: it.type || "COMBO",
+        };
+      }
+
+      const fallbackTitle = it?.title || it?.nameEs || it?.name || it?.nameEn || "Artículo";
+      return {
+        ...it,
+        title: fallbackTitle,
+        name: it?.name || fallbackTitle,
+        nameEs: it?.nameEs || fallbackTitle,
+        nameEn: it?.nameEn || fallbackTitle,
+      };
+    });
+
     const newOrder = await prisma.order.create({
       data: {
         orderNumber,
@@ -143,7 +286,7 @@ export async function POST(request: Request) {
         discountReason: discountReason || null,
         discountAppliedBy: auth.session.email,
         assignedStaffId: auth.session.userId,
-        itemsJson: JSON.stringify(items),
+        itemsJson: JSON.stringify(enrichedItems),
         notes: finalNotes,
         staffNotes: staffNotes || null,
         claimToken,

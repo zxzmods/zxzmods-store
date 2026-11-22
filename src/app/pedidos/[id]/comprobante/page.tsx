@@ -506,8 +506,8 @@ export default function OrderReceiptPage() {
                   <>
                     {items.map((it, idx) => {
                       const itemName = isEs
-                        ? it.nameEs || it.title || "Artículo"
-                        : it.nameEn || it.nameEs || it.title || "Item";
+                        ? it.nameEs || it.title || it.name || it.nameEn || "Artículo"
+                        : it.nameEn || it.title || it.name || it.nameEs || "Item";
                       const rawSku = it.sku || it.slug || (it.id ? String(it.id).slice(0, 10) : `ITM-${idx + 1}`);
                       const itemSku = trimDocSku(rawSku, 22);
                       const qty = Math.max(1, Number(it.quantity) || 1);

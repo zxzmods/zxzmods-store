@@ -1528,7 +1528,17 @@ export default function OrderDetailPage() {
                         const itemPrice = item.priceCRC || 0;
                         const qty = item.quantity || 1;
                         const lineTotal = itemPrice * qty;
-                        const itemSkuOrId = item.sku || item.id;
+                        const itemDisplayTitle =
+                          (lang === "es"
+                            ? item.nameEs || item.title || item.name || item.nameEn
+                            : item.nameEn || item.title || item.name || item.nameEs) ||
+                          (lang === "es" ? "Artículo" : "Item");
+                        const isComboItem = String(item.type || "").toLowerCase() === "combo";
+                        const isCustomItem = String(item.type || "").toLowerCase() === "custom";
+                        const itemSlugOrSku = item.slug || item.sku || item.id;
+                        const itemHref = !isCustomItem && itemSlugOrSku
+                          ? (isComboItem ? `/combos/${itemSlugOrSku}` : `/productos/${itemSlugOrSku}`)
+                          : null;
 
                         return (
                           <div
@@ -1539,24 +1549,23 @@ export default function OrderDetailPage() {
                               <div className="relative w-16 h-16 rounded-xl overflow-hidden bg-white border border-gray-200 flex-shrink-0">
                                 <Image
                                   src={item.imageUrl || "/images/logo.png"}
-                                  alt={item.title || "Product"}
+                                  alt={itemDisplayTitle}
                                   fill
                                   className="object-contain p-1"
                                 />
                               </div>
 
                               <div className="min-w-0 space-y-1">
-                                {item.sku && (
+                                {itemHref ? (
                                   <Link
-                                    href={`/productos/${itemSkuOrId}`}
+                                    href={itemHref}
                                     className="text-sm font-bold text-gray-900 hover:text-[#0052CC] transition-colors truncate block"
                                   >
-                                    {item.title}
+                                    {itemDisplayTitle}
                                   </Link>
-                                )}
-                                {!item.sku && (
+                                ) : (
                                   <span className="text-sm font-bold text-gray-900 truncate block">
-                                    {item.title}
+                                    {itemDisplayTitle}
                                   </span>
                                 )}
 

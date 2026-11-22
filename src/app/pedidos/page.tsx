@@ -852,6 +852,11 @@ export default function PedidosPage() {
                           const itemPrice = item.priceCRC || 0;
                           const qty = item.quantity || 1;
                           const lineTotal = itemPrice * qty;
+                          const itemDisplayTitle =
+                            (lang === "es"
+                              ? (item as any).nameEs || item.title || (item as any).name || (item as any).nameEn
+                              : (item as any).nameEn || item.title || (item as any).name || (item as any).nameEs) ||
+                            (lang === "es" ? "Artículo" : "Item");
 
                           return (
                             <div
@@ -863,7 +868,7 @@ export default function PedidosPage() {
                                   {item.imageUrl ? (
                                     <Image
                                       src={item.imageUrl}
-                                      alt={item.title || "Item"}
+                                      alt={itemDisplayTitle}
                                       fill
                                       className="object-contain p-1"
                                     />
@@ -873,7 +878,7 @@ export default function PedidosPage() {
                                 </div>
                                 <div className="min-w-0">
                                   <h4 className="text-xs font-bold text-gray-900 truncate">
-                                    {item.title}
+                                    {itemDisplayTitle}
                                   </h4>
                                   <div className="flex items-center gap-2 text-[11px] text-gray-500 mt-0.5">
                                     <span className="font-mono">Cant: {qty}</span>

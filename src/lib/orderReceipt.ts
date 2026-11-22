@@ -7,6 +7,7 @@ export interface ReceiptItem {
   sku?: string;
   slug?: string;
   title?: string;
+  name?: string;
   nameEs?: string;
   nameEn?: string;
   quantity?: number;
@@ -320,7 +321,7 @@ export function generateReceiptHtml(
 
     // Render all parts
     const partsRows = items.map((it, idx) => {
-      const itemName = isEs ? it.nameEs || it.title || "Artículo" : it.nameEn || it.nameEs || it.title || "Item";
+      const itemName = isEs ? it.nameEs || it.title || it.name || it.nameEn || "Artículo" : it.nameEn || it.title || it.name || it.nameEs || "Item";
       const rawSku = it.sku || it.slug || (it.id ? String(it.id).slice(0, 10) : `ITM-${idx + 1}`);
       const itemSku = trimDocSku(rawSku, 22);
       const qty = Math.max(1, Number(it.quantity) || 1);
@@ -390,7 +391,7 @@ export function generateReceiptHtml(
     totalAmountCRC = (order.partsSubtotalCRC || order.totalCRC) - (order.discountCRC || 0);
 
     itemsRowsHtml = items.length > 0 ? items.map((it, idx) => {
-      const itemName = isEs ? it.nameEs || it.title || "Artículo" : it.nameEn || it.nameEs || it.title || "Item";
+      const itemName = isEs ? it.nameEs || it.title || it.name || it.nameEn || "Artículo" : it.nameEn || it.title || it.name || it.nameEs || "Item";
       const rawSku = it.sku || it.slug || (it.id ? String(it.id).slice(0, 10) : `ITM-${idx + 1}`);
       const itemSku = trimDocSku(rawSku, 22);
       const qty = Math.max(1, Number(it.quantity) || 1);

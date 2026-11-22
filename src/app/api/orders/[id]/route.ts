@@ -143,40 +143,119 @@ export async function GET(
       } catch {}
     }
 
-    // Dynamic resolution of installation price set on products if order has 0
+    // Dynamic resolution of installation price and canonical product/combo metadata
     let resolvedInstallationCost = order.installationCostCRC || order.laborSubtotalCRC || 0;
     const freeInstallMap = new Map<string, boolean>();
+    const itemMetaMap = new Map<string, {
+      id: string;
+      slug: string;
+      sku?: string;
+      title: string;
+      nameEs: string;
+      nameEn: string;
+      brand?: string;
+      imageUrl: string;
+      homeInstallation?: boolean;
+      installationAvailable?: boolean;
+      type: "PRODUCT" | "COMBO";
+    }>();
+
+    const resolveFirstImageUrl = (primary?: string | null, imagesJson?: string | null) => {
+      if (primary && primary.trim()) return primary.trim();
+      if (imagesJson) {
+        try {
+          const parsed = JSON.parse(imagesJson);
+          if (Array.isArray(parsed) && typeof parsed[0] === "string" && parsed[0].trim()) {
+            return parsed[0].trim();
+          }
+        } catch {}
+      }
+      return "/images/logo.png";
+    };
+
     if (Array.isArray(items) && items.length > 0) {
-      const identifiers = items.map((i: any) => i.id || i.sku || i.slug).filter(Boolean);
-      const [dbProducts, dbCombos] = await Promise.all([
-        prisma.product.findMany({
-          where: {
-            OR: [
-              { id: { in: identifiers } },
-              { sku: { in: identifiers } },
-              { slug: { in: identifiers } },
-            ],
-          },
-          select: { id: true, sku: true, slug: true, installationPriceCRC: true, isInstallationIncluded: true },
-        }),
-        prisma.combo.findMany({
-          where: {
-            OR: [
-              { id: { in: identifiers } },
-              { slug: { in: identifiers } },
-            ],
-          },
-          select: { id: true, slug: true, installationPriceCRC: true },
-        }),
-      ]);
+      const identifiers = Array.from(
+        new Set(
+          items
+            .flatMap((i: any) => [i?.id, i?.sku, i?.slug])
+            .map((v: any) => (typeof v === "string" ? v.trim() : ""))
+            .filter(Boolean)
+        )
+      );
+      const [dbProducts, dbCombos] = identifiers.length > 0
+        ? await Promise.all([
+            prisma.product.findMany({
+              where: {
+                OR: [
+                  { id: { in: identifiers } },
+                  { sku: { in: identifiers } },
+                  { slug: { in: identifiers } },
+                ],
+              },
+              select: {
+                id: true,
+                sku: true,
+                slug: true,
+                nameEs: true,
+                nameEn: true,
+                brandName: true,
+                imageUrl: true,
+                imagesJson: true,
+                installationPriceCRC: true,
+                installationAvailable: true,
+                isInstallationIncluded: true,
+                homeInstallationAvailable: true,
+              },
+            }),
+            prisma.combo.findMany({
+              where: {
+                OR: [
+                  { id: { in: identifiers } },
+                  { slug: { in: identifiers } },
+                ],
+              },
+              select: {
+                id: true,
+                slug: true,
+                titleEs: true,
+                titleEn: true,
+                imageUrl: true,
+                imagesJson: true,
+                installationPriceCRC: true,
+                installationAvailable: true,
+                homeInstallationAvailable: true,
+              },
+            }),
+          ])
+        : [[], []];
 
       const priceMap = new Map<string, number>();
       dbProducts.forEach((p) => {
-        const isFree = Boolean((p as any).isInstallationIncluded);
-        if (isFree) {
-          freeInstallMap.set(p.id, true);
-          if (p.sku) freeInstallMap.set(p.sku, true);
-          if (p.slug) freeInstallMap.set(p.slug, true);
+        const isDeliveryOnly = p.installationAvailable === false;
+        const isFree = !isDeliveryOnly && Boolean((p as any).isInstallationIncluded);
+        const meta = {
+          id: p.id,
+          slug: p.slug || p.sku,
+          sku: p.sku,
+          title: p.nameEs || p.nameEn,
+          nameEs: p.nameEs || p.nameEn,
+          nameEn: p.nameEn || p.nameEs,
+          brand: p.brandName || undefined,
+          imageUrl: resolveFirstImageUrl(p.imageUrl, p.imagesJson),
+          homeInstallation: isDeliveryOnly ? false : (p.homeInstallationAvailable ?? true),
+          installationAvailable: !isDeliveryOnly,
+          type: "PRODUCT" as const,
+        };
+        itemMetaMap.set(p.id, meta);
+        if (p.sku) itemMetaMap.set(p.sku, meta);
+        if (p.slug) itemMetaMap.set(p.slug, meta);
+
+        if (isFree || isDeliveryOnly) {
+          if (isFree) {
+            freeInstallMap.set(p.id, true);
+            if (p.sku) freeInstallMap.set(p.sku, true);
+            if (p.slug) freeInstallMap.set(p.slug, true);
+          }
           priceMap.set(p.id, 0);
           if (p.sku) priceMap.set(p.sku, 0);
           if (p.slug) priceMap.set(p.slug, 0);
@@ -187,8 +266,29 @@ export async function GET(
         }
       });
       dbCombos.forEach((c) => {
-        priceMap.set(c.id, c.installationPriceCRC);
-        if (c.slug) priceMap.set(c.slug, c.installationPriceCRC);
+        const comboIncludesInstall = c.installationAvailable !== false;
+        const meta = {
+          id: c.id,
+          slug: c.slug,
+          sku: c.slug,
+          title: c.titleEs || c.titleEn,
+          nameEs: c.titleEs || c.titleEn,
+          nameEn: c.titleEn || c.titleEs,
+          brand: "ZxZ Mods",
+          imageUrl: resolveFirstImageUrl(c.imageUrl, c.imagesJson),
+          homeInstallation: comboIncludesInstall ? (c.homeInstallationAvailable ?? true) : false,
+          installationAvailable: comboIncludesInstall,
+          type: "COMBO" as const,
+        };
+        itemMetaMap.set(c.id, meta);
+        if (c.slug) itemMetaMap.set(c.slug, meta);
+        // Combo installation is already included in T_price (₡0 extra)
+        if (comboIncludesInstall) {
+          freeInstallMap.set(c.id, true);
+          if (c.slug) freeInstallMap.set(c.slug, true);
+        }
+        priceMap.set(c.id, 0);
+        if (c.slug) priceMap.set(c.slug, 0);
       });
 
       if (resolvedInstallationCost === 0) {
@@ -216,6 +316,10 @@ export async function GET(
 
     const sanitizedItems = Array.isArray(items)
       ? items.map((it: any) => {
+          const meta =
+            itemMetaMap.get(it?.id) ||
+            (it?.sku ? itemMetaMap.get(it.sku) : undefined) ||
+            (it?.slug ? itemMetaMap.get(it.slug) : undefined);
           const key = it.id || it.sku || it.slug;
           const isFree = Boolean(
             it.freeInstallation ||
@@ -223,15 +327,34 @@ export async function GET(
             it.isInstallationIncluded ||
             freeInstallMap.get(key)
           );
+          const resolvedTitle = it.title || it.nameEs || it.name || meta?.title || it.nameEn || "Artículo";
+          const hydrated = {
+            ...it,
+            slug: it.slug || meta?.slug || it.sku,
+            sku: it.sku || meta?.sku,
+            title: resolvedTitle,
+            name: it.name || resolvedTitle,
+            nameEs: it.nameEs || meta?.nameEs || resolvedTitle,
+            nameEn: it.nameEn || meta?.nameEn || resolvedTitle,
+            brand: it.brand || meta?.brand,
+            imageUrl:
+              it.imageUrl && it.imageUrl !== "/images/logo.png"
+                ? it.imageUrl
+                : meta?.imageUrl || it.imageUrl || "/images/logo.png",
+            homeInstallation: it.homeInstallation !== undefined ? it.homeInstallation : meta?.homeInstallation,
+            installationAvailable:
+              it.installationAvailable !== undefined ? it.installationAvailable : meta?.installationAvailable,
+            type: it.type || meta?.type,
+          };
           if (isFree) {
             return {
-              ...it,
+              ...hydrated,
               installationPriceCRC: 0,
               freeInstallation: true,
               isInstallationIncluded: true,
             };
           }
-          return it;
+          return hydrated;
         })
       : items;
 

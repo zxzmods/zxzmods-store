@@ -32,12 +32,16 @@ interface UserResult {
 
 interface ProductItem {
   id: string;
+  slug?: string;
   nameEn: string;
   nameEs: string;
+  brandName?: string;
+  brand?: string[] | string;
   priceCRC: number;
   installationPriceCRC: number;
   isInstallationIncluded?: boolean;
   installationAvailable?: boolean;
+  homeInstallationAvailable?: boolean;
   sku: string;
   imageUrl?: string;
 }
@@ -50,18 +54,26 @@ interface ComboItem {
   priceCRC: number;
   installationPriceCRC: number;
   installationAvailable?: boolean;
+  homeInstallationAvailable?: boolean;
   category: string;
   imageUrl?: string;
 }
 
 interface SelectedItem {
   id: string;
+  slug?: string;
+  title: string;
   name: string;
+  nameEs?: string;
+  nameEn?: string;
+  brand?: string;
   sku?: string;
+  imageUrl?: string;
   priceCRC: number;
   installationPriceCRC?: number;
   freeInstallation?: boolean;
   installationAvailable?: boolean;
+  homeInstallation?: boolean;
   quantity: number;
   type: "PRODUCT" | "COMBO" | "CUSTOM";
 }
@@ -178,16 +190,26 @@ export function CreateOrderTab({
       .map((p) => {
         const isDeliveryOnly = p.installationAvailable === false;
         const isFreeInstall = !isDeliveryOnly && Boolean(p.isInstallationIncluded);
+        const resolvedBrand =
+          p.brandName ||
+          (Array.isArray(p.brand) ? p.brand[0] : typeof p.brand === "string" ? p.brand : undefined);
+        const displayName = lang === "es" ? (p.nameEs || p.nameEn) : (p.nameEn || p.nameEs);
         return {
           id: p.id,
-          name: lang === "es" ? p.nameEs : p.nameEn,
+          slug: p.slug || p.sku,
+          title: p.nameEs || p.nameEn,
+          name: displayName,
+          nameEs: p.nameEs || p.nameEn,
+          nameEn: p.nameEn || p.nameEs,
+          brand: resolvedBrand,
           sku: p.sku,
           priceCRC: p.priceCRC,
           installationPriceCRC: isDeliveryOnly || isFreeInstall ? 0 : (p.installationPriceCRC || 0),
           freeInstallation: isFreeInstall,
           installationAvailable: !isDeliveryOnly,
+          homeInstallation: isDeliveryOnly ? false : (p.homeInstallationAvailable ?? true),
           type: "PRODUCT" as const,
-          imageUrl: p.imageUrl,
+          imageUrl: p.imageUrl || "/images/logo.png",
         };
       });
 
@@ -202,16 +224,23 @@ export function CreateOrderTab({
       .slice(0, 5)
       .map((c) => {
         const comboIncludesInstall = c.installationAvailable !== false;
+        const displayName = lang === "es" ? (c.titleEs || c.titleEn) : (c.titleEn || c.titleEs);
         return {
           id: c.id,
-          name: lang === "es" ? c.titleEs : c.titleEn,
+          slug: c.slug,
+          title: c.titleEs || c.titleEn,
+          name: displayName,
+          nameEs: c.titleEs || c.titleEn,
+          nameEn: c.titleEn || c.titleEs,
+          brand: "ZxZ Mods",
           sku: c.slug,
           priceCRC: c.priceCRC,
           installationPriceCRC: 0,
           freeInstallation: comboIncludesInstall,
           installationAvailable: comboIncludesInstall,
+          homeInstallation: comboIncludesInstall ? (c.homeInstallationAvailable ?? true) : false,
           type: "COMBO" as const,
-          imageUrl: c.imageUrl,
+          imageUrl: c.imageUrl || "/images/logo.png",
         };
       });
 
@@ -220,12 +249,19 @@ export function CreateOrderTab({
 
   const handleAddItem = (item: {
     id: string;
+    slug?: string;
+    title?: string;
     name: string;
+    nameEs?: string;
+    nameEn?: string;
+    brand?: string;
     sku?: string;
+    imageUrl?: string;
     priceCRC: number;
     installationPriceCRC?: number;
     freeInstallation?: boolean;
     installationAvailable?: boolean;
+    homeInstallation?: boolean;
     type: "PRODUCT" | "COMBO";
   }) => {
     const existingIndex = selectedItems.findIndex((it) => it.id === item.id);
@@ -239,12 +275,19 @@ export function CreateOrderTab({
         ...selectedItems,
         {
           id: item.id,
+          slug: item.slug || item.sku,
+          title: item.title || item.nameEs || item.name,
           name: item.name,
+          nameEs: item.nameEs || item.title || item.name,
+          nameEn: item.nameEn || item.title || item.name,
+          brand: item.brand,
           sku: item.sku,
+          imageUrl: item.imageUrl || "/images/logo.png",
           priceCRC: item.priceCRC,
           installationPriceCRC: item.installationPriceCRC || 0,
           freeInstallation: item.freeInstallation,
           installationAvailable: item.installationAvailable,
+          homeInstallation: item.homeInstallation,
           quantity: 1,
           type: item.type,
         },
@@ -260,12 +303,16 @@ export function CreateOrderTab({
     if (!customItemName.trim() || !customItemPrice) return;
     const price = Math.max(0, parseInt(customItemPrice) || 0);
     const qty = Math.max(1, parseInt(customItemQty) || 1);
+    const trimmedName = customItemName.trim();
 
     setSelectedItems([
       ...selectedItems,
       {
         id: `custom_${Date.now()}`,
-        name: customItemName.trim(),
+        title: trimmedName,
+        name: trimmedName,
+        nameEs: trimmedName,
+        nameEn: trimmedName,
         priceCRC: price,
         installationPriceCRC: 0,
         quantity: qty,
