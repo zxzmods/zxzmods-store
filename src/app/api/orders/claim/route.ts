@@ -50,6 +50,7 @@ export async function GET(request: Request) {
     return NextResponse.json({
       success: true,
       order: {
+        id: order.id,
         orderNumber: order.orderNumber,
         status: order.status,
         serviceType: order.serviceType,
@@ -60,6 +61,7 @@ export async function GET(request: Request) {
         pickupCostCRC: order.pickupCostCRC,
         discountType: order.discountType,
         discountValue: order.discountValue,
+        discountCRC: order.discountCRC,
         customerName: order.customerName,
         customerPhone: order.customerPhone,
         shippingAddress: order.shippingAddress,
@@ -170,6 +172,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       message: "¡Pedido canjeado e inscrito exitosamente en tu cuenta!",
+      orderId: updatedOrder.id,
       orderNumber: updatedOrder.orderNumber,
     });
   } catch (error) {

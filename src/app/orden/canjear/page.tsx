@@ -14,7 +14,7 @@ function OrderCanjearContent() {
     if (token) {
       router.replace(`/pedidos/reclamar/${token}`);
     } else {
-      router.replace("/perfil");
+      router.replace("/pedidos");
     }
   }, [searchParams, router]);
 

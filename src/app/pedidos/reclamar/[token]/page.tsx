@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 
 interface OrderDetail {
+  id?: string;
   orderNumber: string;
   status: string;
   serviceType: string;
@@ -60,6 +61,7 @@ export default function ClaimOrderPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [claiming, setClaiming] = useState(false);
   const [claimedSuccess, setClaimedSuccess] = useState(false);
+  const [claimedOrderId, setClaimedOrderId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!token) return;
@@ -104,6 +106,7 @@ export default function ClaimOrderPage() {
 
       const data = await res.json();
       if (res.ok && data.success) {
+        if (data.orderId) setClaimedOrderId(String(data.orderId));
         setClaimedSuccess(true);
       } else {
         setErrorMsg(data.message || data.error || "Error al canjear el pedido.");
@@ -137,7 +140,7 @@ export default function ClaimOrderPage() {
             <p className="text-xs text-slate-600 leading-relaxed">{errorMsg}</p>
             <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-2.5">
               <Link
-                href="/perfil"
+                href="/pedidos"
                 className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-slate-900 text-white text-xs font-semibold hover:bg-slate-800 transition"
               >
                 {t.claimViewProfileBtn}
@@ -171,8 +174,11 @@ export default function ClaimOrderPage() {
             <div className="pt-4 flex flex-col sm:flex-row items-center justify-center gap-3">
               <button
                 type="button"
-                onClick={() => router.push("/perfil")}
-                className="w-full sm:w-auto px-6 py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition flex items-center justify-center gap-2 shadow-sm"
+                onClick={() => {
+                  const targetOrderId = claimedOrderId || order?.id;
+                  router.push(targetOrderId ? `/pedidos/${targetOrderId}` : "/pedidos");
+                }}
+                className="w-full sm:w-auto px-6 py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition flex items-center justify-center gap-2 shadow-sm cursor-pointer"
               >
                 <span>{t.claimViewInMyAccountBtn}</span>
                 <ArrowRight className="w-3.5 h-3.5" />
