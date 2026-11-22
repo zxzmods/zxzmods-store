@@ -11,6 +11,7 @@ import {
   resolveOrderLanguage,
 } from "@/lib/orderStepEmails";
 import { COMPANY_CONFIG } from "@/config/company";
+import { generateSecureClaimToken } from "@/lib/orders";
 
 export async function PATCH(
   request: Request,
@@ -231,6 +232,9 @@ export async function PATCH(
     if (installationCostCRC !== undefined) updateData.installationCostCRC = Math.round(Number(installationCostCRC) || 0);
     if (shippingCostCRC !== undefined) updateData.shippingCostCRC = Math.round(Number(shippingCostCRC) || 0);
     if (pickupCostCRC !== undefined) updateData.pickupCostCRC = Math.round(Number(pickupCostCRC) || 0);
+    if (body.generateClaimToken === true && !existingOrder.isRedeemed) {
+      updateData.claimToken = existingOrder.claimToken || generateSecureClaimToken();
+    }
     if (discountType !== undefined) updateData.discountType = discountType;
     if (discountValue !== undefined) {
       const numDisc = Math.round(Number(discountValue) || 0);
@@ -827,10 +831,17 @@ export async function PATCH(
       }).catch((err) => console.error("[STEP_EMAIL_INST_PAYMENT_STAGE_ERR]:", err));
     }
 
+    const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://zxzmods.com").replace(/\/+$/, "");
+    const claimUrl =
+      updatedOrder.claimToken && !updatedOrder.isRedeemed
+        ? `${baseUrl}/pedidos/reclamar/${updatedOrder.claimToken}`
+        : null;
+
     return NextResponse.json({
       success: true,
       order: {
         ...updatedOrder,
+        claimUrl,
         garageVehicle: userVehicle,
         serviceSchedule: currentSchedule,
         isInstallationPaymentConfirmed,

@@ -2116,6 +2116,14 @@ export interface Translations {
   devComboProfitLabel: string;
   devComboTPriceInputLabel: string;
   devComboSyncProductsProfitBtn: string;
+  devOrderClaimLinkLabel: string;
+  devOrderClaimLinkCopyBtn: string;
+  devOrderClaimLinkCopied: string;
+  devOrderClaimLinkOpenBtn: string;
+  devOrderClaimLinkWhatsAppBtn: string;
+  devOrderClaimLinkGenerateBtn: string;
+  devOrderClaimLinkGenerating: string;
+  devOrderClaimLinkHelp: string;
 }
 
 
@@ -4213,6 +4221,14 @@ export const translations: Record<Language, Translations> = {
     devComboProfitLabel: "Margen de Ganancia del Combo (profit ₡)",
     devComboTPriceInputLabel: "Precio Final del Combo (T_price ₡ - IVA 13% inc.)",
     devComboSyncProductsProfitBtn: "Sincronizar con suma de piezas",
+    devOrderClaimLinkLabel: "Enlace de Canje del Cliente",
+    devOrderClaimLinkCopyBtn: "Copiar",
+    devOrderClaimLinkCopied: "¡Copiado!",
+    devOrderClaimLinkOpenBtn: "Abrir",
+    devOrderClaimLinkWhatsAppBtn: "Enviar por WhatsApp",
+    devOrderClaimLinkGenerateBtn: "Generar enlace de canje",
+    devOrderClaimLinkGenerating: "Generando...",
+    devOrderClaimLinkHelp: "Comparte este enlace con el cliente para que reclame el pedido y quede registrado permanentemente en su cuenta.",
   },
 
   en: {
@@ -6308,6 +6324,14 @@ export const translations: Record<Language, Translations> = {
     devComboProfitLabel: "Combo Profit Margin (profit ₡)",
     devComboTPriceInputLabel: "Final Combo Price (T_price ₡ - 13% VAT inc.)",
     devComboSyncProductsProfitBtn: "Sync with parts sum",
+    devOrderClaimLinkLabel: "Customer Claim Link",
+    devOrderClaimLinkCopyBtn: "Copy",
+    devOrderClaimLinkCopied: "Copied!",
+    devOrderClaimLinkOpenBtn: "Open",
+    devOrderClaimLinkWhatsAppBtn: "Send via WhatsApp",
+    devOrderClaimLinkGenerateBtn: "Generate claim link",
+    devOrderClaimLinkGenerating: "Generating...",
+    devOrderClaimLinkHelp: "Share this link with the customer so they can claim the order and permanently link it to their account.",
   },
 
 };

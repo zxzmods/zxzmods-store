@@ -48,6 +48,8 @@ import {
   Globe,
   Fuel,
   CreditCard,
+  Share2,
+  Link2,
 } from "lucide-react";
 
 import { 
@@ -119,6 +121,7 @@ interface OrderData {
   staffNotes: string | null;
   supplierNotes: string | null;
   claimToken: string | null;
+  claimUrl?: string | null;
   isRedeemed: boolean;
   paymentProofUrl?: string | null;
   servicePaymentProofUrl?: string | null;
@@ -344,6 +347,54 @@ export function OrdersPipelineTab({ onOrderDeleted, onOrderUpdated }: OrdersPipe
 
   // Post-Quotation Management Screen state (for orders in or past COTIZACION)
   const [managingOrder, setManagingOrder] = useState<OrderData | null>(null);
+  const [copiedClaimLinkOrderId, setCopiedClaimLinkOrderId] = useState<string | null>(null);
+  const [generatingClaimLink, setGeneratingClaimLink] = useState(false);
+
+  const getOrderClaimUrl = (order: OrderData | null | undefined): string | null => {
+    if (!order || order.isRedeemed || !order.claimToken) return null;
+    if (order.claimUrl) return order.claimUrl;
+    const origin =
+      typeof window !== "undefined" && window.location?.origin
+        ? window.location.origin
+        : "https://zxzmods.com";
+    return `${origin.replace(/\/+$/, "")}/pedidos/reclamar/${order.claimToken}`;
+  };
+
+  const handleCopyClaimLink = (order: OrderData) => {
+    const url = getOrderClaimUrl(order);
+    if (!url) return;
+    navigator.clipboard.writeText(url);
+    setCopiedClaimLinkOrderId(order.id);
+    setTimeout(() => {
+      setCopiedClaimLinkOrderId((prev) => (prev === order.id ? null : prev));
+    }, 2500);
+  };
+
+  const handleGenerateClaimLink = async (order: OrderData) => {
+    setGeneratingClaimLink(true);
+    try {
+      const res = await fetch(`/api/sys/orders/${order.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ generateClaimToken: true }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success && data.order) {
+        const updatedOrder: OrderData = {
+          ...order,
+          claimToken: data.order.claimToken,
+          claimUrl: data.order.claimUrl,
+          isRedeemed: Boolean(data.order.isRedeemed),
+        };
+        setManagingOrder(updatedOrder);
+        setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, ...updatedOrder } : o)));
+      }
+    } catch (err) {
+      console.error("Failed to generate claim link:", err);
+    } finally {
+      setGeneratingClaimLink(false);
+    }
+  };
   const [manageForm, setManageForm] = useState<{
     status: string;
     serviceType: string;
@@ -4190,6 +4241,92 @@ export function OrdersPipelineTab({ onOrderDeleted, onOrderUpdated }: OrdersPipe
                     {managingOrder.isRedeemed ? "✓ Reclamado en cuenta" : "Link pendiente de reclamo"}
                   </span>
                 </div>
+                {!managingOrder.isRedeemed && (() => {
+                  const claimUrl = getOrderClaimUrl(managingOrder);
+                  const phoneDigits = (managingOrder.customerPhone || managingOrder.user?.phoneNumber || "").replace(/[^\d]/g, "");
+                  const waMessage = `¡Hola! Aquí tienes el enlace oficial de tu cotización y pedido en ZxZ Mods (#${managingOrder.orderNumber}): ${claimUrl}. Abre el enlace para canjearlo e inscribirlo a tu cuenta.`;
+                  const waHref = phoneDigits
+                    ? `https://wa.me/${phoneDigits}?text=${encodeURIComponent(waMessage)}`
+                    : `https://wa.me/?text=${encodeURIComponent(waMessage)}`;
+
+                  return (
+                    <div className="my-2 p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] font-bold text-slate-800 flex items-center gap-1.5">
+                          <Link2 className="w-3.5 h-3.5 text-[#C02030]" />
+                          <span>{t.devOrderClaimLinkLabel}</span>
+                        </span>
+                      </div>
+
+                      {claimUrl ? (
+                        <>
+                          <p className="text-[11px] text-slate-500 leading-snug">
+                            {t.devOrderClaimLinkHelp}
+                          </p>
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="text"
+                              readOnly
+                              value={claimUrl}
+                              onFocus={(e) => e.currentTarget.select()}
+                              className="flex-1 min-w-0 bg-white border border-slate-200 rounded-xl px-2.5 py-2 text-[11px] font-mono text-slate-800 select-all"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleCopyClaimLink(managingOrder)}
+                              className="px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-semibold rounded-xl flex items-center gap-1.5 transition shrink-0 shadow-xs cursor-pointer"
+                            >
+                              {copiedClaimLinkOrderId === managingOrder.id ? (
+                                <Check className="w-3.5 h-3.5 text-emerald-400" />
+                              ) : (
+                                <Copy className="w-3.5 h-3.5" />
+                              )}
+                              <span>
+                                {copiedClaimLinkOrderId === managingOrder.id
+                                  ? t.devOrderClaimLinkCopied
+                                  : t.devOrderClaimLinkCopyBtn}
+                              </span>
+                            </button>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <a
+                              href={waHref}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex-1 py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold transition flex items-center justify-center gap-1.5 shadow-xs"
+                            >
+                              <Share2 className="w-3.5 h-3.5" />
+                              <span>{t.devOrderClaimLinkWhatsAppBtn}</span>
+                            </a>
+                            <a
+                              href={claimUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="py-2 px-3 rounded-xl bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 text-[11px] font-semibold transition flex items-center gap-1.5"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5 text-slate-500" />
+                              <span>{t.devOrderClaimLinkOpenBtn}</span>
+                            </a>
+                          </div>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={generatingClaimLink}
+                          onClick={() => handleGenerateClaimLink(managingOrder)}
+                          className="w-full py-2 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white text-[11px] font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer"
+                        >
+                          <Link2 className="w-3.5 h-3.5" />
+                          <span>
+                            {generatingClaimLink
+                              ? t.devOrderClaimLinkGenerating
+                              : t.devOrderClaimLinkGenerateBtn}
+                          </span>
+                        </button>
+                      )}
+                    </div>
+                  );
+                })()}
                 <div className="flex justify-between py-1">
                   <span className="text-slate-400">Fecha de Creación:</span>
                   <span className="text-slate-700">{new Date(managingOrder.createdAt).toLocaleString()}</span>

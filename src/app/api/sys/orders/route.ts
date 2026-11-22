@@ -119,12 +119,18 @@ export async function GET(request: Request) {
       const resolvedCustomerName = order.customerName || order.user?.displayName || null;
       const resolvedCustomerPhone = order.customerPhone || order.user?.phoneNumber || null;
       const resolvedGuestEmail = order.guestEmail || order.user?.email || null;
+      const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://zxzmods.com").replace(/\/+$/, "");
+      const claimUrl =
+        order.claimToken && !order.isRedeemed
+          ? `${baseUrl}/pedidos/reclamar/${order.claimToken}`
+          : null;
 
       return {
         ...order,
         customerName: resolvedCustomerName,
         customerPhone: resolvedCustomerPhone,
         guestEmail: resolvedGuestEmail,
+        claimUrl,
         garageVehicle: activeVehicle,
         serviceSchedule: sched,
         isInstallationPaymentConfirmed,
