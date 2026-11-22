@@ -50,18 +50,28 @@ export async function POST(request: Request) {
       );
     }
 
-    const numParts = Math.max(0, Math.round(Number(partsSubtotalCRC) || 0));
+    const computedItemsSubtotal = items.reduce(
+      (acc: number, it: any) =>
+        acc + Math.max(0, Math.round(Number(it?.priceCRC) || 0)) * Math.max(1, parseInt(String(it?.quantity || 1), 10) || 1),
+      0
+    );
+    const numParts =
+      computedItemsSubtotal > 0
+        ? computedItemsSubtotal
+        : Math.max(0, Math.round(Number(partsSubtotalCRC) || 0));
     const numInstall = Math.max(0, Math.round(Number(installationCostCRC) || 0));
     const numShipping = Math.max(0, Math.round(Number(shippingCostCRC) || 0));
     const numPickup = Math.max(0, Math.round(Number(pickupCostCRC) || 0));
 
-    const grossSubtotal = numParts + numInstall + numShipping + numPickup;
+    // Quotation total reflects the exact quoted product/combo prices (+ any explicit shipping/pickup),
+    // never silently adding separate installation fees onto the quoted item prices.
+    const grossSubtotal = numParts + numShipping + numPickup;
 
     let discountCRC = 0;
     if (discountType === "PERCENTAGE") {
       discountCRC = Math.round((grossSubtotal * numDiscountValue) / 100);
     } else if (discountType === "FIXED") {
-      discountCRC = numDiscountValue;
+      discountCRC = Math.round(numDiscountValue);
     }
 
     const finalTotalCRC = Math.max(0, grossSubtotal - discountCRC);
@@ -123,10 +133,11 @@ export async function POST(request: Request) {
         partsStatus: "PENDING",
         totalCRC: finalTotalCRC,
         partsSubtotalCRC: numParts,
-        laborSubtotalCRC: numInstall,
+        laborSubtotalCRC: 0,
         installationCostCRC: numInstall,
         shippingCostCRC: numShipping,
         pickupCostCRC: numPickup,
+        discountCRC,
         discountType: discountType || "NONE",
         discountValue: numDiscountValue,
         discountReason: discountReason || null,

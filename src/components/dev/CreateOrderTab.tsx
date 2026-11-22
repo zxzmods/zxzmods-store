@@ -36,6 +36,8 @@ interface ProductItem {
   nameEs: string;
   priceCRC: number;
   installationPriceCRC: number;
+  isInstallationIncluded?: boolean;
+  installationAvailable?: boolean;
   sku: string;
   imageUrl?: string;
 }
@@ -47,6 +49,7 @@ interface ComboItem {
   titleEs: string;
   priceCRC: number;
   installationPriceCRC: number;
+  installationAvailable?: boolean;
   category: string;
   imageUrl?: string;
 }
@@ -57,6 +60,8 @@ interface SelectedItem {
   sku?: string;
   priceCRC: number;
   installationPriceCRC?: number;
+  freeInstallation?: boolean;
+  installationAvailable?: boolean;
   quantity: number;
   type: "PRODUCT" | "COMBO" | "CUSTOM";
 }
@@ -97,7 +102,6 @@ export function CreateOrderTab({
 
   // Delivery & Costs
   const [serviceType, setServiceType] = useState<"STORE_PICKUP" | "HOME_SERVICE" | "UTV_PICKUP" | "SHIPPING">("STORE_PICKUP");
-  const [installationCost, setInstallationCost] = useState("0");
   const [shippingCost, setShippingCost] = useState("0");
   const [pickupCost, setPickupCost] = useState("0");
 
@@ -171,15 +175,21 @@ export function CreateOrderTab({
           p.nameEn.toLowerCase().includes(q)
       )
       .slice(0, 5)
-      .map((p) => ({
-        id: p.id,
-        name: lang === "es" ? p.nameEs : p.nameEn,
-        sku: p.sku,
-        priceCRC: p.priceCRC,
-        installationPriceCRC: p.installationPriceCRC,
-        type: "PRODUCT" as const,
-        imageUrl: p.imageUrl,
-      }));
+      .map((p) => {
+        const isDeliveryOnly = p.installationAvailable === false;
+        const isFreeInstall = !isDeliveryOnly && Boolean(p.isInstallationIncluded);
+        return {
+          id: p.id,
+          name: lang === "es" ? p.nameEs : p.nameEn,
+          sku: p.sku,
+          priceCRC: p.priceCRC,
+          installationPriceCRC: isDeliveryOnly || isFreeInstall ? 0 : (p.installationPriceCRC || 0),
+          freeInstallation: isFreeInstall,
+          installationAvailable: !isDeliveryOnly,
+          type: "PRODUCT" as const,
+          imageUrl: p.imageUrl,
+        };
+      });
 
     const matchedCmb = catalogCombos
       .filter(
@@ -190,15 +200,20 @@ export function CreateOrderTab({
           c.category.toLowerCase().includes(q)
       )
       .slice(0, 5)
-      .map((c) => ({
-        id: c.id,
-        name: lang === "es" ? c.titleEs : c.titleEn,
-        sku: c.slug,
-        priceCRC: c.priceCRC,
-        installationPriceCRC: c.installationPriceCRC,
-        type: "COMBO" as const,
-        imageUrl: c.imageUrl,
-      }));
+      .map((c) => {
+        const comboIncludesInstall = c.installationAvailable !== false;
+        return {
+          id: c.id,
+          name: lang === "es" ? c.titleEs : c.titleEn,
+          sku: c.slug,
+          priceCRC: c.priceCRC,
+          installationPriceCRC: 0,
+          freeInstallation: comboIncludesInstall,
+          installationAvailable: comboIncludesInstall,
+          type: "COMBO" as const,
+          imageUrl: c.imageUrl,
+        };
+      });
 
     return [...matchedProds, ...matchedCmb];
   }, [itemSearchQuery, catalogProducts, catalogCombos, lang]);
@@ -209,13 +224,16 @@ export function CreateOrderTab({
     sku?: string;
     priceCRC: number;
     installationPriceCRC?: number;
+    freeInstallation?: boolean;
+    installationAvailable?: boolean;
     type: "PRODUCT" | "COMBO";
   }) => {
     const existingIndex = selectedItems.findIndex((it) => it.id === item.id);
-    let updated: any[];
+    let updated: SelectedItem[];
     if (existingIndex > -1) {
-      updated = [...selectedItems];
-      updated[existingIndex].quantity += 1;
+      updated = selectedItems.map((it, idx) =>
+        idx === existingIndex ? { ...it, quantity: it.quantity + 1 } : it
+      );
     } else {
       updated = [
         ...selectedItems,
@@ -225,18 +243,14 @@ export function CreateOrderTab({
           sku: item.sku,
           priceCRC: item.priceCRC,
           installationPriceCRC: item.installationPriceCRC || 0,
+          freeInstallation: item.freeInstallation,
+          installationAvailable: item.installationAvailable,
           quantity: 1,
           type: item.type,
         },
       ];
     }
     setSelectedItems(updated);
-
-    const totalInstall = updated.reduce(
-      (sum, it) => sum + (it.installationPriceCRC || 0) * (it.quantity || 1),
-      0
-    );
-    setInstallationCost(String(totalInstall));
 
     setItemSearchQuery("");
     setIsItemSearchFocused(false);
@@ -266,22 +280,16 @@ export function CreateOrderTab({
   const handleRemoveItem = (index: number) => {
     const updated = selectedItems.filter((_, i) => i !== index);
     setSelectedItems(updated);
-    const totalInstall = updated.reduce(
-      (sum, it) => sum + (it.installationPriceCRC || 0) * (it.quantity || 1),
-      0
-    );
-    setInstallationCost(String(totalInstall));
   };
 
-  // Calculations
+  // Calculations (Total matches exact quoted item prices minus any discount — never silently adding hidden installation fees)
   const partsSubtotal = selectedItems.reduce(
     (acc, it) => acc + (it.priceCRC || 0) * (it.quantity || 1),
     0
   );
-  const numInstallation = Math.max(0, parseInt(installationCost) || 0);
   const numShipping = Math.max(0, parseInt(shippingCost) || 0);
   const numPickup = Math.max(0, parseInt(pickupCost) || 0);
-  const grossSubtotal = partsSubtotal + numInstallation + numShipping + numPickup;
+  const grossSubtotal = partsSubtotal + numShipping + numPickup;
 
   let discountCRC = 0;
   const numDiscountVal = Math.max(0, parseFloat(discountValue) || 0);
@@ -320,7 +328,7 @@ export function CreateOrderTab({
       status: "PAYMENT_CONFIRMATION",
       items: selectedItems,
       partsSubtotalCRC: partsSubtotal,
-      installationCostCRC: numInstallation,
+      installationCostCRC: 0,
       shippingCostCRC: numShipping,
       pickupCostCRC: numPickup,
       discountType,
@@ -350,7 +358,6 @@ export function CreateOrderTab({
         setGuestEmail("");
         setGuestPhone("");
         setShippingAddress("");
-        setInstallationCost("0");
         setShippingCost("0");
         setPickupCost("0");
         setDiscountType("NONE");
