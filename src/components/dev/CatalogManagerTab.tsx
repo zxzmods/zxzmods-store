@@ -81,6 +81,7 @@ import {
   deriveComboCompatibilityFromProducts,
   deriveInheritedComboCompatibilityFromProducts,
   formatCompListWithYears,
+  hydrateComboChoiceParameters,
 } from "@/lib/products";
 import { CustomSelect } from "@/components/ui/CustomSelect";
 import { uploadMediaDirect } from "@/lib/clientDirectUpload";
@@ -1426,6 +1427,8 @@ function ParametersEditorSection({
   currentProductImage = "",
   currentProductSupplierUrl = "",
   liveExchangeRate = 515,
+  isComboContext = false,
+  comboDiscountPercent = 0,
 }: {
   parameters: ConfigurableParameter[];
   onChange: (newParams: ConfigurableParameter[]) => void;
@@ -1437,6 +1440,8 @@ function ParametersEditorSection({
   currentProductImage?: string;
   currentProductSupplierUrl?: string;
   liveExchangeRate?: number;
+  isComboContext?: boolean;
+  comboDiscountPercent?: number;
 }) {
   const [activeColorPaletteOpt, setActiveColorPaletteOpt] = useState<string | null>(null);
   const [uploadingOptId, setUploadingOptId] = useState<string | null>(null);
@@ -1724,6 +1729,76 @@ function ParametersEditorSection({
     onChange([...(parameters || []), addonParam]);
   };
 
+  const handleAddComboProductChoicePreset = () => {
+    const choiceParam: ConfigurableParameter = {
+      id: `param-combo-choice-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      nameEs: "Elegir Producto del Combo",
+      nameEn: "Choose Combo Product",
+      type: "combo_product_choice",
+      options: [],
+    };
+    onChange([...(parameters || []), choiceParam]);
+  };
+
+  const handleAddComboChoiceProduct = (pIndex: number, targetProd: Product) => {
+    const updated = [...(parameters || [])];
+    const currentOpts = [...(updated[pIndex].options || [])];
+    const prodId = targetProd.id;
+    const prodSlug = targetProd.slug || targetProd.id;
+    const prodSku = targetProd.sku || targetProd.id;
+
+    // Prevent adding duplicate product into the same combo_product_choice parameter
+    if (
+      currentOpts.some(
+        (o) =>
+          o.choiceProductId === prodId ||
+          o.choiceProductSlug === prodSlug ||
+          o.choiceProductSku === prodSku ||
+          o.linkedProductId === prodId
+      )
+    ) {
+      return;
+    }
+
+    const rawPrice = Math.max(0, Math.round(Number(targetProd.price?.T_price || targetProd.priceCRC || 0) || 0));
+    const discPct = Math.max(0, Math.min(99, Number(comboDiscountPercent) || 0));
+    const discountedDelta = Math.round(rawPrice * (1 - discPct / 100));
+    const targetTitleEs = targetProd.nameEs || targetProd.p_title || "";
+    const targetTitleEn = targetProd.nameEn || targetTitleEs;
+    const targetImg =
+      (typeof targetProd.imageUrl === "string" && targetProd.imageUrl.trim() ? targetProd.imageUrl.trim() : "") ||
+      (Array.isArray(targetProd.imgs) && targetProd.imgs[0] && typeof targetProd.imgs[0] === "string" ? targetProd.imgs[0].trim() : "") ||
+      "";
+    const supStatus = String(targetProd.supplierStockStatus || "IN_STOCK").toUpperCase();
+    const isOut =
+      Boolean(targetProd.isArchived) ||
+      supStatus === "OUT_OF_STOCK" ||
+      supStatus === "UNAVAILABLE" ||
+      String(targetProd.stockStatus || "").toLowerCase() === "agotado";
+
+    const newOpt: ParameterOption = {
+      id: `opt-choice-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      labelEs: targetTitleEs,
+      labelEn: targetTitleEn,
+      priceDeltaCRC: discountedDelta,
+      liveProductPriceCRC: rawPrice,
+      originalPriceDeltaCRC: rawPrice,
+      imageUrl: targetImg,
+      images: targetImg ? [targetImg] : [],
+      supplierUrl: targetProd.supplierUrl || "",
+      choiceProductId: prodId,
+      choiceProductSlug: prodSlug,
+      choiceProductSku: prodSku,
+      linkedProductId: prodId,
+      supplierStockStatus: isOut ? "OUT_OF_STOCK" : supStatus,
+      stockStatus: isOut ? "OUT_OF_STOCK" : (targetProd.stockStatus || "IN_STOCK_US"),
+      isOutOfStock: isOut,
+    };
+
+    updated[pIndex] = { ...updated[pIndex], options: [...currentOpts, newOpt] };
+    onChange(updated);
+  };
+
   const handleAddRegisteredAddonProduct = (pIndex: number, targetProd: Product) => {
     const updated = [...(parameters || [])];
     const currentOpts = [...(updated[pIndex].options || [])];
@@ -1968,6 +2043,17 @@ function ParametersEditorSection({
             <Link2 className="w-3.5 h-3.5 text-blue-600" />
             <span>{t.devAddProductLinkingPresetBtn || "+ Vincular Productos (Amazon)"}</span>
           </button>
+          {isComboContext && (
+            <button
+              type="button"
+              onClick={handleAddComboProductChoicePreset}
+              className="px-3 py-1.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-300 text-xs font-bold transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
+              title={t.devComboProductChoiceDesc}
+            >
+              <Layers className="w-3.5 h-3.5 text-purple-600" />
+              <span>+ {t.devComboProductChoiceBtn || "Selección entre Productos"}</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={handleAddCartAddonPreset}
@@ -2017,6 +2103,16 @@ function ParametersEditorSection({
               <Link2 className="w-3.5 h-3.5 text-blue-600" />
               <span>{t.devAddProductLinkingPresetBtn || "+ Vincular Productos (Amazon)"}</span>
             </button>
+            {isComboContext && (
+              <button
+                type="button"
+                onClick={handleAddComboProductChoicePreset}
+                className="px-3 py-1.5 rounded-xl bg-white border border-purple-300 text-purple-800 text-xs font-bold hover:bg-purple-50 flex items-center gap-1.5 shadow-2xs cursor-pointer"
+              >
+                <Layers className="w-3.5 h-3.5 text-purple-600" />
+                <span>+ {t.devComboProductChoiceBtn || "Selección entre Productos"}</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={handleAddCartAddonPreset}
@@ -2064,51 +2160,62 @@ function ParametersEditorSection({
             </div>
           )}
           {safeParams.map((param, pIdx) => {
+            const isComboProductChoice = param.type === "combo_product_choice";
             const isProductLinking =
-              param.type === "product_linking" || param.type === "product_link";
+              !isComboProductChoice &&
+              (param.type === "product_linking" || param.type === "product_link");
             const isCartAddon = param.type === "cart_addon";
-            const addonQuery = (addonSearchByParam[param.id] || "").trim().toLowerCase();
+            const addonQuery = (addonSearchByParam[param.id] || "").trim();
+            const addonQueryLower = addonQuery.toLowerCase();
             const isAddonDropdownOpen = Boolean(addonDropdownOpenByParam[param.id]);
 
-            // Filter registered products for cart_addon autocomplete
+            // Filter registered products for cart_addon OR combo_product_choice autocomplete
             const addedProdRefs = new Set(
               (param.options || [])
-                .map((o) => String(o.addonProductId || o.addonProductSlug || o.addonProductSku || "").toLowerCase())
+                .flatMap((o) => [
+                  o.addonProductId,
+                  o.addonProductSlug,
+                  o.addonProductSku,
+                  o.choiceProductId,
+                  o.choiceProductSlug,
+                  o.choiceProductSku,
+                ])
+                .map((v) => String(v || "").toLowerCase())
                 .filter(Boolean)
             );
             const curSkuNorm = (currentProductSku || "").toLowerCase().trim();
             const curNameNorm = (currentProductName || "").toLowerCase().trim();
 
-            const matchingAddonProducts = isCartAddon
+            const matchingAddonProducts = isCartAddon || isComboProductChoice
               ? availableProducts
-                  .filter((p) => {
+                  .map((p) => {
+                    if (p.isArchived) return null;
                     const pId = (p.id || "").toLowerCase();
                     const pSku = (p.sku || "").toLowerCase();
                     const pSlug = (p.slug || "").toLowerCase();
                     if (addedProdRefs.has(pId) || (pSku && addedProdRefs.has(pSku)) || (pSlug && addedProdRefs.has(pSlug))) {
-                      return false;
+                      return null;
                     }
-                    if (curSkuNorm && pSku === curSkuNorm) return false;
+                    if (!isComboProductChoice && curSkuNorm && pSku === curSkuNorm) return null;
                     const pTitleEs = (p.nameEs || p.p_title || "").toLowerCase();
-                    const pTitleEn = (p.nameEn || "").toLowerCase();
-                    if (curNameNorm && pTitleEs === curNameNorm) return false;
-                    if (!addonQuery) return true;
-                    return (
-                      pTitleEs.includes(addonQuery) ||
-                      pTitleEn.includes(addonQuery) ||
-                      pSku.includes(addonQuery) ||
-                      pSlug.includes(addonQuery) ||
-                      (p.brandName && p.brandName.toLowerCase().includes(addonQuery))
-                    );
+                    if (!isComboProductChoice && curNameNorm && pTitleEs === curNameNorm) return null;
+                    if (!addonQueryLower) return { p, score: 10 };
+                    const res = evaluateProductSearch(p, addonQuery);
+                    return res.matches ? { p, score: res.score } : null;
                   })
-                  .slice(0, 12)
+                  .filter((x): x is { p: Product; score: number } => Boolean(x))
+                  .sort((a, b) => b.score - a.score)
+                  .slice(0, 14)
+                  .map((x) => x.p)
               : [];
 
             return (
               <div
                 key={param.id || pIdx}
                 className={`p-4 rounded-2xl bg-slate-50 border space-y-3 ${
-                  isProductLinking
+                  isComboProductChoice
+                    ? "border-purple-300 ring-1 ring-purple-100"
+                    : isProductLinking
                     ? "border-blue-300 ring-1 ring-blue-100"
                     : isCartAddon
                     ? "border-emerald-300 ring-1 ring-emerald-100"
@@ -2205,8 +2312,41 @@ function ParametersEditorSection({
                       <Plus className="w-2.5 h-2.5" />
                       {t.devParamTypeCartAddon || "Agregar al Carrito Junto (Complementos)"}
                     </button>
+                    {(isComboContext || isComboProductChoice) && (
+                      <button
+                        type="button"
+                        onClick={() => handleUpdateParameter(pIdx, "type", "combo_product_choice")}
+                        className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition flex items-center gap-1 cursor-pointer border ${
+                          isComboProductChoice
+                            ? "bg-purple-600 text-white border-purple-600 shadow-2xs"
+                            : "bg-white text-purple-700 border-purple-200 hover:bg-purple-50"
+                        }`}
+                      >
+                        <Layers className="w-2.5 h-2.5" />
+                        {t.devParamTypeComboProductChoice || "Selección entre Productos (Combo)"}
+                      </button>
+                    )}
                   </div>
                 </div>
+
+                {isComboProductChoice && (
+                  <div className="p-2.5 rounded-xl bg-purple-50/90 border border-purple-200 text-[11px] text-purple-950 flex items-start gap-2">
+                    <Layers className="w-4 h-4 text-purple-600 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-bold block">
+                        {t.devParamTypeComboProductChoice || "Selección entre Productos (Combo)"}
+                        {comboDiscountPercent > 0 && (
+                          <span className="ml-2 px-2 py-0.5 rounded-full bg-purple-600 text-white text-[9px] font-mono">
+                            -{comboDiscountPercent}% OFF
+                          </span>
+                        )}
+                      </span>
+                      <span className="text-purple-800">
+                        {t.devComboProductChoiceDesc}
+                      </span>
+                    </div>
+                  </div>
+                )}
 
                 {isProductLinking && (
                   <div className="p-2.5 rounded-xl bg-blue-50/90 border border-blue-200 text-[11px] text-blue-900 flex items-start gap-2">
@@ -2237,7 +2377,261 @@ function ParametersEditorSection({
                 )}
 
                 {/* Options List */}
-                {isCartAddon ? (
+                {isComboProductChoice ? (
+                  <div className="pl-3 border-l-2 border-purple-400 space-y-3 mt-2">
+                    {/* Type-to-Search Existing Product Input */}
+                    <div className="relative space-y-1.5">
+                      <label className="text-[11px] font-bold text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
+                        <Search className="w-3.5 h-3.5 text-purple-600" />
+                        <span>{t.devComboProductChoiceSearchLabel}</span>
+                      </label>
+                      <div className="relative">
+                        <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                        <input
+                          type="text"
+                          value={addonSearchByParam[param.id] || ""}
+                          onFocus={() =>
+                            setAddonDropdownOpenByParam((prev) => ({ ...prev, [param.id]: true }))
+                          }
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setAddonSearchByParam((prev) => ({ ...prev, [param.id]: val }));
+                            setAddonDropdownOpenByParam((prev) => ({ ...prev, [param.id]: true }));
+                          }}
+                          placeholder={t.devComboProductChoiceSearchPlaceholder}
+                          className="w-full pl-9 pr-8 py-2.5 bg-white border border-purple-300 rounded-xl text-xs font-semibold text-slate-900 focus:outline-none focus:border-purple-600 focus:ring-2 focus:ring-purple-500/15 shadow-2xs"
+                        />
+                        {addonSearchByParam[param.id] && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setAddonSearchByParam((prev) => ({ ...prev, [param.id]: "" }))
+                            }
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Autocomplete Dropdown of Matching Existing Products */}
+                      {(isAddonDropdownOpen || Boolean(addonQuery)) && (
+                        <div className="bg-white border border-purple-200 rounded-2xl shadow-lg max-h-64 overflow-y-auto divide-y divide-slate-100 z-20">
+                          <div className="px-3 py-1.5 bg-slate-50 flex items-center justify-between text-[10px] font-bold text-slate-500">
+                            <span>Productos encontrados ({matchingAddonProducts.length})</span>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setAddonDropdownOpenByParam((prev) => ({ ...prev, [param.id]: false }))
+                              }
+                              className="text-slate-400 hover:text-slate-700 cursor-pointer"
+                            >
+                              Cerrar ✕
+                            </button>
+                          </div>
+                          {matchingAddonProducts.length === 0 ? (
+                            <div className="p-3 text-center text-xs text-slate-400 italic">
+                              No se encontraron productos con esa búsqueda.
+                            </div>
+                          ) : (
+                            matchingAddonProducts.map((prod) => {
+                              const pPrice = Math.max(0, Math.round(Number(prod.price?.T_price || prod.priceCRC || 0) || 0));
+                              const discPct = Math.max(0, Math.min(99, Number(comboDiscountPercent) || 0));
+                              const discountedAdd = Math.round(pPrice * (1 - discPct / 100));
+                              const pTitle = prod.nameEs || prod.p_title || prod.sku;
+                              const pThumb =
+                                prod.imageUrl ||
+                                (Array.isArray(prod.imgs) && prod.imgs[0] ? prod.imgs[0] : "") ||
+                                "/images/logo.png";
+                              const supStatus = String(prod.supplierStockStatus || "IN_STOCK").toUpperCase();
+                              const isOut =
+                                supStatus === "OUT_OF_STOCK" ||
+                                supStatus === "UNAVAILABLE" ||
+                                String(prod.stockStatus || "").toLowerCase() === "agotado";
+
+                              return (
+                                <button
+                                  key={prod.id}
+                                  type="button"
+                                  onClick={() => {
+                                    handleAddComboChoiceProduct(pIdx, prod);
+                                    setAddonSearchByParam((prev) => ({ ...prev, [param.id]: "" }));
+                                    setAddonDropdownOpenByParam((prev) => ({ ...prev, [param.id]: false }));
+                                  }}
+                                  className="w-full px-3 py-2 hover:bg-purple-50/80 flex items-center justify-between gap-2.5 text-left transition cursor-pointer group"
+                                >
+                                  <div className="flex items-center gap-2.5 min-w-0">
+                                    <img
+                                      src={pThumb}
+                                      alt={pTitle}
+                                      className="w-9 h-9 rounded-lg border border-slate-200 bg-white object-contain p-0.5 shrink-0"
+                                    />
+                                    <div className="min-w-0">
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        <span className="text-xs font-bold text-slate-900 group-hover:text-purple-800 truncate">
+                                          {pTitle}
+                                        </span>
+                                        <span
+                                          className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
+                                            isOut
+                                              ? "bg-red-100 text-red-700 border border-red-200"
+                                              : "bg-emerald-100 text-emerald-700 border border-emerald-200"
+                                          }`}
+                                        >
+                                          {isOut ? t.comboChoiceOutOfStockBadge : t.comboChoiceInStockBadge}
+                                        </span>
+                                      </div>
+                                      <span className="text-[10px] font-mono text-slate-500">
+                                        SKU: {prod.sku || prod.id} ·{" "}
+                                        <strong className="text-slate-700">{formatCRC(pPrice)}</strong>
+                                        {discPct > 0 && (
+                                          <span className="text-purple-700 font-bold">
+                                            {" "}→ +{formatCRC(discountedAdd)} (-{discPct}%)
+                                          </span>
+                                        )}
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <span className="px-2.5 py-1 rounded-lg bg-purple-600 group-hover:bg-purple-700 text-white text-[10px] font-bold shrink-0 flex items-center gap-1 shadow-2xs">
+                                    <Plus className="w-3 h-3" />
+                                    <span>Agregar</span>
+                                  </span>
+                                </button>
+                              );
+                            })
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Attached Choice Products List */}
+                    {(param.options || []).length === 0 ? (
+                      <div className="p-3.5 rounded-xl border border-dashed border-purple-300 bg-white/80 text-center text-xs text-slate-500">
+                        {t.devComboProductChoiceEmptyNotice}
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <span className="text-[10px] font-bold text-purple-900 uppercase tracking-wider block">
+                          {t.devComboProductChoiceAddedListLabel} ({(param.options || []).length}):
+                        </span>
+                        {(param.options || []).map((opt, oIdx) => {
+                          const linkedProd = availableProducts.find(
+                            (p) =>
+                              (opt.choiceProductId && p.id === opt.choiceProductId) ||
+                              (opt.choiceProductSku && p.sku === opt.choiceProductSku) ||
+                              (opt.choiceProductSlug && p.slug === opt.choiceProductSlug) ||
+                              (opt.linkedProductId && p.id === opt.linkedProductId)
+                          );
+                          const livePrice = linkedProd
+                            ? Math.max(0, Math.round(Number(linkedProd.price?.T_price || linkedProd.priceCRC || 0) || 0))
+                            : Math.max(0, Math.round(Number(opt.liveProductPriceCRC || opt.originalPriceDeltaCRC || opt.priceDeltaCRC || 0) || 0));
+                          const discPct = Math.max(0, Math.min(99, Number(comboDiscountPercent) || 0));
+                          const discountedAdd = Math.round(livePrice * (1 - discPct / 100));
+                          const supStatus = String(linkedProd?.supplierStockStatus || opt.supplierStockStatus || "IN_STOCK").toUpperCase();
+                          const isOut =
+                            Boolean(linkedProd?.isArchived) ||
+                            supStatus === "OUT_OF_STOCK" ||
+                            supStatus === "UNAVAILABLE" ||
+                            String(linkedProd?.stockStatus || opt.stockStatus || "").toLowerCase() === "agotado" ||
+                            Boolean(opt.isOutOfStock);
+                          const thumbUrl =
+                            opt.imageUrl ||
+                            linkedProd?.imageUrl ||
+                            (Array.isArray(linkedProd?.imgs) && linkedProd.imgs[0] ? linkedProd.imgs[0] : "") ||
+                            "/images/logo.png";
+
+                          return (
+                            <div
+                              key={opt.id || oIdx}
+                              className={`p-3 rounded-2xl bg-white border shadow-2xs space-y-2 ${
+                                isOut ? "border-red-200 bg-red-50/20" : "border-purple-200"
+                              }`}
+                            >
+                              <div className="flex items-center justify-between gap-2.5">
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  <img
+                                    src={thumbUrl}
+                                    alt={opt.labelEs}
+                                    className="w-11 h-11 rounded-xl border border-slate-200 bg-slate-50 object-contain p-1 shrink-0"
+                                  />
+                                  <div className="min-w-0">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      <span className="px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 font-mono text-[9px] font-bold">
+                                        #{opt.choiceProductSku || linkedProd?.sku || opt.choiceProductId}
+                                      </span>
+                                      <span
+                                        className={`px-2 py-0.5 rounded-full text-[9px] font-bold border ${
+                                          isOut
+                                            ? "bg-red-100 text-red-700 border-red-200"
+                                            : "bg-emerald-100 text-emerald-700 border-emerald-200"
+                                        }`}
+                                      >
+                                        {isOut ? t.comboChoiceOutOfStockBadge : t.comboChoiceInStockBadge}
+                                      </span>
+                                      {discPct > 0 ? (
+                                        <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-800 font-mono text-[10px] font-extrabold">
+                                          <span className="line-through text-slate-400 mr-1">{formatCRC(livePrice)}</span>
+                                          <span className="text-purple-700">+{formatCRC(discountedAdd)} (-{discPct}%)</span>
+                                        </span>
+                                      ) : (
+                                        <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-800 font-mono text-[10px] font-extrabold">
+                                          +{formatCRC(livePrice)}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <span className="text-xs font-bold text-slate-900 truncate block mt-0.5">
+                                      {linkedProd ? (linkedProd.nameEs || linkedProd.p_title) : opt.labelEs}
+                                    </span>
+                                  </div>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveOption(pIdx, oIdx)}
+                                  className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition shrink-0 cursor-pointer"
+                                  title={t.devRemoveOptionBtn}
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+
+                              {/* Optional Custom Display Label */}
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1.5 border-t border-slate-100">
+                                <div>
+                                  <label className="text-[9px] font-bold text-slate-500 block mb-0.5">
+                                    Texto de la opción (ES):
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={opt.labelEs}
+                                    onChange={(e) =>
+                                      handleUpdateOption(pIdx, oIdx, "labelEs", e.target.value)
+                                    }
+                                    placeholder="Nombre visible en español..."
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-1.5 text-xs font-semibold text-slate-900 focus:outline-none focus:border-purple-600"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="text-[9px] font-bold text-slate-500 block mb-0.5">
+                                    Texto de la opción (EN):
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={opt.labelEn || ""}
+                                    onChange={(e) =>
+                                      handleUpdateOption(pIdx, oIdx, "labelEn", e.target.value)
+                                    }
+                                    placeholder="Display name in English..."
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-1.5 text-xs text-slate-900 focus:outline-none focus:border-purple-600"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                ) : isCartAddon ? (
                   <div className="pl-3 border-l-2 border-emerald-400 space-y-3 mt-2">
                     {/* Type-to-Search Registered Product Input */}
                     <div className="relative space-y-1.5">
@@ -6626,8 +7020,18 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
           imgs: orderedComboImgs,
           featured: comboForm.featured,
           homeInstallationAvailable: comboForm.installationAvailable !== false ? comboForm.homeInstallationAvailable : false,
-          parameters: comboForm.parameters,
-          parametersJson: JSON.stringify(comboForm.parameters || []),
+          parameters: hydrateComboChoiceParameters(
+            comboForm.parameters || [],
+            products,
+            comboForm.discountPercent || 0
+          ).parameters,
+          parametersJson: JSON.stringify(
+            hydrateComboChoiceParameters(
+              comboForm.parameters || [],
+              products,
+              comboForm.discountPercent || 0
+            ).parameters
+          ),
           suggestedProductIds: comboForm.suggestedProductIds || [],
           suggestedProductIdsJson: JSON.stringify(comboForm.suggestedProductIds || []),
           suggestedComboIds: comboForm.suggestedComboIds || [],
@@ -13665,6 +14069,8 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
               currentProductImage={comboForm.imageUrl || ""}
               currentProductSupplierUrl=""
               liveExchangeRate={liveExchangeRate || 515}
+              isComboContext={true}
+              comboDiscountPercent={comboForm.discountPercent || 0}
             />
 
             {/* CUSTOMER TEXT INPUT FIELDS (Below Parameter Config) */}

@@ -222,7 +222,12 @@ export default function ComboDetailPage() {
             data.data.combo.parameters.forEach((param: any) => {
               if (param.type === "text_input" || param.type === "cart_addon") return;
               if (param.options && param.options.length > 0) {
-                initialOpts[param.id] = param.options[0].id;
+                if (param.type === "combo_product_choice") {
+                  const firstInStock = param.options.find((o: any) => !o.isOutOfStock);
+                  initialOpts[param.id] = (firstInStock || param.options[0]).id;
+                } else {
+                  initialOpts[param.id] = param.options[0].id;
+                }
               }
             });
             setSelectedOptions(initialOpts);
@@ -328,7 +333,7 @@ export default function ComboDetailPage() {
     return list;
   }, [textInputParameters, textInputValues, lang]);
 
-  // Dynamic Calculation of Parameters & Price Delta
+  // Dynamic Calculation of Parameters & Price Delta (includes Combo-Exclusive Product Choice options)
   const selectedParametersList: SelectedParameterItem[] = useMemo(() => {
     if (standardParameters.length === 0) return [];
     const list: SelectedParameterItem[] = [];
@@ -347,11 +352,61 @@ export default function ComboDetailPage() {
           imageUrl: option.imageUrl,
           images: option.images || (option.imageUrl ? [option.imageUrl] : []),
           supplierUrl: option.supplierUrl,
+          linkedProductId: option.choiceProductId || option.linkedProductId,
         });
       }
     });
     return list;
   }, [standardParameters, selectedOptions, lang]);
+
+  // Track currently selected combo_product_choice options (for live out-of-stock reflection & original price)
+  const selectedChoiceDetails = useMemo(() => {
+    const details: Array<{
+      paramId: string;
+      paramName: string;
+      optionId: string;
+      label: string;
+      sku?: string;
+      priceDeltaCRC: number;
+      originalPriceDeltaCRC: number;
+      isOutOfStock: boolean;
+    }> = [];
+    standardParameters.forEach((param) => {
+      if (param.type !== "combo_product_choice") return;
+      const selectedOptionId = selectedOptions[param.id] || param.options?.[0]?.id;
+      const option = param.options?.find((o) => o.id === selectedOptionId);
+      if (!option) return;
+      const supStatus = String(option.supplierStockStatus || "").toUpperCase();
+      const isOut =
+        Boolean(option.isOutOfStock) ||
+        supStatus === "OUT_OF_STOCK" ||
+        supStatus === "UNAVAILABLE" ||
+        String(option.stockStatus || "").toLowerCase() === "agotado";
+      details.push({
+        paramId: param.id,
+        paramName: lang === "es" ? param.nameEs : (param.nameEn || param.nameEs),
+        optionId: option.id,
+        label: lang === "es" ? option.labelEs : (option.labelEn || option.labelEs),
+        sku: option.choiceProductSku,
+        priceDeltaCRC: option.priceDeltaCRC || 0,
+        originalPriceDeltaCRC: option.originalPriceDeltaCRC ?? option.liveProductPriceCRC ?? option.priceDeltaCRC ?? 0,
+        isOutOfStock: isOut,
+      });
+    });
+    return details;
+  }, [standardParameters, selectedOptions, lang]);
+
+  const isSelectedChoiceOutOfStock = useMemo(
+    () => selectedChoiceDetails.some((d) => d.isOutOfStock),
+    [selectedChoiceDetails]
+  );
+
+  const isEffectivelyOutOfStock = Boolean(
+    combo &&
+      (combo.stockStatus === "OUT_OF_STOCK" ||
+        combo.isAvailable === false ||
+        isSelectedChoiceOutOfStock)
+  );
 
   // Dual parameter matrix resolution (Param 1 x Param 2 expansion)
   const dualResolution = useMemo(() => {
@@ -419,13 +474,27 @@ export default function ComboDetailPage() {
   }, [selectedImageOverride, allImages, activeImageIndex]);
 
   const totalDeltaCRC = useMemo(() => {
+    const choiceDelta = selectedChoiceDetails.reduce((acc, c) => acc + (c.priceDeltaCRC || 0), 0);
+    const nonChoiceParams = selectedParametersList.filter(
+      (p) => !selectedChoiceDetails.some((c) => c.paramId === p.parameterId)
+    );
     if (combo?.parameters && combo.parameters.length >= 2 && dualResolution.connection) {
-      return dualResolution.effectivePriceDeltaCRC;
+      return dualResolution.effectivePriceDeltaCRC + choiceDelta;
     }
-    return selectedParametersList.reduce((acc, p) => acc + (p.priceDeltaCRC || 0), 0);
-  }, [selectedParametersList, combo?.parameters, dualResolution]);
+    const nonChoiceDelta = nonChoiceParams.reduce((acc, p) => acc + (p.priceDeltaCRC || 0), 0);
+    return nonChoiceDelta + choiceDelta;
+  }, [selectedParametersList, selectedChoiceDetails, combo?.parameters, dualResolution]);
+
+  const totalOriginalDeltaCRC = useMemo(() => {
+    const choiceOrig = selectedChoiceDetails.reduce((acc, c) => acc + (c.originalPriceDeltaCRC || 0), 0);
+    const nonChoiceDelta = selectedParametersList
+      .filter((p) => !selectedChoiceDetails.some((c) => c.paramId === p.parameterId))
+      .reduce((acc, p) => acc + (p.priceDeltaCRC || 0), 0);
+    return nonChoiceDelta + choiceOrig;
+  }, [selectedParametersList, selectedChoiceDetails]);
 
   const effectivePriceCRC = (combo?.priceCRC || 0) + totalDeltaCRC;
+  const effectiveOriginalPriceCRC = (combo?.originalPriceCRC || combo?.priceCRC || 0) + totalOriginalDeltaCRC;
 
   const combinedCartParameters = useMemo(() => {
     return [...selectedParametersList, ...filledTextParameterItems];
@@ -514,6 +583,7 @@ export default function ComboDetailPage() {
 
   const handleAddToCart = () => {
     if (!combo) return;
+    if (isEffectivelyOutOfStock) return;
     if (!validateCustomerTextInputs()) return;
 
     if (combo.uniqueProduct?.enabled && Array.isArray(combo.uniqueProduct.fields)) {
@@ -548,7 +618,7 @@ export default function ComboDetailPage() {
 
     addItem({
       type: "COMBO",
-      id: `combo-${combo.id}${uniqueProductSummary ? `-${encodeURIComponent(uniqueProductSummary).slice(0, 24)}` : ""}`,
+      id: `${computedVariantId || `combo-${combo.id}`}${uniqueProductSummary ? `-${encodeURIComponent(uniqueProductSummary).slice(0, 24)}` : ""}`,
       title: lang === "es" ? combo.titleEs : combo.titleEn,
       brand: "ZxZ Performance",
       comp: combo.comp && combo.comp.length > 0 ? combo.comp : ["all"],
@@ -562,7 +632,7 @@ export default function ComboDetailPage() {
       homeInstallation: includesInstall ? (combo.homeInstallationAvailable ?? true) : false,
       imageUrl: activeOptionImage || combo.imageUrl,
       supplierUrl: dualResolution.effectiveSupplierUrl || null,
-      supplierStockStatus: combo.stockStatus || combo.availability?.status || "IN_STOCK",
+      supplierStockStatus: isEffectivelyOutOfStock ? "OUT_OF_STOCK" : (combo.stockStatus || combo.availability?.status || "IN_STOCK"),
       supplierStockMessage: lang === "es" ? combo.availability?.summaryEs : combo.availability?.summaryEn,
       supplierLeadDaysMin: combo.leadDaysMin || combo.availability?.leadDaysMin || 7,
       supplierLeadDaysMax: combo.leadDaysMax || combo.availability?.leadDaysMax || 21,
@@ -590,11 +660,11 @@ export default function ComboDetailPage() {
 
   const displayOriginalPrice = combo
     ? currency === "USD"
-      ? formatUSD(convertCRCToUSD(combo.originalPriceCRC, sellRate))
-      : formatCRC(combo.originalPriceCRC)
+      ? formatUSD(convertCRCToUSD(effectiveOriginalPriceCRC, sellRate))
+      : formatCRC(effectiveOriginalPriceCRC)
     : "";
 
-  const savingsCRC = combo ? combo.originalPriceCRC - effectivePriceCRC : 0;
+  const savingsCRC = combo ? effectiveOriginalPriceCRC - effectivePriceCRC : 0;
   const displaySavings = combo && savingsCRC > 0
     ? currency === "USD"
       ? formatUSD(convertCRCToUSD(savingsCRC, sellRate))
@@ -847,7 +917,7 @@ export default function ComboDetailPage() {
                       <span>{t.combosIncludes}</span>
                     </h3>
                     <span className="text-[11px] font-mono text-gray-500 font-bold">
-                      {combo.items.length} {lang === "es" ? "piezas" : "items"}
+                      {combo.items.length + selectedChoiceDetails.length} {lang === "es" ? "piezas" : "items"}
                     </span>
                   </div>
 
@@ -929,6 +999,43 @@ export default function ComboDetailPage() {
                         </div>
                       );
                     })}
+
+                    {/* Dynamically reflect currently selected combo_product_choice items */}
+                    {selectedChoiceDetails.map((choice) => (
+                      <div
+                        key={`included-choice-${choice.paramId}-${choice.optionId}`}
+                        className={`flex items-start justify-between gap-2.5 text-xs font-medium p-2.5 rounded-xl border transition-all ${
+                          choice.isOutOfStock
+                            ? "bg-rose-50/70 border-rose-200 text-rose-950"
+                            : "bg-purple-50/40 border-purple-200/80 text-gray-900"
+                        }`}
+                      >
+                        <div className="flex items-start gap-2.5 min-w-0">
+                          {choice.isOutOfStock ? (
+                            <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0 mt-0.5" />
+                          ) : (
+                            <Check className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
+                          )}
+                          <div className="min-w-0">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-purple-700 block">
+                              {choice.paramName} ({t.comboChoiceProductLabel})
+                            </span>
+                            <span className="truncate block font-semibold">{choice.label}</span>
+                          </div>
+                        </div>
+                        <span className="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-md">
+                          {choice.isOutOfStock ? (
+                            <span className="text-rose-700 bg-rose-100/90 px-1.5 py-0.5 rounded font-mono">
+                              {t.comboComponentOutOfStock}
+                            </span>
+                          ) : (
+                            <span className="text-emerald-700 bg-emerald-100/90 px-1.5 py-0.5 rounded font-mono">
+                              {t.comboComponentInStock}
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                    ))}
                   </div>
                 </div>
 
@@ -1001,8 +1108,8 @@ export default function ComboDetailPage() {
                       />
                     )}
                     <span className="text-xs text-gray-400">•</span>
-                    {/* Live Dynamic Stock Badge based on listed products */}
-                    {combo.stockStatus === "OUT_OF_STOCK" || combo.isAvailable === false ? (
+                    {/* Live Dynamic Stock Badge based on listed products & selected choice options */}
+                    {isEffectivelyOutOfStock ? (
                       <span className="text-xs text-rose-700 font-bold flex items-center gap-1.5 bg-rose-50 border border-rose-200 px-3 py-1 rounded-full">
                         <AlertCircle className="w-3.5 h-3.5 text-rose-600" />
                         <span>{t.devComboStockOutOfStock}</span>
@@ -1027,27 +1134,37 @@ export default function ComboDetailPage() {
                 </div>
 
                 {/* Out of Stock Warning Alert */}
-                {(combo.stockStatus === "OUT_OF_STOCK" || combo.isAvailable === false) && (
+                {isEffectivelyOutOfStock && (
                   <div className="p-4 rounded-2xl bg-rose-50 border-2 border-rose-300 text-rose-950 space-y-2">
                     <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-rose-900">
                       <AlertTriangle className="w-4 h-4 text-rose-600" />
                       <span>{t.comboOutOfStockAlertTitle}</span>
                     </div>
                     <p className="text-xs text-rose-900 leading-relaxed">
-                      {t.comboOutOfStockAlertDesc}
+                      {isSelectedChoiceOutOfStock
+                        ? t.comboChoiceSelectedOutOfStockNotice
+                        : t.comboOutOfStockAlertDesc}
                     </p>
-                    {combo.availability?.outOfStockComponents?.length > 0 && (
+                    {((combo.availability?.outOfStockComponents?.length ?? 0) > 0 || isSelectedChoiceOutOfStock) && (
                       <div className="text-[11px] text-rose-800 font-semibold bg-white/90 p-2.5 rounded-xl border border-rose-200">
                         <span className="block font-bold mb-1 text-rose-950">
                           {lang === "es" ? "Componentes afectados:" : "Affected components:"}
                         </span>
                         <ul className="list-disc list-inside space-y-0.5">
-                          {combo.availability.outOfStockComponents.map((c: any, i: number) => (
-                            <li key={i}>
+                          {(combo.availability?.outOfStockComponents || []).map((c: any, i: number) => (
+                            <li key={`fixed-${i}`}>
                               <span className="font-bold">{c.name}</span> {c.sku ? `(#${c.sku})` : ""} -{" "}
                               <span className="text-rose-600 font-bold">{t.comboComponentOutOfStock}</span>
                             </li>
                           ))}
+                          {selectedChoiceDetails
+                            .filter((d) => d.isOutOfStock)
+                            .map((d) => (
+                              <li key={`choice-${d.paramId}-${d.optionId}`}>
+                                <span className="font-bold">{d.label}</span> {d.sku ? `(#${d.sku})` : ""} -{" "}
+                                <span className="text-rose-600 font-bold">{t.comboChoiceOutOfStockBadge}</span>
+                              </li>
+                            ))}
                         </ul>
                       </div>
                     )}
@@ -1064,18 +1181,20 @@ export default function ComboDetailPage() {
                       </span>
                     </div>
 
-                    <div className="space-y-3">
+                    <div className="space-y-3.5">
                       {standardParameters.map((param) => {
                         const activeOptionId = selectedOptions[param.id] || param.options?.[0]?.id;
                         const paramTitle = lang === "es" ? param.nameEs : (param.nameEn || param.nameEs);
+                        const isChoiceParam = param.type === "combo_product_choice";
 
                         return (
-                          <div key={param.id} className="space-y-1.5">
-                            <div className="flex items-center justify-between text-xs">
-                              <span className="font-bold text-gray-800">
-                                {paramTitle}:
+                          <div key={param.id} className="space-y-2">
+                            <div className="flex items-center justify-between gap-2 text-xs">
+                              <span className="font-bold text-gray-800 flex items-center gap-1.5">
+                                {isChoiceParam && <Package className="w-3.5 h-3.5 text-[#C02030]" />}
+                                <span>{paramTitle}:</span>
                               </span>
-                              <span className="font-semibold text-gray-600">
+                              <span className="font-semibold text-gray-600 truncate max-w-[60%] text-right">
                                 {(() => {
                                   const currentOpt = param.options.find((o) => o.id === activeOptionId);
                                   if (!currentOpt) return "";
@@ -1084,70 +1203,184 @@ export default function ComboDetailPage() {
                               </span>
                             </div>
 
-                            <div className="flex flex-wrap gap-2.5">
-                              {param.options.map((opt) => {
-                                const isSelected = opt.id === activeOptionId;
-                                const optLabel = lang === "es" ? opt.labelEs : (opt.labelEn || opt.labelEs);
-                                const resolvedColor = resolveOptionColorHex(optLabel, opt.colorHex);
-                                const optThumb = opt.imageUrl || (Array.isArray(opt.images) && opt.images[0] ? opt.images[0] : null);
+                            {isChoiceParam ? (
+                              <div className="grid grid-cols-1 gap-2">
+                                {param.options.map((opt) => {
+                                  const isSelected = opt.id === activeOptionId;
+                                  const optLabel = lang === "es" ? opt.labelEs : (opt.labelEn || opt.labelEs);
+                                  const optThumb = opt.imageUrl || (Array.isArray(opt.images) && opt.images[0] ? opt.images[0] : "/images/logo.png");
+                                  const supStatus = String(opt.supplierStockStatus || "").toUpperCase();
+                                  const isOut =
+                                    Boolean(opt.isOutOfStock) ||
+                                    supStatus === "OUT_OF_STOCK" ||
+                                    supStatus === "UNAVAILABLE" ||
+                                    String(opt.stockStatus || "").toLowerCase() === "agotado";
+                                  const discountedDelta = opt.priceDeltaCRC || 0;
+                                  const originalDelta = opt.originalPriceDeltaCRC ?? opt.liveProductPriceCRC ?? discountedDelta;
+                                  const hasDiscount = originalDelta > discountedDelta && (combo.discountPercent || 0) > 0;
 
-                                return (
-                                  <button
-                                    key={opt.id}
-                                    type="button"
-                                    onClick={() => {
-                                      setSelectedOptions((prev) => ({
-                                        ...prev,
-                                        [param.id]: opt.id,
-                                      }));
-                                      if (optThumb) {
-                                        setSelectedImageOverride(optThumb);
-                                        setActiveImageIndex(0);
-                                      }
-                                    }}
-                                    className={`px-3.5 py-2.5 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer border shadow-2xs ${
-                                      isSelected
-                                        ? "bg-[#C02030] border-[#C02030] text-white shadow-md scale-[1.02] ring-2 ring-[#C02030]/25"
-                                        : "bg-white border-gray-200 text-gray-800 hover:border-gray-400 hover:bg-gray-50"
-                                    }`}
-                                  >
-                                    {optThumb && (
-                                      <img
-                                        src={optThumb}
-                                        alt={optLabel}
-                                        className="w-5 h-5 rounded-md object-cover border border-gray-200/50 shrink-0"
-                                      />
-                                    )}
-                                    {resolvedColor && (
-                                      <span
-                                        className={`w-3.5 h-3.5 rounded-full border shadow-2xs shrink-0 ${
-                                          isSelected ? "border-white ring-1 ring-white/60" : "border-gray-300"
-                                        }`}
-                                        style={{ backgroundColor: resolvedColor }}
-                                      />
-                                    )}
-                                    <span>{optLabel}</span>
-                                    {(opt.priceDeltaCRC !== 0 || (opt.priceDeltaUSD !== undefined && opt.priceDeltaUSD !== 0)) && (
-                                      <span
-                                        className={`text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded-md ${
-                                          isSelected
-                                            ? "bg-black/25 text-white"
-                                            : "bg-gray-100 text-[#C02030]"
-                                        }`}
-                                      >
-                                        {opt.priceDeltaCRC !== 0
-                                          ? (opt.priceDeltaCRC > 0
-                                              ? `+${formatCRC(opt.priceDeltaCRC)}`
-                                              : `-${formatCRC(Math.abs(opt.priceDeltaCRC))}`)
-                                          : (opt.priceDeltaUSD && opt.priceDeltaUSD > 0
-                                              ? `+$${opt.priceDeltaUSD}`
-                                              : `-$${Math.abs(opt.priceDeltaUSD || 0)}`)}
-                                      </span>
-                                    )}
-                                  </button>
-                                );
-                              })}
-                            </div>
+                                  return (
+                                    <button
+                                      key={opt.id}
+                                      type="button"
+                                      onClick={() => {
+                                        setSelectedOptions((prev) => ({
+                                          ...prev,
+                                          [param.id]: opt.id,
+                                        }));
+                                        if (optThumb && optThumb !== "/images/logo.png") {
+                                          setSelectedImageOverride(optThumb);
+                                          setActiveImageIndex(0);
+                                        }
+                                      }}
+                                      className={`w-full p-3 rounded-2xl text-left transition-all flex items-center justify-between gap-3 cursor-pointer border ${
+                                        isOut
+                                          ? isSelected
+                                            ? "bg-gray-100 border-rose-400 ring-2 ring-rose-300/40 text-gray-600"
+                                            : "bg-gray-100/80 border-gray-200 text-gray-500 opacity-75 hover:opacity-95"
+                                          : isSelected
+                                          ? "bg-white border-[#C02030] ring-2 ring-[#C02030]/20 shadow-sm"
+                                          : "bg-white border-gray-200 hover:border-gray-400 hover:bg-gray-50/70"
+                                      }`}
+                                    >
+                                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                                        <div
+                                          className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                                            isSelected
+                                              ? isOut
+                                                ? "border-rose-500 bg-rose-500"
+                                                : "border-[#C02030] bg-[#C02030]"
+                                              : "border-gray-300 bg-white"
+                                          }`}
+                                        >
+                                          {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
+                                        </div>
+
+                                        <img
+                                          src={optThumb}
+                                          alt={optLabel}
+                                          className={`w-11 h-11 rounded-xl object-contain bg-white border border-gray-200 p-1 shrink-0 ${
+                                            isOut ? "grayscale opacity-60" : ""
+                                          }`}
+                                        />
+
+                                        <div className="min-w-0 flex-1">
+                                          <span
+                                            className={`text-xs font-bold block leading-snug line-clamp-2 ${
+                                              isOut ? "text-gray-500 line-through decoration-gray-400" : "text-gray-900"
+                                            }`}
+                                          >
+                                            {optLabel}
+                                          </span>
+                                          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                                            {isOut ? (
+                                              <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 border border-rose-200">
+                                                <AlertCircle className="w-3 h-3" />
+                                                <span>{t.comboChoiceOutOfStockBadge}</span>
+                                              </span>
+                                            ) : (
+                                              <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                                <CheckCircle2 className="w-3 h-3" />
+                                                <span>{t.comboChoiceInStockBadge}</span>
+                                              </span>
+                                            )}
+                                            {hasDiscount && !isOut && (
+                                              <span className="text-[10px] font-black px-1.5 py-0.5 rounded-md bg-rose-50 text-[#C02030] border border-rose-200 font-mono">
+                                                -{combo.discountPercent}% OFF
+                                              </span>
+                                            )}
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                      <div className="text-right shrink-0">
+                                        {hasDiscount && (
+                                          <span className="text-[10px] font-mono text-gray-400 line-through block">
+                                            +{currency === "USD" ? formatUSD(convertCRCToUSD(originalDelta, sellRate)) : formatCRC(originalDelta)}
+                                          </span>
+                                        )}
+                                        <span
+                                          className={`text-xs font-black font-mono block ${
+                                            isOut
+                                              ? "text-gray-400"
+                                              : isSelected
+                                              ? "text-[#C02030]"
+                                              : "text-gray-900"
+                                          }`}
+                                        >
+                                          +{currency === "USD" ? formatUSD(convertCRCToUSD(discountedDelta, sellRate)) : formatCRC(discountedDelta)}
+                                        </span>
+                                      </div>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <div className="flex flex-wrap gap-2.5">
+                                {param.options.map((opt) => {
+                                  const isSelected = opt.id === activeOptionId;
+                                  const optLabel = lang === "es" ? opt.labelEs : (opt.labelEn || opt.labelEs);
+                                  const resolvedColor = resolveOptionColorHex(optLabel, opt.colorHex);
+                                  const optThumb = opt.imageUrl || (Array.isArray(opt.images) && opt.images[0] ? opt.images[0] : null);
+
+                                  return (
+                                    <button
+                                      key={opt.id}
+                                      type="button"
+                                      onClick={() => {
+                                        setSelectedOptions((prev) => ({
+                                          ...prev,
+                                          [param.id]: opt.id,
+                                        }));
+                                        if (optThumb) {
+                                          setSelectedImageOverride(optThumb);
+                                          setActiveImageIndex(0);
+                                        }
+                                      }}
+                                      className={`px-3.5 py-2.5 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer border shadow-2xs ${
+                                        isSelected
+                                          ? "bg-[#C02030] border-[#C02030] text-white shadow-md scale-[1.02] ring-2 ring-[#C02030]/25"
+                                          : "bg-white border-gray-200 text-gray-800 hover:border-gray-400 hover:bg-gray-50"
+                                      }`}
+                                    >
+                                      {optThumb && (
+                                        <img
+                                          src={optThumb}
+                                          alt={optLabel}
+                                          className="w-5 h-5 rounded-md object-cover border border-gray-200/50 shrink-0"
+                                        />
+                                      )}
+                                      {resolvedColor && (
+                                        <span
+                                          className={`w-3.5 h-3.5 rounded-full border shadow-2xs shrink-0 ${
+                                            isSelected ? "border-white ring-1 ring-white/60" : "border-gray-300"
+                                          }`}
+                                          style={{ backgroundColor: resolvedColor }}
+                                        />
+                                      )}
+                                      <span>{optLabel}</span>
+                                      {(opt.priceDeltaCRC !== 0 || (opt.priceDeltaUSD !== undefined && opt.priceDeltaUSD !== 0)) && (
+                                        <span
+                                          className={`text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded-md ${
+                                            isSelected
+                                              ? "bg-black/25 text-white"
+                                              : "bg-gray-100 text-[#C02030]"
+                                          }`}
+                                        >
+                                          {opt.priceDeltaCRC !== 0
+                                            ? (opt.priceDeltaCRC > 0
+                                                ? `+${formatCRC(opt.priceDeltaCRC)}`
+                                                : `-${formatCRC(Math.abs(opt.priceDeltaCRC))}`)
+                                            : (opt.priceDeltaUSD && opt.priceDeltaUSD > 0
+                                                ? `+$${opt.priceDeltaUSD}`
+                                                : `-$${Math.abs(opt.priceDeltaUSD || 0)}`)}
+                                        </span>
+                                      )}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </div>
                         );
                       })}
@@ -1253,7 +1486,7 @@ export default function ComboDetailPage() {
                       <span className="text-3xl font-extrabold font-mono text-gray-900">
                         {displayPrice}
                       </span>
-                      {combo.originalPriceCRC > combo.priceCRC && (
+                      {effectiveOriginalPriceCRC > effectivePriceCRC && (
                         <span className="text-sm text-gray-400 line-through font-mono">
                           {displayOriginalPrice}
                         </span>
@@ -1492,7 +1725,7 @@ export default function ComboDetailPage() {
 
                 {/* Add to Cart & Inquiry Actions */}
                 <div ref={buySectionRef} className="space-y-3 pt-2">
-                  {combo.stockStatus === "OUT_OF_STOCK" || combo.isAvailable === false ? (
+                  {isEffectivelyOutOfStock ? (
                     <Link
                       href={`/cotizar?tipo=combo&id=${combo.slug}`}
                       className="w-full flex items-center justify-center gap-2 py-4 px-6 rounded-2xl bg-[#C02030] hover:bg-[#9A1624] text-white font-extrabold text-sm uppercase tracking-wider transition-colors shadow-md"
@@ -1862,13 +2095,23 @@ export default function ComboDetailPage() {
             </div>
           </div>
 
-          <button
-            onClick={handleAddToCart}
-            className="px-4 py-2.5 rounded-full bg-[#111827] hover:bg-[#C02030] text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm active:scale-95 shrink-0 cursor-pointer"
-          >
-            <ShoppingCart className="w-3.5 h-3.5" />
-            <span>{t.comboAddToCart}</span>
-          </button>
+          {isEffectivelyOutOfStock ? (
+            <Link
+              href={`/cotizar?tipo=combo&id=${combo.slug}`}
+              className="px-4 py-2.5 rounded-full bg-[#C02030] hover:bg-[#9A1624] text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm shrink-0"
+            >
+              <MessageCircle className="w-3.5 h-3.5" />
+              <span>{t.comboChoiceOutOfStockBadge}</span>
+            </Link>
+          ) : (
+            <button
+              onClick={handleAddToCart}
+              className="px-4 py-2.5 rounded-full bg-[#111827] hover:bg-[#C02030] text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm active:scale-95 shrink-0 cursor-pointer"
+            >
+              <ShoppingCart className="w-3.5 h-3.5" />
+              <span>{t.comboAddToCart}</span>
+            </button>
+          )}
         </div>
       )}
 

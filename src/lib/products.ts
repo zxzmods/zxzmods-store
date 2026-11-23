@@ -157,6 +157,12 @@ export interface ParameterOption {
   addonProductSlug?: string;
   addonProductSku?: string;
   addonProduct?: ProductItem; // Enriched full registered ProductItem for cart add-on
+  choiceProductId?: string; // Combo-exclusive product choice option: ID of registered product
+  choiceProductSlug?: string;
+  choiceProductSku?: string;
+  liveProductPriceCRC?: number; // Live DB price of the referenced choice product before combo discount
+  originalPriceDeltaCRC?: number; // Regular (pre-discount) price delta added to combo originalPriceCRC
+  isOutOfStock?: boolean; // Live out-of-stock status of the referenced choice product
   isDefault?: boolean;
   isCurrentProduct?: boolean;
   connections?: ParameterOptionConnection[]; // Matrix connections to 2nd parameter options (expansion)
@@ -250,7 +256,7 @@ export interface ConfigurableParameter {
   id: string;
   nameEs: string;
   nameEn?: string;
-  type?: "color" | "button" | "select" | "product_linking" | "product_link" | "cart_addon" | "text_input";
+  type?: "color" | "button" | "select" | "product_linking" | "product_link" | "cart_addon" | "text_input" | "combo_product_choice";
   supplierUrl?: string;
   placeholderEs?: string;
   placeholderEn?: string;
@@ -343,6 +349,7 @@ export function isLocalVariantParameter(param?: ConfigurableParameter | null): b
   if (
     param.type === "cart_addon" ||
     param.type === "text_input" ||
+    param.type === "combo_product_choice" ||
     param.type === "product_linking" ||
     param.type === "product_link" ||
     param.options?.some((o) => Boolean(o.linkedProductId))
@@ -350,6 +357,135 @@ export function isLocalVariantParameter(param?: ConfigurableParameter | null): b
     return false;
   }
   return true;
+}
+
+/**
+ * Hydrates combo-exclusive `combo_product_choice` parameters with live DB product pricing
+ * (applying the combo's discountPercent automatically) and live stock availability.
+ */
+export function hydrateComboChoiceParameters(
+  rawParameters: any[],
+  catalogProducts: any[],
+  comboDiscountPercent: number = 0
+): {
+  parameters: ConfigurableParameter[];
+  minChoiceDeltaCRC: number;
+  minChoiceOriginalDeltaCRC: number;
+  hasChoiceParams: boolean;
+  allChoicesOutOfStock: boolean;
+} {
+  const safeParams: any[] = Array.isArray(rawParameters) ? rawParameters : [];
+  const discountPct = Math.max(0, Math.min(99, Number(comboDiscountPercent) || 0));
+  const discountFactor = 1 - discountPct / 100;
+
+  // Fast lookup map for catalog products by id, sku, slug (case-insensitive)
+  const prodMap = new Map<string, any>();
+  for (const p of catalogProducts || []) {
+    if (!p) continue;
+    if (p.id) prodMap.set(String(p.id).toLowerCase(), p);
+    if (p.sku) prodMap.set(String(p.sku).toLowerCase(), p);
+    if (p.slug) prodMap.set(String(p.slug).toLowerCase(), p);
+  }
+
+  let minChoiceDeltaCRC = 0;
+  let minChoiceOriginalDeltaCRC = 0;
+  let hasChoiceParams = false;
+  let allChoicesOutOfStock = false;
+
+  const parameters: ConfigurableParameter[] = safeParams.map((param) => {
+    if (param?.type !== "combo_product_choice") return param;
+
+    hasChoiceParams = true;
+    const rawOpts: any[] = Array.isArray(param.options) ? param.options : [];
+    const hydratedOpts: ParameterOption[] = rawOpts.map((opt) => {
+      const refCandidates = [
+        opt?.choiceProductId,
+        opt?.choiceProductSku,
+        opt?.choiceProductSlug,
+        opt?.linkedProductId,
+        opt?.addonProductId,
+      ]
+        .map((v) => (v ? String(v).trim().toLowerCase() : ""))
+        .filter(Boolean);
+
+      let matchedProd: any = null;
+      for (const ref of refCandidates) {
+        if (prodMap.has(ref)) {
+          matchedProd = prodMap.get(ref);
+          break;
+        }
+      }
+
+      const livePrice = matchedProd
+        ? Math.max(0, Math.round(Number(matchedProd.priceCRC ?? matchedProd.price?.T_price ?? 0) || 0))
+        : Math.max(0, Math.round(Number(opt?.liveProductPriceCRC ?? opt?.originalPriceDeltaCRC ?? opt?.priceDeltaCRC ?? 0) || 0));
+
+      const discountedDelta = Math.round(livePrice * discountFactor);
+
+      const supStatus = String(
+        matchedProd?.supplierStockStatus ?? opt?.supplierStockStatus ?? "IN_STOCK"
+      ).toUpperCase();
+      const rawStockStatus = String(
+        matchedProd?.stockStatus ?? opt?.stockStatus ?? ""
+      ).toLowerCase();
+      const isOutOfStock =
+        Boolean(matchedProd?.isArchived) ||
+        supStatus === "OUT_OF_STOCK" ||
+        supStatus === "UNAVAILABLE" ||
+        rawStockStatus === "agotado" ||
+        rawStockStatus === "out_of_stock";
+
+      const resolvedImg =
+        (opt?.imageUrl && String(opt.imageUrl).trim()) ||
+        (matchedProd?.imageUrl && String(matchedProd.imageUrl).trim()) ||
+        (Array.isArray(matchedProd?.imgs) && matchedProd.imgs[0] ? String(matchedProd.imgs[0]).trim() : "") ||
+        "/images/logo.png";
+
+      return {
+        ...opt,
+        labelEs: opt?.labelEs || matchedProd?.nameEs || matchedProd?.p_title || "Producto",
+        labelEn: opt?.labelEn || matchedProd?.nameEn || opt?.labelEs || matchedProd?.nameEs || "Product",
+        choiceProductId: matchedProd?.id || opt?.choiceProductId,
+        choiceProductSlug: matchedProd?.slug || opt?.choiceProductSlug,
+        choiceProductSku: matchedProd?.sku || opt?.choiceProductSku,
+        linkedProductId: matchedProd?.id || opt?.linkedProductId || opt?.choiceProductId,
+        liveProductPriceCRC: livePrice,
+        originalPriceDeltaCRC: livePrice,
+        priceDeltaCRC: discountedDelta,
+        imageUrl: resolvedImg,
+        images: Array.isArray(opt?.images) && opt.images.length > 0 ? opt.images : resolvedImg ? [resolvedImg] : [],
+        supplierStockStatus: isOutOfStock ? "OUT_OF_STOCK" : supStatus,
+        stockStatus: isOutOfStock ? "OUT_OF_STOCK" : (matchedProd?.stockStatus || opt?.stockStatus || "IN_STOCK_US"),
+        isOutOfStock,
+      };
+    });
+
+    if (hydratedOpts.length > 0) {
+      const inStockOpts = hydratedOpts.filter((o) => !o.isOutOfStock);
+      if (inStockOpts.length === 0) {
+        allChoicesOutOfStock = true;
+      }
+      const pool = inStockOpts.length > 0 ? inStockOpts : hydratedOpts;
+      const lowestOpt = pool.reduce((min, cur) =>
+        (cur.priceDeltaCRC || 0) < (min.priceDeltaCRC || 0) ? cur : min
+      );
+      minChoiceDeltaCRC += lowestOpt.priceDeltaCRC || 0;
+      minChoiceOriginalDeltaCRC += lowestOpt.originalPriceDeltaCRC || lowestOpt.liveProductPriceCRC || 0;
+    }
+
+    return {
+      ...param,
+      options: hydratedOpts,
+    };
+  });
+
+  return {
+    parameters,
+    minChoiceDeltaCRC,
+    minChoiceOriginalDeltaCRC,
+    hasChoiceParams,
+    allChoicesOutOfStock,
+  };
 }
 
 /**

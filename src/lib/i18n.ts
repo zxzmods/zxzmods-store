@@ -2127,6 +2127,18 @@ export interface Translations {
   smartSearchSuggestionsHeader: string;
   smartSearchApplyHint: string;
   smartSearchAutoAppliedNotice: string;
+  devParamTypeComboProductChoice: string;
+  devComboProductChoiceBtn: string;
+  devComboProductChoiceDesc: string;
+  devComboProductChoiceSearchLabel: string;
+  devComboProductChoiceSearchPlaceholder: string;
+  devComboProductChoiceEmptyNotice: string;
+  devComboProductChoiceAddedListLabel: string;
+  devComboProductChoiceDiscountPreview: string;
+  comboChoiceOutOfStockBadge: string;
+  comboChoiceInStockBadge: string;
+  comboChoiceSelectedOutOfStockNotice: string;
+  comboChoiceProductLabel: string;
 }
 
 
@@ -4235,6 +4247,18 @@ export const translations: Record<Language, Translations> = {
     smartSearchSuggestionsHeader: "Sugerencias inteligentes",
     smartSearchApplyHint: "Presiona Enter para auto-seleccionar",
     smartSearchAutoAppliedNotice: "Filtro auto-seleccionado",
+    devParamTypeComboProductChoice: "Selección entre Productos (Combo)",
+    devComboProductChoiceBtn: "Selección entre Productos",
+    devComboProductChoiceDesc: "Exclusivo para combos. Permite elegir varios productos ya existentes para que el cliente escoja uno. El precio del combo se ajusta automáticamente según el producto elegido aplicando el % OFF del combo, y refleja en vivo si algún producto está agotado.",
+    devComboProductChoiceSearchLabel: "Buscar Producto Existente para Agregar como Opción:",
+    devComboProductChoiceSearchPlaceholder: "Escribe nombre, marca, vehículo o SKU del producto...",
+    devComboProductChoiceEmptyNotice: "Busca y selecciona arriba los productos existentes entre los cuales el cliente podrá elegir en este combo.",
+    devComboProductChoiceAddedListLabel: "Productos disponibles para elegir en este parámetro",
+    devComboProductChoiceDiscountPreview: "Con descuento del combo",
+    comboChoiceOutOfStockBadge: "Agotado",
+    comboChoiceInStockBadge: "En Stock",
+    comboChoiceSelectedOutOfStockNotice: "El producto seleccionado en esta opción del combo se encuentra agotado actualmente. Selecciona otra opción disponible o solicita una cotización por WhatsApp.",
+    comboChoiceProductLabel: "Opción elegida",
   },
 
   en: {
@@ -6341,6 +6365,18 @@ export const translations: Record<Language, Translations> = {
     smartSearchSuggestionsHeader: "Smart suggestions",
     smartSearchApplyHint: "Press Enter to auto-select",
     smartSearchAutoAppliedNotice: "Auto-selected filter",
+    devParamTypeComboProductChoice: "Choose Between Products (Combo)",
+    devComboProductChoiceBtn: "Choose Between Products",
+    devComboProductChoiceDesc: "Exclusive to combos. Lets you pick multiple existing products for the customer to choose between. The combo price updates automatically based on the selected product with the combo's % OFF applied, and reflects live out-of-stock status.",
+    devComboProductChoiceSearchLabel: "Search Existing Product to Add as Option:",
+    devComboProductChoiceSearchPlaceholder: "Type product name, brand, vehicle, or SKU...",
+    devComboProductChoiceEmptyNotice: "Search and select above the existing products customers can choose between in this combo.",
+    devComboProductChoiceAddedListLabel: "Products available to choose between in this parameter",
+    devComboProductChoiceDiscountPreview: "With combo discount",
+    comboChoiceOutOfStockBadge: "Out of Stock",
+    comboChoiceInStockBadge: "In Stock",
+    comboChoiceSelectedOutOfStockNotice: "The selected product option in this combo is currently out of stock. Please select another available option or request a quote via WhatsApp.",
+    comboChoiceProductLabel: "Selected option",
   },
 
 };

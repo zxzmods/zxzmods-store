@@ -15,6 +15,7 @@ import {
   sortVehicleModels,
   sortVehicleBrands,
   deriveComboCompatibilityFromProducts,
+  hydrateComboChoiceParameters,
 } from "@/lib/products";
 import { calculateComboAvailability } from "@/lib/comboAvailability";
 import { prisma } from "@/lib/prisma";
@@ -332,7 +333,7 @@ function dbComboToProductItem(combo: any, activeDbProducts: any[]): ProductItem 
     catList.push("combos");
   }
 
-  const parameters = (() => {
+  const rawParameters = (() => {
     if (combo.parametersJson) {
       try {
         const parsed = JSON.parse(combo.parametersJson);
@@ -341,6 +342,19 @@ function dbComboToProductItem(combo: any, activeDbProducts: any[]): ProductItem 
     }
     return [];
   })();
+
+  const choiceInfo = hydrateComboChoiceParameters(
+    rawParameters,
+    activeDbProducts,
+    combo.discountPercent || 0
+  );
+  const parameters = choiceInfo.parameters;
+  const effectiveComboPriceCRC = (combo.priceCRC || 0) + choiceInfo.minChoiceDeltaCRC;
+  const effectiveComboOriginalCRC =
+    (combo.originalPriceCRC || combo.priceCRC || 0) + choiceInfo.minChoiceOriginalDeltaCRC;
+  const effectiveComboStockStatus = choiceInfo.allChoicesOutOfStock
+    ? "OUT_OF_STOCK"
+    : (availability.status || "IN_STOCK");
 
   const reviews = (() => {
     if (combo.reviews) {
@@ -375,16 +389,16 @@ function dbComboToProductItem(combo: any, activeDbProducts: any[]): ProductItem 
       profit: 0,
       iva: {
         rate: 13,
-        amount: Math.round((combo.priceCRC || 0) * (13 / 113)),
+        amount: Math.round(effectiveComboPriceCRC * (13 / 113)),
       },
-      T_price: combo.priceCRC,
+      T_price: effectiveComboPriceCRC,
       T_price_D: "calculate in checkout",
     },
-    priceCRC: combo.priceCRC,
-    originalPriceCRC: combo.originalPriceCRC || combo.priceCRC,
+    priceCRC: effectiveComboPriceCRC,
+    originalPriceCRC: effectiveComboOriginalCRC,
     discountPercent: combo.discountPercent || 0,
     ivaPercent: 13,
-    ivaCRC: Math.round((combo.priceCRC || 0) * (13 / 113)),
+    ivaCRC: Math.round(effectiveComboPriceCRC * (13 / 113)),
     imgs,
     imageUrl: imgs[0],
     vids: [],
@@ -401,8 +415,8 @@ function dbComboToProductItem(combo: any, activeDbProducts: any[]): ProductItem 
     modelYearCompatibility: [],
     supplierUrl: null,
     supplierPlatform: null,
-    stockStatus: availability.status || "IN_STOCK",
-    supplierStockStatus: availability.status || "IN_STOCK",
+    stockStatus: effectiveComboStockStatus,
+    supplierStockStatus: effectiveComboStockStatus,
     supplierStockCount: null,
     supplierStockMessageEs: availability.summaryEs || null,
     supplierStockMessageEn: availability.summaryEn || null,

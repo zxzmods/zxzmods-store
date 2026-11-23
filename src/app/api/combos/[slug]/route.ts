@@ -6,6 +6,7 @@ import {
   formatCompListWithYears,
   getRecommendedFillerProducts,
   getRecommendedFillerCombos,
+  hydrateComboChoiceParameters,
 } from "@/lib/products";
 
 export const dynamic = "force-dynamic";
@@ -315,6 +316,27 @@ export async function GET(
       []
     );
 
+    const rawComboParams = (() => {
+      if (combo.parametersJson) {
+        try {
+          const p = JSON.parse(combo.parametersJson);
+          if (Array.isArray(p)) return p;
+        } catch {}
+      }
+      return [];
+    })();
+    const hydratedChoiceInfo = hydrateComboChoiceParameters(
+      rawComboParams,
+      catalogProducts,
+      combo.discountPercent || 0
+    );
+    const effectiveStockStatus = hydratedChoiceInfo.allChoicesOutOfStock
+      ? "OUT_OF_STOCK"
+      : availability.status;
+    const effectiveIsAvailable = hydratedChoiceInfo.allChoicesOutOfStock
+      ? false
+      : availability.available;
+
     return NextResponse.json({
       success: true,
       data: {
@@ -328,15 +350,7 @@ export async function GET(
           imgs: comboImgs,
           images: comboImgs,
           items: JSON.parse(combo.itemsJson || "[]") as string[],
-          parameters: (() => {
-            if (combo.parametersJson) {
-              try {
-                const p = JSON.parse(combo.parametersJson);
-                if (Array.isArray(p)) return p;
-              } catch {}
-            }
-            return [];
-          })(),
+          parameters: hydratedChoiceInfo.parameters,
           suggestedProductIds: sugProdIds,
           suggestedComboIds: sugComboIds,
           suggestedProducts: explicitProducts,
@@ -344,8 +358,8 @@ export async function GET(
           suggestedCombos: explicitCombos,
           relatedCombos,
           availability,
-          stockStatus: availability.status,
-          isAvailable: availability.available,
+          stockStatus: effectiveStockStatus,
+          isAvailable: effectiveIsAvailable,
           leadDaysMin: availability.leadDaysMin,
           leadDaysMax: availability.leadDaysMax,
           reviews: (() => {

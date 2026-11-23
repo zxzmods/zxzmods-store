@@ -15,6 +15,7 @@ import {
   formatCompListWithYears,
   isPlatformOrVehicleMatch,
   isUniversalFit,
+  hydrateComboChoiceParameters,
 } from "@/lib/products";
 import { SXS_BRAND_PLATFORMS, SXS_BRANDS, getBrandLogo } from "@/lib/sxsBrands";
 import { evaluateComboSearch, buildDealerBrandSearchRefs } from "@/lib/search";
@@ -419,6 +420,20 @@ export async function GET(request: NextRequest) {
       );
 
       const comboImgs = extractComboImages(combo, catalogProducts);
+      const rawSingleParams = (() => {
+        if (combo.parametersJson) {
+          try {
+            const p = JSON.parse(combo.parametersJson);
+            if (Array.isArray(p)) return p;
+          } catch {}
+        }
+        return [];
+      })();
+      const singleHydrated = hydrateComboChoiceParameters(
+        rawSingleParams,
+        catalogProducts,
+        combo.discountPercent || 0
+      );
 
       return NextResponse.json({
         success: true,
@@ -439,15 +454,7 @@ export async function GET(request: NextRequest) {
             relatedProducts,
             suggestedCombos: explicitCombos,
             relatedCombos,
-            parameters: (() => {
-              if (combo.parametersJson) {
-                try {
-                  const p = JSON.parse(combo.parametersJson);
-                  if (Array.isArray(p)) return p;
-                } catch {}
-              }
-              return [];
-            })(),
+            parameters: singleHydrated.parameters,
             uniqueProduct: (() => {
               if ((combo as any).uniqueProductJson) {
                 try {
@@ -458,8 +465,8 @@ export async function GET(request: NextRequest) {
               return null;
             })(),
             availability,
-            stockStatus: availability.status,
-            isAvailable: availability.available,
+            stockStatus: singleHydrated.allChoicesOutOfStock ? "OUT_OF_STOCK" : availability.status,
+            isAvailable: singleHydrated.allChoicesOutOfStock ? false : availability.available,
             leadDaysMin: availability.leadDaysMin,
             leadDaysMax: availability.leadDaysMax,
             reviews: (() => {
@@ -534,8 +541,24 @@ export async function GET(request: NextRequest) {
       const compDisplay = formatCompListWithYears(comp);
       const vehicleBrands = detectComboVehicleBrands(c, catalogProducts, comp);
       const distributorBrands = detectComboDistributorBrands(c, catalogProducts);
+      const rawParams = (() => {
+        if (c.parametersJson) {
+          try {
+            const p = JSON.parse(c.parametersJson);
+            if (Array.isArray(p)) return p;
+          } catch {}
+        }
+        return [];
+      })();
+      const choiceInfo = hydrateComboChoiceParameters(rawParams, catalogProducts, c.discountPercent || 0);
+      const effectivePriceCRC = (c.priceCRC || 0) + choiceInfo.minChoiceDeltaCRC;
+      const effectiveOriginalPriceCRC =
+        (c.originalPriceCRC || c.priceCRC || 0) + choiceInfo.minChoiceOriginalDeltaCRC;
+
       return {
         ...c,
+        priceCRC: effectivePriceCRC,
+        originalPriceCRC: effectiveOriginalPriceCRC,
         installationAvailable: (c as any).installationAvailable !== false,
         isInstallationIncluded: (c as any).installationAvailable !== false,
         freeInstallation: (c as any).installationAvailable !== false,
@@ -564,15 +587,7 @@ export async function GET(request: NextRequest) {
           }
           return [];
         })(),
-        parameters: (() => {
-          if (c.parametersJson) {
-            try {
-              const p = JSON.parse(c.parametersJson);
-              if (Array.isArray(p)) return p;
-            } catch {}
-          }
-          return [];
-        })(),
+        parameters: choiceInfo.parameters,
         uniqueProduct: (() => {
           if ((c as any).uniqueProductJson) {
             try {
@@ -583,8 +598,8 @@ export async function GET(request: NextRequest) {
           return null;
         })(),
         availability,
-        stockStatus: availability.status,
-        isAvailable: availability.available,
+        stockStatus: choiceInfo.allChoicesOutOfStock ? "OUT_OF_STOCK" : availability.status,
+        isAvailable: choiceInfo.allChoicesOutOfStock ? false : availability.available,
         leadDaysMin: availability.leadDaysMin,
         leadDaysMax: availability.leadDaysMax,
         reviews: (() => {
