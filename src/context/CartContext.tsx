@@ -7,6 +7,7 @@ import { useLanguage } from "@/context/LanguageContext";
 import { getWhatsAppUrl } from "@/config/company";
 
 import { SelectedParameterItem } from "@/lib/products";
+import { PaymentPlanType, computeSplitPaymentAmounts } from "@/lib/splitPayment";
 
 export interface CartItem {
   id: string;
@@ -69,6 +70,14 @@ interface CartContextType {
   exchangeRate: LiveExchangeRate | null;
   isRateLoading: boolean;
   sellRate: number;
+
+  // Payment Plan (100% Full vs 70% Upfront / 30% Balance)
+  paymentPlan: PaymentPlanType;
+  setPaymentPlan: (plan: PaymentPlanType) => void;
+  upfrontPayableCRC: number;
+  remainingBalanceCRC: number;
+  upfrontPayableUSD: number;
+  remainingBalanceUSD: number;
 
   // Calculations in CRC
   partsSubtotal: number;
@@ -144,9 +153,17 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   };
 
   const [currency, setCurrencyState] = useState<"CRC" | "USD">("CRC");
+  const [paymentPlan, setPaymentPlanState] = useState<PaymentPlanType>("FULL_100");
   const [exchangeRate, setExchangeRate] = useState<LiveExchangeRate | null>(null);
   const [isRateLoading, setIsRateLoading] = useState(true);
   const [activeQuotation, setActiveQuotation] = useState<any | null>(null);
+
+  const setPaymentPlan = (plan: PaymentPlanType) => {
+    setPaymentPlanState(plan);
+    try {
+      localStorage.setItem("zxz_payment_plan", plan);
+    } catch {}
+  };
 
   const clearActiveQuotation = () => {
     setActiveQuotation(null);
@@ -187,6 +204,11 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       const savedCurrency = localStorage.getItem("zxz_currency");
       if (savedCurrency === "USD" || savedCurrency === "CRC") {
         setCurrencyState(savedCurrency);
+      }
+
+      const savedPaymentPlan = localStorage.getItem("zxz_payment_plan");
+      if (savedPaymentPlan === "SPLIT_70_30" || savedPaymentPlan === "FULL_100") {
+        setPaymentPlanState(savedPaymentPlan);
       }
 
       const savedQuote = localStorage.getItem("zxz_active_quotation");
@@ -641,6 +663,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const clearCart = () => {
     clearLastAddedItem();
     saveItems([]);
+    setPaymentPlan("FULL_100");
   };
 
   // Calculations
@@ -685,6 +708,15 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const laborDiscountUSD = 0;
   const finalLaborSubtotalUSD = convertCRCToUSD(finalLaborSubtotal, activeSellRate);
   const totalUSD = convertCRCToUSD(totalCRC, activeSellRate);
+
+  // Payment plan breakdown (100% vs 70/30)
+  const splitAmounts = computeSplitPaymentAmounts(totalCRC);
+  const upfrontPayableCRC =
+    paymentPlan === "SPLIT_70_30" ? splitAmounts.initial70AmountCRC : totalCRC;
+  const remainingBalanceCRC =
+    paymentPlan === "SPLIT_70_30" ? splitAmounts.remaining30AmountCRC : 0;
+  const upfrontPayableUSD = convertCRCToUSD(upfrontPayableCRC, activeSellRate);
+  const remainingBalanceUSD = convertCRCToUSD(remainingBalanceCRC, activeSellRate);
 
   const formatPrice = (amountCRC: number) => {
     if (currency === "USD") {
@@ -914,6 +946,12 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         exchangeRate,
         isRateLoading,
         sellRate: activeSellRate,
+        paymentPlan,
+        setPaymentPlan,
+        upfrontPayableCRC,
+        remainingBalanceCRC,
+        upfrontPayableUSD,
+        remainingBalanceUSD,
         partsSubtotal,
         laborSubtotal,
         installedItemCount,

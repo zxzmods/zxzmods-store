@@ -1,5 +1,6 @@
 import nodemailer, { type Transporter, type SendMailOptions } from "nodemailer";
 import { generateReceiptHtml, ReceiptPaymentType } from "@/lib/orderReceipt";
+import { isSplitPaymentOrder } from "@/lib/splitPayment";
 
 interface SendVerificationEmailParams {
   to: string;
@@ -260,7 +261,12 @@ export async function sendOrderReceiptEmail({
   } catch {}
 
   let subject = "";
-  if (receiptType === "INSTALLATION") {
+  const isSplitOrder = isSplitPaymentOrder(order);
+  if (receiptType === "REMAINING_30") {
+    subject = isEs
+      ? `Comprobante Final 30% (100% Cancelado) ZxZ Mods #${order.orderNumber}`
+      : `ZxZ Mods Final 30% Balance Receipt (100% Paid) #${order.orderNumber}`;
+  } else if (receiptType === "INSTALLATION") {
     subject = isEs
       ? `Comprobante de Instalación ZxZ Mods #${order.orderNumber}`
       : `ZxZ Mods Installation & Labor Receipt #${order.orderNumber}`;
@@ -272,6 +278,10 @@ export async function sendOrderReceiptEmail({
     subject = isEs
       ? `Comprobante Consolidado de Pago ZxZ Mods #${order.orderNumber}`
       : `ZxZ Mods Consolidated Payment Receipt #${order.orderNumber}`;
+  } else if (isSplitOrder) {
+    subject = isEs
+      ? `Comprobante de Adelanto 70% ZxZ Mods #${order.orderNumber}`
+      : `ZxZ Mods 70% Deposit Receipt #${order.orderNumber}`;
   } else {
     subject = isEs
       ? `Comprobante de Compra ZxZ Mods #${order.orderNumber}`

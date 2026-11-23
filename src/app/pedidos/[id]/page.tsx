@@ -126,6 +126,8 @@ import {
   isRejectedPaymentCorrected,
 } from "@/lib/orderWorkflow";
 import { getOrderPendingInstallationCost } from "@/lib/orderServices";
+import { extractSplitPayment, isRemaining30Confirmed } from "@/lib/splitPayment";
+import { Remaining30PaymentCard } from "@/components/orders/Remaining30PaymentCard";
 
 export default function OrderDetailPage() {
   const params = useParams();
@@ -471,10 +473,20 @@ export default function OrderDetailPage() {
 
   const skipInstallationPayment = order ? shouldSkipInstallationPayment(order, order.installationCostCRC, order.laborSubtotalCRC) : false;
   const isPaidInstallation = Boolean(order && isInstallationPaymentPaidOrConfirmed(order));
+  const splitPayment = order ? extractSplitPayment(order) : null;
+  const isSplitOrder = Boolean(splitPayment);
+  const remaining30Confirmed = Boolean(order && isRemaining30Confirmed(order));
   const stepIndex = order
     ? isQuote
       ? 1
-      : getCustomerOrderStepIndex(order.status, order.serviceType, skipInstallationPayment, (order as any).serviceDocumentsJson, isPaidInstallation)
+      : getCustomerOrderStepIndex(
+          order.status,
+          order.serviceType,
+          skipInstallationPayment,
+          (order as any).serviceDocumentsJson,
+          isPaidInstallation,
+          isSplitOrder
+        )
     : 1;
   const isPaymentStatusUpdated = Boolean(
     order && (
@@ -484,17 +496,20 @@ export default function OrderDetailPage() {
       order.isInstallationPaymentConfirmed
     )
   );
-  const isServiceProgrammed = Boolean(order?.isServiceScheduled || stepIndex > 5);
+  const programServiceStepNum = isSplitOrder ? 6 : 5;
+  const isServiceProgrammed = Boolean(order?.isServiceScheduled || stepIndex > programServiceStepNum);
   const isProgramService = Boolean(
     order &&
     !isQuote &&
     !isRejected &&
     order.status?.toUpperCase() !== "CONFIRM_SERVICE_PAYMENT" &&
-    (order.status?.toUpperCase() === "PROGRAM_SERVICE" || stepIndex === 5)
+    order.status?.toUpperCase() !== "REMAINING_30_PAYMENT" &&
+    (!isSplitOrder || remaining30Confirmed) &&
+    (order.status?.toUpperCase() === "PROGRAM_SERVICE" || stepIndex === programServiceStepNum)
   );
   const customerStages = order
-    ? getCustomerOrderStages(order.serviceType, isServiceProgrammed, skipInstallationPayment, isPaidInstallation)
-    : getCustomerOrderStages("shop_installation", false, false, false);
+    ? getCustomerOrderStages(order.serviceType, isServiceProgrammed, skipInstallationPayment, isPaidInstallation, isSplitOrder)
+    : getCustomerOrderStages("shop_installation", false, false, false, false);
 
   // True only after the client has chosen/scheduled a service that includes labor cost
   const isLaborServiceType = Boolean(
@@ -1491,6 +1506,20 @@ export default function OrderDetailPage() {
                     </button>
                   </div>
                 )}
+
+                {/* 70% / 30% Split Payment — 30% Remaining Balance Card (unlocks once Check Certificate is issued) */}
+                {splitPayment && !isQuote && (
+                  <Remaining30PaymentCard
+                    order={order}
+                    splitPayment={splitPayment}
+                    sellRate={sellRate}
+                    claimToken={searchParams?.get("token") || order.claimToken}
+                    onPaymentSubmitted={(updatedOrder) => {
+                      setOrder((prev) => (prev ? { ...prev, ...updatedOrder } : prev));
+                    }}
+                    onPreviewProof={(url) => setClientProofModalUrl(url)}
+                  />
+                )}
                 
                 {/* Products List Section */}
                 <div className="bg-white rounded-3xl border border-gray-200 p-6 sm:p-7 shadow-xs space-y-4">
@@ -1703,7 +1732,7 @@ export default function OrderDetailPage() {
                 )}
 
                 {/* Uploaded Payment Proofs Section - Always accessible for Client (Requirement #1) */}
-                {(order.paymentProofUrl || order.installationPaymentProofUrl || order.servicePaymentProofUrl) && (
+                {(order.paymentProofUrl || splitPayment?.remaining30ProofUrl || order.installationPaymentProofUrl || order.servicePaymentProofUrl) && (
                   <div className="bg-white rounded-3xl border border-gray-200 p-6 sm:p-7 shadow-xs space-y-5">
                     <div className="pb-3 border-b border-gray-100 flex items-center justify-between flex-wrap gap-2">
                       <div>
@@ -1723,13 +1752,19 @@ export default function OrderDetailPage() {
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {/* 1. Comprobante de Productos / Pedido */}
+                      {/* 1. Comprobante de Productos / Pedido (or Comprobante #1: Adelanto 70%) */}
                       {order.paymentProofUrl && (
                         <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col justify-between space-y-3">
                           <div className="flex items-center justify-between gap-2">
                             <span className="text-xs font-black text-slate-900 flex items-center gap-1.5 min-w-0">
                               <Package className="w-3.5 h-3.5 text-[#0052CC] shrink-0" />
-                              <span className="truncate">{lang === "es" ? "Comprobante de Pedido" : "Order / Parts Receipt"}</span>
+                              <span className="truncate">
+                                {splitPayment
+                                  ? t.paymentPlanProof1Label
+                                  : lang === "es"
+                                  ? "Comprobante de Pedido"
+                                  : "Order / Parts Receipt"}
+                              </span>
                             </span>
                             <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-300 px-2.5 py-0.5 rounded-full whitespace-nowrap shrink-0 shadow-2xs">
                               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
@@ -1768,6 +1803,66 @@ export default function OrderDetailPage() {
                               target="_blank"
                               rel="noopener noreferrer"
                               className="p-1.5 rounded-xl border border-slate-200 hover:bg-white text-slate-700 text-xs font-semibold flex items-center gap-1 transition"
+                              title={lang === "es" ? "Abrir original en nueva pestaña" : "Open in new tab"}
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" />
+                            </a>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* 1B. Comprobante #2 — Saldo 30% Restante (Plan 70/30) */}
+                      {splitPayment?.remaining30ProofUrl && (
+                        <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-200 flex flex-col justify-between space-y-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs font-black text-amber-950 flex items-center gap-1.5 min-w-0">
+                              <CreditCard className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+                              <span className="truncate">{t.paymentPlanProof2Label}</span>
+                            </span>
+                            {splitPayment.remaining30Confirmed ? (
+                              <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-300 px-2.5 py-0.5 rounded-full whitespace-nowrap shrink-0 shadow-2xs">
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                <span>{lang === "es" ? "Confirmado" : "Confirmed"}</span>
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-amber-800 bg-amber-100 border border-amber-300 px-2.5 py-0.5 rounded-full whitespace-nowrap shrink-0 shadow-2xs">
+                                <Clock className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+                                <span>{lang === "es" ? "En Revisión" : "In Review"}</span>
+                              </span>
+                            )}
+                          </div>
+
+                          <div
+                            onClick={() => setClientProofModalUrl(splitPayment.remaining30ProofUrl || null)}
+                            className="group relative cursor-pointer overflow-hidden rounded-xl border border-amber-200 bg-gray-950 p-2 flex items-center justify-center h-36 transition hover:border-amber-400"
+                          >
+                            <img
+                              src={splitPayment.remaining30ProofUrl}
+                              alt="Comprobante Saldo 30%"
+                              className="max-h-32 w-auto object-contain rounded-lg transition duration-300 group-hover:scale-105"
+                            />
+                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                              <span className="px-3 py-1 rounded-lg bg-white text-gray-900 text-[11px] font-bold shadow-md flex items-center gap-1">
+                                <Eye className="w-3 h-3" />
+                                <span>{lang === "es" ? "Ver Completo" : "View Full"}</span>
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-between gap-2 pt-1 border-t border-amber-200 text-xs">
+                            <button
+                              type="button"
+                              onClick={() => setClientProofModalUrl(splitPayment.remaining30ProofUrl || null)}
+                              className="px-3 py-1.5 rounded-xl bg-amber-800 hover:bg-amber-900 text-white text-xs font-semibold flex items-center gap-1.5 transition"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              <span>{lang === "es" ? "Inspeccionar" : "Inspect"}</span>
+                            </button>
+                            <a
+                              href={splitPayment.remaining30ProofUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="p-1.5 rounded-xl border border-amber-200 hover:bg-white text-amber-900 text-xs font-semibold flex items-center gap-1 transition"
                               title={lang === "es" ? "Abrir original en nueva pestaña" : "Open in new tab"}
                             >
                               <ExternalLink className="w-3.5 h-3.5" />
@@ -2081,6 +2176,62 @@ export default function OrderDetailPage() {
                           )}
                         </div>
                       </div>
+
+                      {/* 70% / 30% Split Payment Summary Box */}
+                      {splitPayment && (
+                        <div className="mt-3 p-3 rounded-2xl bg-slate-50 border border-slate-200 space-y-2 text-xs">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#0052CC]">
+                              {lang === "es" ? "Plan Fraccionado 70% / 30%" : "70% / 30% Split Payment"}
+                            </span>
+                            <span
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                                splitPayment.remaining30Confirmed
+                                  ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                                  : "bg-amber-50 text-amber-800 border-amber-200"
+                              }`}
+                            >
+                              {splitPayment.remaining30Confirmed
+                                ? lang === "es"
+                                  ? "100% Cancelado"
+                                  : "100% Paid"
+                                : lang === "es"
+                                ? "Saldo 30% Pendiente"
+                                : "30% Pending"}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center justify-between text-slate-700">
+                            <span className="font-semibold">
+                              {order.status === "PAYMENT_CONFIRMATION"
+                                ? t.paymentPlanDeposit70PendingLabel
+                                : t.paymentPlanDeposit70PaidLabel}
+                            </span>
+                            <span className="font-mono font-extrabold text-emerald-700">
+                              {formatPrice(splitPayment.initial70AmountCRC)}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center justify-between text-slate-700 pt-1.5 border-t border-slate-200/80">
+                            <span className="font-semibold">
+                              {splitPayment.remaining30Confirmed
+                                ? t.paymentPlanBalance30PaidLabel
+                                : splitPayment.remaining30ProofUrl && !splitPayment.remaining30Rejected
+                                ? t.paymentPlanBalance30InReviewLabel
+                                : t.paymentPlanBalance30PendingLabel}
+                            </span>
+                            <span
+                              className={`font-mono font-extrabold ${
+                                splitPayment.remaining30Confirmed
+                                  ? "text-emerald-700"
+                                  : "text-amber-700"
+                              }`}
+                            >
+                              {formatPrice(splitPayment.remaining30AmountCRC)}
+                            </span>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
 

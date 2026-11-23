@@ -14,12 +14,14 @@ import {
   extractReceiptItems,
   getServiceTypeLabel,
   isOrderPaymentConfirmed,
+  isRemaining30PaymentConfirmed,
   isInstallationPaymentConfirmed,
   isServicePaymentConfirmed,
   hasAnyConfirmedPayment,
   ReceiptPaymentType,
   ReceiptOrderData,
 } from "@/lib/orderReceipt";
+import { extractSplitPayment } from "@/lib/splitPayment";
 import {
   Printer,
   ArrowLeft,
@@ -84,9 +86,11 @@ export default function OrderReceiptPage() {
   }, [orderId, isEs]);
 
   const orderPaid = useMemo(() => (order ? isOrderPaymentConfirmed(order) : false), [order]);
+  const remaining30Paid = useMemo(() => (order ? isRemaining30PaymentConfirmed(order) : false), [order]);
   const installPaid = useMemo(() => (order ? isInstallationPaymentConfirmed(order) : false), [order]);
   const servicePaid = useMemo(() => (order ? isServicePaymentConfirmed(order) : false), [order]);
   const anyPaid = useMemo(() => (order ? hasAnyConfirmedPayment(order) : false), [order]);
+  const splitPayment = useMemo(() => (order ? extractSplitPayment(order) : null), [order]);
 
   // Adjust activeType if requested type is not paid
   useEffect(() => {
@@ -246,7 +250,15 @@ export default function OrderReceiptPage() {
   const ivaCost = docsData.installationPaymentIvaCRC !== undefined ? docsData.installationPaymentIvaCRC : Math.round(baseLabor * 0.13);
   const totalInstallAmount = docsData.installationPaymentPaidAmountCRC || (baseLabor + ivaCost);
 
-  if (activeType === "INSTALLATION") {
+  if (activeType === "REMAINING_30" && splitPayment) {
+    receiptTitle = isEs
+      ? "COMPROBANTE OFICIAL DE SALDO FINAL (30% — CANCELADO 100%)"
+      : "OFFICIAL FINAL 30% BALANCE RECEIPT (100% PAID)";
+    statusBadgeLabel = isEs
+      ? "Saldo 30% Confirmado • Cancelado 100%"
+      : "30% Balance Confirmed • 100% Paid";
+    displayTotalCRC = splitPayment.remaining30AmountCRC;
+  } else if (activeType === "INSTALLATION") {
     receiptTitle = isEs ? "COMPROBANTE DE INSTALACIÓN & MANO DE OBRA" : "LABOR & INSTALLATION RECEIPT";
     statusBadgeLabel = isEs ? "Pago de Instalación Confirmado" : "Installation Payment Confirmed";
     displayTotalCRC = totalInstallAmount;
@@ -257,7 +269,20 @@ export default function OrderReceiptPage() {
   } else if (activeType === "COMPLETE") {
     receiptTitle = isEs ? "COMPROBANTE DE PAGO CONSOLIDADO" : "CONSOLIDATED PAYMENT RECEIPT";
     statusBadgeLabel = isEs ? "Pagos Confirmados por Taller" : "Payments Confirmed";
-    displayTotalCRC = order.totalCRC;
+    displayTotalCRC = splitPayment
+      ? remaining30Paid
+        ? splitPayment.totalOrderCRC
+        : splitPayment.initial70AmountCRC
+      : order.totalCRC;
+  } else if (splitPayment) {
+    // ORDER with 70/30 split payment
+    receiptTitle = isEs
+      ? "COMPROBANTE OFICIAL DE ADELANTO (70%)"
+      : "OFFICIAL 70% DEPOSIT RECEIPT";
+    statusBadgeLabel = isEs
+      ? "Adelanto 70% Confirmado • Plan 70/30"
+      : "70% Deposit Confirmed • 70/30 Plan";
+    displayTotalCRC = splitPayment.initial70AmountCRC;
   } else {
     // ORDER
     receiptTitle = isEs ? "COMPROBANTE OFICIAL DE COMPRA" : "OFFICIAL PURCHASE RECEIPT";
@@ -265,7 +290,7 @@ export default function OrderReceiptPage() {
     displayTotalCRC = (order.partsSubtotalCRC || order.totalCRC) - (order.discountCRC || 0);
   }
 
-  const countConfirmedTypes = [orderPaid, installPaid, servicePaid].filter(Boolean).length;
+  const countConfirmedTypes = [orderPaid, remaining30Paid, installPaid, servicePaid].filter(Boolean).length;
 
   return (
     <div className="min-h-screen bg-neutral-100 text-neutral-900 py-4 sm:py-8 px-2 sm:px-4 font-sans antialiased text-xs">
@@ -290,7 +315,18 @@ export default function OrderReceiptPage() {
                   activeType === "ORDER" ? "bg-neutral-900 text-white" : "text-neutral-600 hover:text-neutral-900"
                 }`}
               >
-                {isEs ? "Productos" : "Products"}
+                {splitPayment ? (isEs ? "Adelanto 70%" : "70% Deposit") : (isEs ? "Productos" : "Products")}
+              </button>
+            )}
+            {splitPayment && remaining30Paid && (
+              <button
+                type="button"
+                onClick={() => setActiveType("REMAINING_30")}
+                className={`px-2.5 py-1 rounded transition ${
+                  activeType === "REMAINING_30" ? "bg-neutral-900 text-white" : "text-neutral-600 hover:text-neutral-900"
+                }`}
+              >
+                {isEs ? "Saldo 30%" : "30% Balance"}
               </button>
             )}
             {installPaid && (
@@ -429,6 +465,14 @@ export default function OrderReceiptPage() {
               <span className="text-neutral-500">{isEs ? "Estado: " : "Status: "}</span>
               <span className="font-bold text-emerald-700">{statusBadgeLabel}</span>
             </div>
+            {splitPayment && (
+              <div>
+                <span className="text-neutral-500">{isEs ? "Plan de Pago: " : "Payment Plan: "}</span>
+                <span className="font-bold text-neutral-900">
+                  {isEs ? "Adelanto 70% / Saldo 30%" : "70% Upfront / 30% Balance"}
+                </span>
+              </div>
+            )}
             <div>
               <span className="text-neutral-500">{isEs ? "Método: " : "Method: "}</span>
               <span className="font-semibold text-neutral-900">
@@ -594,16 +638,74 @@ export default function OrderReceiptPage() {
                     <span>-{formatPrice(order.discountCRC || 0)}</span>
                   </div>
                 )}
+                {splitPayment && activeType === "REMAINING_30" && (
+                  <>
+                    <div className="flex justify-between font-semibold text-neutral-800">
+                      <span>{isEs ? "Total del Pedido (100%):" : "Full Order Total (100%):"}</span>
+                      <span>{formatPrice(splitPayment.totalOrderCRC)}</span>
+                    </div>
+                    <div className="flex justify-between text-emerald-700 font-semibold">
+                      <span>{isEs ? "Adelanto Previo (70% Confirmado):" : "Prior Deposit (70% Confirmed):"}</span>
+                      <span>-{formatPrice(splitPayment.initial70AmountCRC)}</span>
+                    </div>
+                  </>
+                )}
+                {splitPayment && activeType === "ORDER" && (
+                  <div className="flex justify-between font-semibold text-neutral-800">
+                    <span>{isEs ? "Total del Pedido (100%):" : "Full Order Total (100%):"}</span>
+                    <span>{formatPrice(splitPayment.totalOrderCRC)}</span>
+                  </div>
+                )}
+                {splitPayment && activeType === "COMPLETE" && (
+                  <>
+                    <div className="flex justify-between text-emerald-700 font-semibold">
+                      <span>{isEs ? "Pago #1 (Adelanto 70%):" : "Payment #1 (70% Deposit):"}</span>
+                      <span>{formatPrice(splitPayment.initial70AmountCRC)}</span>
+                    </div>
+                    <div className={`flex justify-between font-semibold ${remaining30Paid ? "text-emerald-700" : "text-amber-700"}`}>
+                      <span>
+                        {remaining30Paid
+                          ? isEs ? "Pago #2 (Saldo 30% Confirmado):" : "Payment #2 (30% Confirmed):"
+                          : isEs ? "Saldo 30% Pendiente:" : "30% Balance Pending:"}
+                      </span>
+                      <span>{formatPrice(splitPayment.remaining30AmountCRC)}</span>
+                    </div>
+                  </>
+                )}
               </>
             )}
 
             <div className="flex justify-between text-xs sm:text-sm font-black text-neutral-900 border-t-2 border-neutral-900 pt-2 mt-1">
-              <span>{isEs ? "TOTAL PAGADO:" : "TOTAL PAID:"}</span>
+              <span>
+                {splitPayment && activeType === "ORDER"
+                  ? isEs ? "ADELANTO PAGADO (70%):" : "DEPOSIT PAID (70%):"
+                  : splitPayment && activeType === "REMAINING_30"
+                  ? isEs ? "SALDO 30% PAGADO:" : "30% BALANCE PAID:"
+                  : isEs ? "TOTAL PAGADO:" : "TOTAL PAID:"}
+              </span>
               <span>{formatPrice(displayTotalCRC)}</span>
             </div>
             <div className="text-[10px] text-neutral-500 text-right font-medium">
               {secondaryPrice(displayTotalCRC)}
             </div>
+            {splitPayment && activeType === "ORDER" && (
+              <div className={`mt-2 p-2 rounded-lg border text-[10px] ${remaining30Paid ? "bg-emerald-50 border-emerald-200 text-emerald-800" : "bg-amber-50 border-amber-200 text-amber-900"}`}>
+                <div className="flex justify-between font-bold">
+                  <span>{isEs ? "Saldo Restante (30%):" : "Remaining Balance (30%):"}</span>
+                  <span>{formatPrice(splitPayment.remaining30AmountCRC)}</span>
+                </div>
+                <div className="mt-0.5">
+                  {remaining30Paid
+                    ? isEs ? "✓ Saldo 30% confirmado — Pedido cancelado al 100%." : "✓ 30% balance confirmed — Order 100% paid in full."
+                    : isEs ? "Pendiente al emitirse el Certificado de Revisión ZxZ, antes de entrega/instalación." : "Due after ZxZ Check Certificate, prior to delivery/installation."}
+                </div>
+              </div>
+            )}
+            {splitPayment && activeType === "REMAINING_30" && (
+              <div className="mt-2 p-2 rounded-lg border bg-emerald-50 border-emerald-200 text-emerald-800 text-[10px] font-bold text-center">
+                ✓ {isEs ? "PEDIDO 100% CANCELADO — Saldo pendiente: ₡0" : "ORDER 100% PAID IN FULL — Remaining balance: ₡0"}
+              </div>
+            )}
           </div>
         </div>
 

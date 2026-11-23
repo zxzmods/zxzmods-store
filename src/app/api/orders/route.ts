@@ -6,6 +6,7 @@ import { getStealthSession } from "@/lib/stealthAuth";
 import { checkRateLimit, createRateLimitResponse, getClientIp } from "@/lib/rateLimit";
 import { checkAndAcquireIdempotency, completeIdempotency, releaseIdempotency } from "@/lib/idempotency";
 import { logger, getOrCreateRequestId } from "@/lib/logger";
+import { createInitialSplitPaymentData } from "@/lib/splitPayment";
 
 export async function GET(request: Request) {
   try {
@@ -549,6 +550,14 @@ export async function POST(request: Request) {
 
     const orderLanguage = body.language === "en" ? "en" : "es";
     docObj.language = orderLanguage;
+
+    // 70% Upfront / 30% Remaining Split Payment Plan
+    if (body.paymentPlan === "SPLIT_70_30" && !isBacRequested) {
+      const partsNetTotalCRC = Math.max(0, resolvedPartsSubtotal - discountCRC);
+      const splitBaseCRC = partsNetTotalCRC > 0 ? partsNetTotalCRC : resolvedTotal;
+      docObj.paymentPlan = "SPLIT_70_30";
+      docObj.splitPayment = createInitialSplitPaymentData(splitBaseCRC);
+    }
 
     if (totalInstallationMinutes > 0) {
       docObj.installationDurationMinutes = totalInstallationMinutes;

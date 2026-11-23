@@ -4,9 +4,12 @@ import { COMPANY_CONFIG } from "@/config/company";
 import { formatCRC, formatUSD, convertCRCToUSD } from "@/lib/i18n";
 import { getServiceTypeLabel } from "@/lib/orderReceipt";
 import { getTransporter, checkDailyLimit, incrementDailyCount, sendEmailSafely } from "@/lib/email";
+import { extractSplitPayment } from "@/lib/splitPayment";
 
 export type OrderNotificationStep =
   | "ORDER_PAYMENT_CONFIRMED"
+  | "REMAINING_30_PAYMENT"
+  | "REMAINING_30_CONFIRMED"
   | "SERVICE_PAYMENT_CONFIRMED"
   | "INSTALLATION_PAYMENT_CONFIRMED"
   | "PAYMENT_REJECTED"
@@ -22,7 +25,7 @@ export interface SendOrderStepNotificationParams {
   to?: string | null;
   lang?: "es" | "en";
   rejectionReason?: string | null;
-  rejectionType?: "ORDER" | "SERVICE" | "INSTALLATION";
+  rejectionType?: "ORDER" | "REMAINING_30" | "SERVICE" | "INSTALLATION";
   pickupDate?: string | null;
   pickupTime?: string | null;
   pickupAddress?: string | null;
@@ -95,7 +98,7 @@ export function generateOrderStepEmailHtml(params: {
   step: OrderNotificationStep;
   lang: "es" | "en";
   rejectionReason?: string | null;
-  rejectionType?: "ORDER" | "SERVICE" | "INSTALLATION";
+  rejectionType?: "ORDER" | "REMAINING_30" | "SERVICE" | "INSTALLATION";
   pickupDate?: string | null;
   pickupTime?: string | null;
   pickupAddress?: string | null;
@@ -153,31 +156,118 @@ export function generateOrderStepEmailHtml(params: {
   let actionBtnUrl = orderUrl;
   let customSectionHtml = "";
 
+  const splitPayment = extractSplitPayment(order);
+
   switch (step) {
     case "ORDER_PAYMENT_CONFIRMED":
+      if (splitPayment) {
+        subject = isEs
+          ? `Adelanto 70% Confirmado - Pedido #${order.orderNumber} • ZxZ Mods`
+          : `70% Deposit Confirmed - Order #${order.orderNumber} • ZxZ Mods`;
+        badgeText = isEs ? "● ADELANTO 70% CONFIRMADO" : "● 70% DEPOSIT CONFIRMED";
+        badgeBg = "#ecfdf5";
+        badgeColor = "#065f46";
+        badgeBorder = "#6ee7b7";
+        headline = isEs ? "¡Tu Adelanto del 70% ha sido Confirmado!" : "Your 70% Deposit has been Confirmed!";
+        message = isEs
+          ? `El equipo técnico y administrativo de ZxZ Mods ha verificado exitosamente tu adelanto del 70% (${formatCRC(splitPayment.initial70AmountCRC)}) para el pedido <strong>#${order.orderNumber}</strong>. Ya iniciamos la gestión de tus piezas.`
+          : `The ZxZ Mods team has verified your 70% upfront deposit (${formatCRC(splitPayment.initial70AmountCRC)}) for order <strong>#${order.orderNumber}</strong>. We have begun procuring your parts.`;
+        customSectionHtml = `
+          <div style="background:#fffbeb; border:1px solid #fde68a; border-radius:12px; padding:16px 20px; margin:20px 0; text-align:left;">
+            <div style="font-weight:800; color:#92400e; font-size:13px; margin-bottom:6px;">
+              ${isEs ? "Plan 70% / 30% — Resumen de Saldo" : "70% / 30% Plan — Balance Summary"}
+            </div>
+            <div style="font-size:12px; color:#78350f; line-height:1.6;">
+              <strong>${isEs ? "Total del Pedido (100%):" : "Full Order Total (100%):"}</strong> ${formatCRC(splitPayment.totalOrderCRC)}<br>
+              <strong>${isEs ? "Adelanto Pagado (70%):" : "Deposit Paid (70%):"}</strong> ${formatCRC(splitPayment.initial70AmountCRC)}<br>
+              <strong>${isEs ? "Saldo Restante (30%):" : "Remaining Balance (30%):"}</strong> ${formatCRC(splitPayment.remaining30AmountCRC)}<br>
+              <span style="display:block; margin-top:6px;">
+                ${isEs
+                  ? "El 30% restante se cancelará directamente en el resumen de tu pedido una vez que tus piezas reciban el Certificado de Revisión ZxZ, antes de la entrega o instalación."
+                  : "The remaining 30% will be paid directly in your order overview once your parts receive the ZxZ Check Certificate, prior to delivery or installation."}
+              </span>
+            </div>
+          </div>
+        `;
+      } else {
+        subject = isEs
+          ? `Pago Confirmado - Pedido #${order.orderNumber} • ZxZ Mods`
+          : `Payment Confirmed - Order #${order.orderNumber} • ZxZ Mods`;
+        badgeText = isEs ? "● PAGO CONFIRMADO" : "● PAYMENT CONFIRMED";
+        badgeBg = "#ecfdf5";
+        badgeColor = "#065f46";
+        badgeBorder = "#6ee7b7";
+        headline = isEs ? "¡Tu Pago ha sido Confirmado!" : "Your Payment has been Confirmed!";
+        message = isEs
+          ? `El equipo técnico y administrativo de ZxZ Mods ha verificado exitosamente tu comprobante de pago para el pedido <strong>#${order.orderNumber}</strong>. Hemos comenzado la preparación y gestión de tus piezas en taller.`
+          : `The ZxZ Mods technical and administrative team has successfully verified your payment receipt for order <strong>#${order.orderNumber}</strong>. We have started preparing and procuring your parts.`;
+        customSectionHtml = `
+          <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:12px; padding:16px 20px; margin:20px 0; text-align:left;">
+            <div style="font-weight:700; color:#166534; font-size:13px; margin-bottom:4px;">
+              ${isEs ? "✓ Comprobante Oficial Generado" : "✓ Official Receipt Generated"}
+            </div>
+            <div style="font-size:12px; color:#15803d; line-height:1.5;">
+              ${isEs 
+                ? "Tu comprobante oficial de compra ha sido emitido y enviado a tu correo. También puedes descargarlo en cualquier momento desde tu panel de pedidos." 
+                : "Your official purchase receipt has been issued and sent to your email. You can also download it at any time from your orders panel."}
+            </div>
+          </div>
+        `;
+      }
+      break;
+
+    case "REMAINING_30_PAYMENT": {
+      const remCRC = splitPayment?.remaining30AmountCRC || Math.round((order.totalCRC || 0) * 0.3);
+      const depCRC = splitPayment?.initial70AmountCRC || Math.max(0, (order.totalCRC || 0) - remCRC);
       subject = isEs
-        ? `Pago Confirmado - Pedido #${order.orderNumber} • ZxZ Mods`
-        : `Payment Confirmed - Order #${order.orderNumber} • ZxZ Mods`;
-      badgeText = isEs ? "● PAGO CONFIRMADO" : "● PAYMENT CONFIRMED";
+        ? `Certificado Emitido: Pago del 30% Restante Disponible - Pedido #${order.orderNumber} • ZxZ Mods`
+        : `Check Certificate Ready: 30% Remaining Balance Due - Order #${order.orderNumber} • ZxZ Mods`;
+      badgeText = isEs ? "● PAGO DEL 30% RESTANTE HABILITADO" : "● 30% REMAINING PAYMENT READY";
+      badgeBg = "#fffbeb";
+      badgeColor = "#92400e";
+      badgeBorder = "#fcd34d";
+      headline = isEs
+        ? "¡Tus Piezas Tienen Certificado ZxZ! Cancela el 30% Restante"
+        : "Your Parts Passed Inspection! Pay the Remaining 30%";
+      message = isEs
+        ? `Tus repuestos del pedido <strong>#${order.orderNumber}</strong> han llegado al taller y aprobaron el control técnico con Certificado de Revisión ZxZ. Para habilitar la programación de entrega o instalación, realiza el pago del 30% restante directamente en el resumen de tu pedido.`
+        : `Your parts for order <strong>#${order.orderNumber}</strong> have arrived and passed workshop inspection with an official ZxZ Check Certificate. To unlock delivery or installation scheduling, please pay the remaining 30% balance in your order overview.`;
+      customSectionHtml = `
+        <div style="background:#fffbeb; border:1px solid #fde68a; border-radius:12px; padding:18px 20px; margin:22px 0; text-align:left;">
+          <div style="font-size:12px; font-weight:800; color:#92400e; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:10px;">
+            ${isEs ? "Desglose del Plan 70% / 30%:" : "70% / 30% Plan Breakdown:"}
+          </div>
+          <table style="width:100%; font-size:13px; color:#78350f; border-collapse:collapse;">
+            <tr>
+              <td style="padding:4px 0;">${isEs ? "Adelanto 70% Confirmado:" : "70% Deposit Confirmed:"}</td>
+              <td style="padding:4px 0; text-align:right; font-weight:600;">${formatCRC(depCRC)}</td>
+            </tr>
+            <tr style="border-top:1px dashed #fcd34d;">
+              <td style="padding:8px 0 2px; font-weight:800; color:#92400e;">${isEs ? "Saldo 30% a Cancelar:" : "30% Balance Due:"}</td>
+              <td style="padding:8px 0 2px; text-align:right; font-weight:800; color:#92400e; font-size:15px;">${formatCRC(remCRC)}</td>
+            </tr>
+          </table>
+        </div>
+      `;
+      actionBtnText = isEs ? "Pagar 30% Restante en Mi Pedido" : "Pay Remaining 30% in My Order";
+      actionBtnUrl = orderUrl;
+      break;
+    }
+
+    case "REMAINING_30_CONFIRMED":
+      subject = isEs
+        ? `Saldo 30% Confirmado (Pedido 100% Cancelado) - #${order.orderNumber} • ZxZ Mods`
+        : `30% Balance Confirmed (Order 100% Paid) - #${order.orderNumber} • ZxZ Mods`;
+      badgeText = isEs ? "● SALDO 30% CONFIRMADO (100% PAGADO)" : "● 30% BALANCE CONFIRMED (100% PAID)";
       badgeBg = "#ecfdf5";
       badgeColor = "#065f46";
       badgeBorder = "#6ee7b7";
-      headline = isEs ? "¡Tu Pago ha sido Confirmado!" : "Your Payment has been Confirmed!";
+      headline = isEs ? "¡Saldo 30% Confirmado — Pedido 100% Cancelado!" : "30% Balance Confirmed — Paid in Full!";
       message = isEs
-        ? `El equipo técnico y administrativo de ZxZ Mods ha verificado exitosamente tu comprobante de pago para el pedido <strong>#${order.orderNumber}</strong>. Hemos comenzado la preparación y gestión de tus piezas en taller.`
-        : `The ZxZ Mods technical and administrative team has successfully verified your payment receipt for order <strong>#${order.orderNumber}</strong>. We have started preparing and procuring your parts.`;
-      customSectionHtml = `
-        <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:12px; padding:16px 20px; margin:20px 0; text-align:left;">
-          <div style="font-weight:700; color:#166534; font-size:13px; margin-bottom:4px;">
-            ${isEs ? "✓ Comprobante Oficial Generado" : "✓ Official Receipt Generated"}
-          </div>
-          <div style="font-size:12px; color:#15803d; line-height:1.5;">
-            ${isEs 
-              ? "Tu comprobante oficial de compra ha sido emitido y enviado a tu correo. También puedes descargarlo en cualquier momento desde tu panel de pedidos." 
-              : "Your official purchase receipt has been issued and sent to your email. You can also download it at any time from your orders panel."}
-          </div>
-        </div>
-      `;
+        ? `Confirmamos la acreditación del 30% restante de tu pedido <strong>#${order.orderNumber}</strong>. Tu pedido se encuentra <strong>100% cancelado</strong> y ya puedes coordinar tu entrega o instalación en el taller.`
+        : `We have verified your remaining 30% balance payment for order <strong>#${order.orderNumber}</strong>. Your order is now <strong>100% paid in full</strong> and ready for delivery or installation scheduling.`;
+      actionBtnText = isEs ? "Programar Entrega o Instalación" : "Schedule Delivery or Installation";
+      actionBtnUrl = scheduleServiceUrl;
       break;
 
     case "SERVICE_PAYMENT_CONFIRMED":
@@ -210,7 +300,9 @@ export function generateOrderStepEmailHtml(params: {
 
     case "PAYMENT_REJECTED":
       const rejLabel =
-        rejectionType === "SERVICE"
+        rejectionType === "REMAINING_30"
+          ? isEs ? "Saldo 30% Restante" : "Remaining 30% Balance"
+          : rejectionType === "SERVICE"
           ? isEs ? "Pago de Servicio" : "Service Payment"
           : rejectionType === "INSTALLATION"
           ? isEs ? "Pago de Instalación" : "Installation Payment"

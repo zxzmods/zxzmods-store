@@ -13,6 +13,7 @@ import {
   Home,
   MapPin,
 } from "lucide-react";
+import { isSplitPaymentOrder } from "@/lib/splitPayment";
 
 export type NormalizedServiceCategory = "delivery" | "pickup" | "home_install" | "shop_install";
 
@@ -80,7 +81,16 @@ export function getServiceParamFromOrder(
 }
 
 /**
- * Returns true if the order is in the 'PROGRAM_SERVICE' step (Step 5)
+ * Returns true if the order is in the 'REMAINING_30_PAYMENT' stage (70/30 split payment balance)
+ */
+export function isOrderInRemaining30PaymentStage(status?: string | null): boolean {
+  if (!status) return false;
+  const s = status.toUpperCase().trim();
+  return s === "REMAINING_30_PAYMENT";
+}
+
+/**
+ * Returns true if the order is in the 'PROGRAM_SERVICE' step
  */
 export function isOrderInProgramServiceStage(
   status?: string | null,
@@ -89,6 +99,7 @@ export function isOrderInProgramServiceStage(
   if (!status) return false;
   const s = status.toUpperCase().trim();
   if (s === "PROGRAM_SERVICE") return true;
+  if (s === "REMAINING_30_PAYMENT") return false;
   return getCustomerOrderStepIndex(s, serviceType) === 5;
 }
 
@@ -101,6 +112,7 @@ export function isOrderAtOrPastProgramService(status?: string | null): boolean {
   const s = status.toUpperCase().trim();
   const stages = [
     "IN_WAREHOUSE_CHECK",
+    "REMAINING_30_PAYMENT",
     "PROGRAM_SERVICE",
     "CONFIRM_SERVICE_PAYMENT",
     "WAITING_ON_DELIVERY",
@@ -140,6 +152,7 @@ export function isOrderAfterWarehouseCheck(status?: string | null): boolean {
   if (!status) return false;
   const s = status.toUpperCase().trim();
   const stagesAfter = [
+    "REMAINING_30_PAYMENT",
     "PROGRAM_SERVICE",
     "CONFIRM_SERVICE_PAYMENT",
     "WAITING_ON_DELIVERY",
@@ -324,17 +337,18 @@ export function getCustomerOrderStages(
   serviceType?: string | null,
   isServiceScheduled: boolean = false,
   skipInstallationPayment: boolean = false,
-  isPaidInstallation: boolean = false
+  isPaidInstallation: boolean = false,
+  isSplitPayment: boolean = false
 ) {
   const category = normalizeServiceCategory(serviceType);
 
-  // Common baseline steps (1 to 5)
+  // Common baseline steps (1 to 4, plus optional REMAINING_30_PAYMENT for 70/30 orders, then PROGRAM_SERVICE)
   const baseSteps = [
     {
       id: "PAYMENT_CONFIRMATION",
       stepNum: 1,
-      labelEs: "Confirmación de Pago",
-      labelEn: "Payment Confirmation",
+      labelEs: isSplitPayment ? "Confirmación de Adelanto (70%)" : "Confirmación de Pago",
+      labelEn: isSplitPayment ? "70% Deposit Confirmation" : "Payment Confirmation",
       subEs: "Comprobante en revisión",
       subEn: "Receipt in review",
       icon: Clock,
@@ -366,9 +380,22 @@ export function getCustomerOrderStages(
       subEn: "Technical inspection",
       icon: Wrench,
     },
+    ...(isSplitPayment
+      ? [
+          {
+            id: "REMAINING_30_PAYMENT",
+            stepNum: 5,
+            labelEs: "Pago del 30% Restante",
+            labelEn: "30% Remaining Payment",
+            subEs: "Saldo 30% antes de entrega/instalación",
+            subEn: "30% balance before delivery/install",
+            icon: CreditCard,
+          },
+        ]
+      : []),
     {
       id: "PROGRAM_SERVICE",
-      stepNum: 5,
+      stepNum: isSplitPayment ? 6 : 5,
       labelEs: "Programar Servicio",
       labelEn: "Program Service",
       subEs: "Coordinar fecha y logística",
@@ -377,13 +404,16 @@ export function getCustomerOrderStages(
     },
   ];
 
+  const withSequentialStepNums = <T extends { stepNum: number }>(list: T[]): T[] =>
+    list.map((st, idx) => ({ ...st, stepNum: idx + 1 }));
+
   // User requirement: "Also in orders, when showing the steps get up to 'Programar servicio' the other steps are going to show after the service got program."
   if (!isServiceScheduled) {
-    return baseSteps;
+    return withSequentialStepNums(baseSteps);
   }
 
   if (category === "delivery") {
-    return [
+    return withSequentialStepNums([
       ...baseSteps,
       {
         id: "CONFIRM_SERVICE_PAYMENT",
@@ -412,7 +442,7 @@ export function getCustomerOrderStages(
         subEn: "Order fulfilled",
         icon: Sparkles,
       },
-    ];
+    ]);
   }
 
   if (category === "pickup") {
@@ -468,7 +498,7 @@ export function getCustomerOrderStages(
           },
         ];
 
-    return [
+    return withSequentialStepNums([
       ...baseSteps,
       {
         id: "CONFIRM_SERVICE_PAYMENT",
@@ -498,7 +528,7 @@ export function getCustomerOrderStages(
         icon: Wrench,
       },
       ...afterInstallSteps,
-    ];
+    ]);
   }
 
   if (category === "home_install") {
@@ -535,7 +565,7 @@ export function getCustomerOrderStages(
           },
         ];
 
-    return [
+    return withSequentialStepNums([
       ...baseSteps,
       {
         id: "CONFIRM_SERVICE_PAYMENT",
@@ -565,7 +595,7 @@ export function getCustomerOrderStages(
         icon: Wrench,
       },
       ...afterInstallSteps,
-    ];
+    ]);
   }
 
   // Installation only (Shop installation / default)
@@ -625,7 +655,7 @@ export function getCustomerOrderStages(
         },
       ];
 
-  return [
+  return withSequentialStepNums([
     ...baseSteps,
     {
       id: "CONFIRM_SERVICE_PAYMENT",
@@ -646,7 +676,7 @@ export function getCustomerOrderStages(
       icon: Wrench,
     },
     ...afterInstallSteps,
-  ];
+  ]);
 }
 
 /**
@@ -694,7 +724,8 @@ export function getCustomerOrderStepIndex(
   serviceType?: string | null,
   skipInstallationPayment: boolean = false,
   serviceDocumentsJson?: any,
-  isPaidInstallation: boolean = false
+  isPaidInstallation: boolean = false,
+  isSplitPayment?: boolean
 ): number {
   const s = status?.toUpperCase() || "";
   if (s === "CANCELLED") return 0;
@@ -709,6 +740,11 @@ export function getCustomerOrderStepIndex(
     } catch {}
   }
 
+  const effectiveSplitPayment =
+    typeof isSplitPayment === "boolean"
+      ? isSplitPayment
+      : s === "REMAINING_30_PAYMENT" || isSplitPaymentOrder(serviceDocumentsJson);
+
   let effectiveStatus = s;
   if (s === "PAYMENT_REJECTED") {
     let docs: any = {};
@@ -717,6 +753,8 @@ export function getCustomerOrderStepIndex(
     } catch {}
     if (docs?.preRejectionStatus && docs.preRejectionStatus !== "PAYMENT_REJECTED") {
       effectiveStatus = String(docs.preRejectionStatus).toUpperCase();
+    } else if (docs?.rejectionPaymentType === "REMAINING_30") {
+      effectiveStatus = "REMAINING_30_PAYMENT";
     } else if (docs?.rejectionPaymentType === "SERVICE") {
       effectiveStatus = "CONFIRM_SERVICE_PAYMENT";
     } else if (docs?.rejectionPaymentType === "INSTALLATION") {
@@ -726,7 +764,13 @@ export function getCustomerOrderStepIndex(
     }
   }
 
-  const stages = getCustomerOrderStages(serviceType, true, skipInstallationPayment, effectivePaidInstallation);
+  const stages = getCustomerOrderStages(
+    serviceType,
+    true,
+    skipInstallationPayment,
+    effectivePaidInstallation,
+    effectiveSplitPayment
+  );
 
   // Direct match with stage ID in the active stages list
   const directMatch = stages.find((st) => st.id === effectiveStatus);
@@ -745,23 +789,29 @@ export function getCustomerOrderStepIndex(
   if (effectiveStatus === "IN_WAREHOUSE_CHECK") {
     return 4;
   }
+  if (effectiveStatus === "REMAINING_30_PAYMENT") {
+    const remMatch = stages.find((st) => st.id === "REMAINING_30_PAYMENT");
+    return remMatch ? remMatch.stepNum : 5;
+  }
   if (effectiveStatus === "PROGRAM_SERVICE") {
-    return 5;
+    const progMatch = stages.find((st) => st.id === "PROGRAM_SERVICE");
+    return progMatch ? progMatch.stepNum : (effectiveSplitPayment ? 6 : 5);
   }
   if (effectiveStatus === "CONFIRM_SERVICE_PAYMENT") {
-    return 6;
+    const srvMatch = stages.find((st) => st.id === "CONFIRM_SERVICE_PAYMENT");
+    return srvMatch ? srvMatch.stepNum : (effectiveSplitPayment ? 7 : 6);
   }
   if (effectiveStatus === "READY_TO_PICK_UP" || effectiveStatus === "READY_FOR_PICKUP") {
     const readyMatch = stages.find((st) => st.id === "READY_FOR_PICKUP");
-    return readyMatch ? readyMatch.stepNum : 8;
+    return readyMatch ? readyMatch.stepNum : (effectiveSplitPayment ? 9 : 8);
   }
   if (effectiveStatus === "INSTALLATION_PAYMENT" || effectiveStatus === "PENDING_INSTALLATION_PAYMENT") {
     const installMatch = stages.find((st) => st.id === "INSTALLATION_PAYMENT");
-    return installMatch ? installMatch.stepNum : 9;
+    return installMatch ? installMatch.stepNum : (effectiveSplitPayment ? 10 : 9);
   }
   if (effectiveStatus === "READY_FOR_INSTALL") {
     const installMatch = stages.find((st) => st.id === "INSTALLING");
-    return installMatch ? installMatch.stepNum : 7;
+    return installMatch ? installMatch.stepNum : (effectiveSplitPayment ? 8 : 7);
   }
   if (effectiveStatus === "COMPLETED" || effectiveStatus === "PAID") {
     return stages[stages.length - 1].stepNum;
@@ -784,6 +834,7 @@ export function isPaymentConfirmedOrMore(status: string): boolean {
     "SHIPPING_TO_CR",
     "IN_COSTA_RICA",
     "IN_WAREHOUSE_CHECK",
+    "REMAINING_30_PAYMENT",
     "PROGRAM_SERVICE",
     "CONFIRM_SERVICE_PAYMENT",
     "WAITING_ON_DELIVERY",
@@ -873,6 +924,16 @@ export function getWorkflowStatusBadge(status: string, lang: "es" | "en") {
       bg: "bg-orange-50 text-orange-800 border-orange-200",
       accentBg: "bg-orange-500 text-white",
       icon: Wrench,
+      isQuote: false,
+    };
+  }
+
+  if (s === "REMAINING_30_PAYMENT") {
+    return {
+      label: lang === "es" ? "Pago del 30% Restante" : "30% Remaining Payment",
+      bg: "bg-amber-50 text-amber-900 border-amber-300",
+      accentBg: "bg-amber-500 text-white",
+      icon: CreditCard,
       isQuote: false,
     };
   }
@@ -1036,9 +1097,12 @@ export function isRejectedPaymentCorrected(order: any): boolean {
   const rejectionTime =
     docs?.orderPaymentRejectedAt ||
     docs?.servicePaymentRejectedAt ||
-    docs?.installationPaymentRejectedAt;
+    docs?.installationPaymentRejectedAt ||
+    docs?.splitPayment?.remaining30RejectedAt;
   const correctionTime =
-    docs?.paymentCorrectedAt || docs?.installationPaymentSubmittedAt;
+    docs?.paymentCorrectedAt ||
+    docs?.installationPaymentSubmittedAt ||
+    docs?.splitPayment?.remaining30PaidAt;
 
   if (rejectionTime && correctionTime) {
     try {

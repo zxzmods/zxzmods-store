@@ -1,6 +1,7 @@
 import { COMPANY_CONFIG } from "@/config/company";
 import { formatCRC, formatUSD, convertCRCToUSD } from "@/lib/i18n";
 import { trimDocSku } from "@/lib/utils";
+import { extractSplitPayment, isRemaining30Confirmed } from "@/lib/splitPayment";
 
 export interface ReceiptItem {
   id?: string;
@@ -57,11 +58,18 @@ export interface ReceiptOrderData {
   } | null;
 }
 
-export type ReceiptPaymentType = "ORDER" | "INSTALLATION" | "SERVICE" | "COMPLETE";
+export type ReceiptPaymentType = "ORDER" | "REMAINING_30" | "INSTALLATION" | "SERVICE" | "COMPLETE";
 
 export interface GenerateReceiptOptions {
   isEmail?: boolean;
   receiptType?: ReceiptPaymentType;
+}
+
+/**
+ * Checks whether the remaining 30% split payment has been confirmed.
+ */
+export function isRemaining30PaymentConfirmed(order: ReceiptOrderData): boolean {
+  return isRemaining30Confirmed(order);
 }
 
 /**
@@ -104,7 +112,12 @@ export function isServicePaymentConfirmed(order: ReceiptOrderData): boolean {
  * Checks whether at least one payment has been officially confirmed.
  */
 export function hasAnyConfirmedPayment(order: ReceiptOrderData): boolean {
-  return isOrderPaymentConfirmed(order) || isInstallationPaymentConfirmed(order) || isServicePaymentConfirmed(order);
+  return (
+    isOrderPaymentConfirmed(order) ||
+    isRemaining30PaymentConfirmed(order) ||
+    isInstallationPaymentConfirmed(order) ||
+    isServicePaymentConfirmed(order)
+  );
 }
 
 /**
@@ -156,8 +169,10 @@ export function generateReceiptHtml(
   const requestedType = options.receiptType || "ORDER";
 
   const orderPaid = isOrderPaymentConfirmed(order);
+  const remaining30Paid = isRemaining30PaymentConfirmed(order);
   const installPaid = isInstallationPaymentConfirmed(order);
   const servicePaid = isServicePaymentConfirmed(order);
+  const splitPayment = extractSplitPayment(order);
 
   // If no payment confirmed at all, return the unconfirmed state notice
   if (!hasAnyConfirmedPayment(order)) {
@@ -314,6 +329,59 @@ export function generateReceiptHtml(
       </div>
       <div class="secondary-total">${secondaryPrice(totalAmountCRC)}</div>
     `;
+  } else if (effectiveType === "REMAINING_30" && splitPayment) {
+    receiptTitle = isEs
+      ? "COMPROBANTE OFICIAL DE SALDO FINAL (30% — CANCELADO 100%)"
+      : "OFFICIAL FINAL 30% BALANCE RECEIPT (100% PAID)";
+    paymentStatusLabel = isEs
+      ? "Saldo 30% Confirmado • Pedido Cancelado 100%"
+      : "30% Balance Confirmed • Paid in Full (100%)";
+    totalAmountCRC = splitPayment.remaining30AmountCRC;
+
+    itemsRowsHtml = items.length > 0 ? items.map((it, idx) => {
+      const itemName = isEs ? it.nameEs || it.title || it.name || it.nameEn || "Artículo" : it.nameEn || it.title || it.name || it.nameEs || "Item";
+      const rawSku = it.sku || it.slug || (it.id ? String(it.id).slice(0, 10) : `ITM-${idx + 1}`);
+      const itemSku = trimDocSku(rawSku, 22);
+      const qty = Math.max(1, Number(it.quantity) || 1);
+      const unitCost = Number(it.unitPriceCRC || it.priceCRC || it.price || 0);
+      const lineSubtotal = unitCost * qty;
+      return `
+        <tr>
+          <td>
+            <div class="item-name">${itemName}</div>
+            <div class="item-sku">SKU: ${itemSku}</div>
+          </td>
+          <td style="text-align: center; font-weight: 600;">${qty}</td>
+          <td style="text-align: right; font-family: monospace;">${formatPrice(unitCost)}</td>
+          <td style="text-align: right; font-weight: 700;">${formatPrice(lineSubtotal)}</td>
+        </tr>
+      `;
+    }).join("") : `
+      <tr>
+        <td colspan="4" style="text-align: center; color: #9ca3af; padding: 14px;">
+          ${isEs ? "Artículos de la orden confirmados." : "Confirmed order items."}
+        </td>
+      </tr>
+    `;
+
+    summaryRowsHtml = `
+      <div class="summary-row">
+        <span>${isEs ? "Total del Pedido (100%):" : "Full Order Total (100%):"}</span>
+        <span>${formatPrice(splitPayment.totalOrderCRC)}</span>
+      </div>
+      <div class="summary-row" style="color: #059669; font-weight: 600;">
+        <span>${isEs ? "Adelanto Previo (70% Confirmado):" : "Prior Deposit (70% Confirmed):"}</span>
+        <span>-${formatPrice(splitPayment.initial70AmountCRC)}</span>
+      </div>
+      <div class="summary-row total">
+        <span>${isEs ? "SALDO 30% PAGADO:" : "30% BALANCE PAID:"}</span>
+        <span>${formatPrice(splitPayment.remaining30AmountCRC)}</span>
+      </div>
+      <div class="secondary-total">${secondaryPrice(splitPayment.remaining30AmountCRC)}</div>
+      <div style="margin-top: 8px; padding: 6px 8px; border-radius: 6px; background: #ecfdf5; border: 1px solid #a7f3d0; color: #065f46; font-size: 10px; font-weight: 700; text-align: center;">
+        ✓ ${isEs ? "PEDIDO 100% CANCELADO — Saldo pendiente: ₡0" : "ORDER 100% PAID IN FULL — Remaining balance: ₡0"}
+      </div>
+    `;
   } else if (effectiveType === "COMPLETE") {
     receiptTitle = isEs ? "COMPROBANTE OFICIAL DE PAGO CONSOLIDADO" : "OFFICIAL CONSOLIDATED PAYMENT RECEIPT";
     paymentStatusLabel = isEs ? "Pagos Registrados y Confirmados" : "Payments Verified & Confirmed";
@@ -355,6 +423,12 @@ export function generateReceiptHtml(
 
     itemsRowsHtml = partsRows + installRow;
 
+    const consolidatedPaidPartsCRC = splitPayment
+      ? remaining30Paid
+        ? splitPayment.totalOrderCRC
+        : splitPayment.initial70AmountCRC
+      : order.totalCRC;
+
     summaryRowsHtml = `
       <div class="summary-row">
         <span>${isEs ? "Partes / Repuestos:" : "Parts Subtotal:"}</span>
@@ -378,17 +452,38 @@ export function generateReceiptHtml(
           <span>-${formatPrice(order.discountCRC || 0)}</span>
         </div>
       ` : ""}
+      ${splitPayment ? `
+        <div class="summary-row" style="color: #065f46; font-weight: 600;">
+          <span>${isEs ? "Pago #1 (Adelanto 70%):" : "Payment #1 (70% Deposit):"}</span>
+          <span>${formatPrice(splitPayment.initial70AmountCRC)}</span>
+        </div>
+        <div class="summary-row" style="color: ${remaining30Paid ? "#065f46" : "#b45309"}; font-weight: 600;">
+          <span>${isEs ? (remaining30Paid ? "Pago #2 (Saldo 30% Confirmado):" : "Saldo 30% Pendiente:") : (remaining30Paid ? "Payment #2 (30% Confirmed):" : "30% Balance Pending:")}</span>
+          <span>${formatPrice(splitPayment.remaining30AmountCRC)}</span>
+        </div>
+      ` : ""}
       <div class="summary-row total">
         <span>${isEs ? "TOTAL PAGADO:" : "TOTAL PAID:"}</span>
-        <span>${formatPrice(order.totalCRC)}</span>
+        <span>${formatPrice(consolidatedPaidPartsCRC)}</span>
       </div>
-      <div class="secondary-total">${secondaryPrice(order.totalCRC)}</div>
+      <div class="secondary-total">${secondaryPrice(consolidatedPaidPartsCRC)}</div>
     `;
   } else {
     // Default ORDER payment receipt
-    receiptTitle = isEs ? "COMPROBANTE OFICIAL DE COMPRA" : "OFFICIAL PURCHASE RECEIPT";
-    paymentStatusLabel = isEs ? "Pago de Productos Confirmado" : "Products Payment Confirmed";
-    totalAmountCRC = (order.partsSubtotalCRC || order.totalCRC) - (order.discountCRC || 0);
+    const fullPartsNetCRC = (order.partsSubtotalCRC || order.totalCRC) - (order.discountCRC || 0);
+    if (splitPayment) {
+      receiptTitle = isEs
+        ? "COMPROBANTE OFICIAL DE ADELANTO (70%)"
+        : "OFFICIAL 70% DEPOSIT RECEIPT";
+      paymentStatusLabel = isEs
+        ? "Adelanto 70% Confirmado • Plan 70/30"
+        : "70% Deposit Confirmed • 70/30 Plan";
+      totalAmountCRC = splitPayment.initial70AmountCRC;
+    } else {
+      receiptTitle = isEs ? "COMPROBANTE OFICIAL DE COMPRA" : "OFFICIAL PURCHASE RECEIPT";
+      paymentStatusLabel = isEs ? "Pago de Productos Confirmado" : "Products Payment Confirmed";
+      totalAmountCRC = fullPartsNetCRC;
+    }
 
     itemsRowsHtml = items.length > 0 ? items.map((it, idx) => {
       const itemName = isEs ? it.nameEs || it.title || it.name || it.nameEn || "Artículo" : it.nameEn || it.title || it.name || it.nameEs || "Item";
@@ -421,7 +516,46 @@ export function generateReceiptHtml(
       </tr>
     `;
 
-    summaryRowsHtml = `
+    summaryRowsHtml = splitPayment
+      ? `
+      <div class="summary-row">
+        <span>${isEs ? "Subtotal de Partes:" : "Parts Subtotal:"}</span>
+        <span>${formatPrice(order.partsSubtotalCRC || order.totalCRC)}</span>
+      </div>
+      ${(order.discountCRC || 0) > 0 ? `
+        <div class="summary-row" style="color: #059669; font-weight: 600;">
+          <span>${isEs ? "Descuento Aplicado:" : "Discount Applied:"}</span>
+          <span>-${formatPrice(order.discountCRC || 0)}</span>
+        </div>
+      ` : ""}
+      <div class="summary-row" style="font-weight: 700; color: #111827;">
+        <span>${isEs ? "Total del Pedido (100%):" : "Full Order Total (100%):"}</span>
+        <span>${formatPrice(splitPayment.totalOrderCRC)}</span>
+      </div>
+      <div class="summary-row total">
+        <span>${isEs ? "ADELANTO PAGADO (70%):" : "DEPOSIT PAID (70%):"}</span>
+        <span>${formatPrice(splitPayment.initial70AmountCRC)}</span>
+      </div>
+      <div class="secondary-total">${secondaryPrice(splitPayment.initial70AmountCRC)}</div>
+      <div style="margin-top: 8px; padding: 7px 9px; border-radius: 6px; background: ${remaining30Paid ? "#ecfdf5" : "#fffbeb"}; border: 1px solid ${remaining30Paid ? "#a7f3d0" : "#fde68a"}; color: ${remaining30Paid ? "#065f46" : "#92400e"}; font-size: 10px; line-height: 1.4;">
+        <div style="display:flex; justify-content:space-between; font-weight: 800;">
+          <span>${isEs ? "Saldo Restante (30%):" : "Remaining Balance (30%):"}</span>
+          <span>${formatPrice(splitPayment.remaining30AmountCRC)}</span>
+        </div>
+        <div style="margin-top: 2px; font-weight: 500;">
+          ${
+            remaining30Paid
+              ? isEs
+                ? "✓ Saldo 30% confirmado — Pedido cancelado al 100%."
+                : "✓ 30% balance confirmed — Order 100% paid in full."
+              : isEs
+              ? "Pendiente de cancelar al emitirse el Certificado de Revisión ZxZ, antes de la entrega o instalación."
+              : "Due once the ZxZ Check Certificate is issued, prior to delivery or installation."
+          }
+        </div>
+      </div>
+    `
+      : `
       <div class="summary-row">
         <span>${isEs ? "Subtotal de Partes:" : "Parts Subtotal:"}</span>
         <span>${formatPrice(order.partsSubtotalCRC || order.totalCRC)}</span>
@@ -723,6 +857,7 @@ export function generateReceiptHtml(
       <div class="info-col">
         <div class="info-title">${isEs ? "Detalles del Pago & Entrega" : "Payment & Delivery Info"}</div>
         <div class="info-line"><span class="info-label">${isEs ? "Estado:" : "Status:"}</span> <span class="info-value">${paymentStatusLabel}</span></div>
+        ${splitPayment ? `<div class="info-line"><span class="info-label">${isEs ? "Plan de Pago:" : "Payment Plan:"}</span> <span class="info-value">${isEs ? "Adelanto 70% / Saldo 30%" : "70% Upfront / 30% Balance"}</span></div>` : ""}
         <div class="info-line"><span class="info-label">${isEs ? "Método de Pago:" : "Payment Method:"}</span> <span class="info-value">${paymentMethodLabel}</span></div>
         <div class="info-line"><span class="info-label">${isEs ? "Moneda de Pago:" : "Currency:"}</span> <span class="info-value">${currency === "USD" ? "Dólares ($ USD)" : "Colones (₡ CRC)"}</span></div>
         <div class="info-line"><span class="info-label">${isEs ? "Modalidad:" : "Delivery Mode:"}</span> <span class="info-value">${deliveryMode}</span></div>

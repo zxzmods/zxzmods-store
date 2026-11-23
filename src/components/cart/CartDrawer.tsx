@@ -8,6 +8,7 @@ import { useCart } from "@/context/CartContext";
 import { useGarage } from "@/context/GarageContext";
 import { useLanguage } from "@/context/LanguageContext";
 import { formatCRC, formatUSD } from "@/lib/i18n";
+import { PaymentPlanSelector } from "@/components/cart/PaymentPlanSelector";
 import {
   X,
   Trash2,
@@ -53,6 +54,9 @@ export function CartDrawer() {
     laborSubtotalUSD,
     finalLaborSubtotalUSD,
     totalUSD,
+    paymentPlan,
+    setPaymentPlan,
+    upfrontPayableCRC,
     formatPrice,
     generateWhatsAppLink,
     createOrderFromCart,
@@ -595,6 +599,15 @@ export function CartDrawer() {
               </div>
             )}
 
+            {/* Payment Plan Selector: 100% vs 70/30 */}
+            <PaymentPlanSelector
+              totalCRC={partsSubtotal}
+              paymentPlan={paymentPlan}
+              onChange={setPaymentPlan}
+              formatPrice={formatPrice}
+              compact
+            />
+
             {/* CTAs: Primary Checkout (Transfer) + Secondary BAC & WhatsApp */}
             <div className="space-y-2 pt-1">
               <Link
@@ -606,7 +619,15 @@ export function CartDrawer() {
                   <div className="w-8 h-8 rounded-lg bg-white/20 border border-white/25 flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition">
                     <Landmark className="w-4 h-4 text-white" />
                   </div>
-                  <span className="text-xs font-black tracking-wide text-white">{t.cartCheckout}</span>
+                  <div>
+                    <span className="text-xs font-black tracking-wide text-white block">{t.cartCheckout}</span>
+                    {paymentPlan === "SPLIT_70_30" && (
+                      <span className="text-[10px] font-bold text-white/90 normal-case tracking-normal block">
+                        {lang === "es" ? "Adelanto 70% hoy:" : "70% today:"}{" "}
+                        <span className="font-mono">{formatPrice(upfrontPayableCRC)}</span>
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <div className="w-6 h-6 rounded-md bg-white/10 flex items-center justify-center group-hover:translate-x-1 group-hover:bg-white/20 transition flex-shrink-0">
                   <ArrowRight className="w-3.5 h-3.5 text-white" />

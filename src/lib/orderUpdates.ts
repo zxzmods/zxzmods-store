@@ -70,7 +70,9 @@ export async function fetchOrderUpdatesResponse(request: Request) {
         } catch {}
       }
       const statusUpper = (o.status || "").toUpperCase();
-      const isProgramStage = statusUpper === "PROGRAM_SERVICE" || stepIndex === 5 || isOrderInProgramServiceStage(o.status, o.serviceType);
+      const isProgramStage =
+        statusUpper !== "REMAINING_30_PAYMENT" &&
+        (statusUpper === "PROGRAM_SERVICE" || isOrderInProgramServiceStage(o.status, o.serviceType));
       const isTerminalOrRejected = statusUpper === "CANCELLED" || statusUpper === "PAYMENT_REJECTED" || statusUpper === "REJECTED" || statusUpper === "COMPLETED";
       const needsServiceProgramming = isProgramStage && !hasScheduledDate && !isTerminalOrRejected;
 

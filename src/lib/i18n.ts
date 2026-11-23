@@ -2139,6 +2139,40 @@ export interface Translations {
   comboChoiceInStockBadge: string;
   comboChoiceSelectedOutOfStockNotice: string;
   comboChoiceProductLabel: string;
+  // Split Payment 70% / 30%
+  paymentPlanSectionTitle: string;
+  paymentPlanFullTitle: string;
+  paymentPlanFullDesc: string;
+  paymentPlanSplitTitle: string;
+  paymentPlanSplitBadge: string;
+  paymentPlanSplitDesc: string;
+  paymentPlanPayTodayLabel: string;
+  paymentPlanRemaining30Label: string;
+  paymentPlanRemaining30DueHint: string;
+  paymentPlanFullOrderTotalLabel: string;
+  paymentPlanSplitActiveNotice: string;
+  paymentPlanDeposit70PaidLabel: string;
+  paymentPlanDeposit70PendingLabel: string;
+  paymentPlanBalance30PaidLabel: string;
+  paymentPlanBalance30PendingLabel: string;
+  paymentPlanBalance30InReviewLabel: string;
+  paymentPlanStageTitle: string;
+  paymentPlanStageSub: string;
+  paymentPlanPay30CardTitle: string;
+  paymentPlanPay30CardDesc: string;
+  paymentPlanPay30LockedDesc: string;
+  paymentPlanPay30SubmitBtn: string;
+  paymentPlanPay30SubmittingBtn: string;
+  paymentPlanPay30SuccessMsg: string;
+  paymentPlanPay30InReviewTitle: string;
+  paymentPlanPay30InReviewDesc: string;
+  paymentPlanProof1Label: string;
+  paymentPlanProof2Label: string;
+  paymentPlanReceipt70Title: string;
+  paymentPlanReceipt30Title: string;
+  paymentPlanDevConfirm30Btn: string;
+  paymentPlanDevReject30Btn: string;
+  paymentPlanDevUpload30Btn: string;
 }
 
 
@@ -4259,6 +4293,40 @@ export const translations: Record<Language, Translations> = {
     comboChoiceInStockBadge: "En Stock",
     comboChoiceSelectedOutOfStockNotice: "El producto seleccionado en esta opción del combo se encuentra agotado actualmente. Selecciona otra opción disponible o solicita una cotización por WhatsApp.",
     comboChoiceProductLabel: "Opción elegida",
+    // Split Payment 70% / 30%
+    paymentPlanSectionTitle: "Modalidad de Pago de Piezas",
+    paymentPlanFullTitle: "Pago Completo (100%)",
+    paymentPlanFullDesc: "Cancela el total de tus repuestos de una sola vez.",
+    paymentPlanSplitTitle: "Adelanto 70% / Saldo 30%",
+    paymentPlanSplitBadge: "70% HOY • 30% AL LLEGAR",
+    paymentPlanSplitDesc: "Paga el 70% hoy para ordenar tus piezas y el 30% restante una vez emitido el Certificado de Revisión ZxZ, antes de la entrega o instalación.",
+    paymentPlanPayTodayLabel: "A pagar hoy (70%):",
+    paymentPlanRemaining30Label: "Saldo restante (30%):",
+    paymentPlanRemaining30DueHint: "Se paga al recibir el Certificado de Revisión en taller, antes de programar entrega o instalación.",
+    paymentPlanFullOrderTotalLabel: "Total del Pedido (100%):",
+    paymentPlanSplitActiveNotice: "Modalidad 70% / 30% activa: hoy transfieres únicamente el 70% de adelanto. El 30% restante se cancela en el resumen de tu pedido cuando las piezas obtengan el Certificado de Revisión ZxZ.",
+    paymentPlanDeposit70PaidLabel: "Adelanto 70% Confirmado",
+    paymentPlanDeposit70PendingLabel: "Adelanto 70% en Revisión",
+    paymentPlanBalance30PaidLabel: "Saldo 30% Confirmado (100% Cancelado)",
+    paymentPlanBalance30PendingLabel: "Saldo 30% Pendiente",
+    paymentPlanBalance30InReviewLabel: "Saldo 30% en Revisión",
+    paymentPlanStageTitle: "Pago del 30% Restante",
+    paymentPlanStageSub: "Saldo 30% antes de entrega/instalación",
+    paymentPlanPay30CardTitle: "Cancelar 30% Restante del Pedido",
+    paymentPlanPay30CardDesc: "¡Tus piezas ya cuentan con el Certificado de Revisión ZxZ! Realiza la transferencia del 30% restante y adjunta tu segundo comprobante para habilitar la programación de entrega o instalación.",
+    paymentPlanPay30LockedDesc: "El pago del 30% restante se habilitará automáticamente una vez que tus piezas lleguen al taller y obtengan el Certificado de Revisión ZxZ.",
+    paymentPlanPay30SubmitBtn: "Enviar Comprobante del 30% Restante",
+    paymentPlanPay30SubmittingBtn: "Enviando Comprobante del 30%...",
+    paymentPlanPay30SuccessMsg: "¡Comprobante del 30% recibido! Nuestro equipo validará los fondos en breve para habilitar la entrega o instalación.",
+    paymentPlanPay30InReviewTitle: "Comprobante del 30% en Verificación",
+    paymentPlanPay30InReviewDesc: "Recibimos tu comprobante del 30% restante. Una vez validado por el taller, recibirás tu comprobante oficial de cancelación total y podrás programar tu servicio.",
+    paymentPlanProof1Label: "Comprobante #1 — Adelanto 70%",
+    paymentPlanProof2Label: "Comprobante #2 — Saldo 30% Restante",
+    paymentPlanReceipt70Title: "COMPROBANTE OFICIAL DE ADELANTO (70%)",
+    paymentPlanReceipt30Title: "COMPROBANTE OFICIAL DE SALDO FINAL (30% — CANCELADO 100%)",
+    paymentPlanDevConfirm30Btn: "Confirmar Pago 30% → Programar Servicio",
+    paymentPlanDevReject30Btn: "Rechazar 30%",
+    paymentPlanDevUpload30Btn: "Subir Comprobante 30%",
   },
 
   en: {
@@ -6377,6 +6445,40 @@ export const translations: Record<Language, Translations> = {
     comboChoiceInStockBadge: "In Stock",
     comboChoiceSelectedOutOfStockNotice: "The selected product option in this combo is currently out of stock. Please select another available option or request a quote via WhatsApp.",
     comboChoiceProductLabel: "Selected option",
+    // Split Payment 70% / 30%
+    paymentPlanSectionTitle: "Parts Payment Option",
+    paymentPlanFullTitle: "Full Payment (100%)",
+    paymentPlanFullDesc: "Pay the entire parts total upfront in a single transfer.",
+    paymentPlanSplitTitle: "70% Upfront / 30% Balance",
+    paymentPlanSplitBadge: "70% TODAY • 30% ON ARRIVAL",
+    paymentPlanSplitDesc: "Pay 70% today to order your parts and the remaining 30% once the ZxZ Inspection Certificate is issued, prior to delivery or installation.",
+    paymentPlanPayTodayLabel: "Due today (70%):",
+    paymentPlanRemaining30Label: "Remaining balance (30%):",
+    paymentPlanRemaining30DueHint: "Due once the Workshop Check Certificate is issued, prior to scheduling delivery or installation.",
+    paymentPlanFullOrderTotalLabel: "Full Order Total (100%):",
+    paymentPlanSplitActiveNotice: "70% / 30% plan active: today you only transfer the 70% upfront deposit. The remaining 30% will be paid in your order overview once your parts receive the ZxZ Check Certificate.",
+    paymentPlanDeposit70PaidLabel: "70% Deposit Confirmed",
+    paymentPlanDeposit70PendingLabel: "70% Deposit Under Review",
+    paymentPlanBalance30PaidLabel: "30% Balance Confirmed (100% Paid)",
+    paymentPlanBalance30PendingLabel: "30% Balance Pending",
+    paymentPlanBalance30InReviewLabel: "30% Balance Under Review",
+    paymentPlanStageTitle: "30% Remaining Payment",
+    paymentPlanStageSub: "30% balance before delivery/install",
+    paymentPlanPay30CardTitle: "Pay Remaining 30% Balance",
+    paymentPlanPay30CardDesc: "Your parts now have the official ZxZ Check Certificate! Transfer the remaining 30% balance and upload your second proof of payment to unlock delivery or installation scheduling.",
+    paymentPlanPay30LockedDesc: "The remaining 30% balance payment will unlock automatically once your parts arrive at our workshop and receive the ZxZ Check Certificate.",
+    paymentPlanPay30SubmitBtn: "Submit 30% Balance Receipt",
+    paymentPlanPay30SubmittingBtn: "Submitting 30% Receipt...",
+    paymentPlanPay30SuccessMsg: "30% balance receipt received! Our team will verify your funds shortly to unlock delivery or installation.",
+    paymentPlanPay30InReviewTitle: "30% Balance Receipt Under Review",
+    paymentPlanPay30InReviewDesc: "We received your 30% balance payment proof. Once verified by our workshop, you will receive your official Paid-in-Full receipt and can schedule your service.",
+    paymentPlanProof1Label: "Proof #1 — 70% Upfront Deposit",
+    paymentPlanProof2Label: "Proof #2 — 30% Remaining Balance",
+    paymentPlanReceipt70Title: "OFFICIAL 70% DEPOSIT RECEIPT",
+    paymentPlanReceipt30Title: "OFFICIAL FINAL 30% BALANCE RECEIPT (100% PAID)",
+    paymentPlanDevConfirm30Btn: "Confirm 30% Payment → Program Service",
+    paymentPlanDevReject30Btn: "Reject 30%",
+    paymentPlanDevUpload30Btn: "Upload 30% Proof",
   },
 
 };

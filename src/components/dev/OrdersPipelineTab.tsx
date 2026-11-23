@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useLanguage } from "@/context/LanguageContext";
 import { formatCRC, formatUSD } from "@/lib/i18n";
 import { resolveOptionColorHex, resolveDualParameterConnection } from "@/lib/products";
+import { extractSplitPayment, isSplitPaymentOrder } from "@/lib/splitPayment";
 import {
   Search,
   RefreshCw,
@@ -196,6 +197,12 @@ export const WORKFLOW_STAGES = [
     labelEs: "En Taller para Revisión",
     labelEn: "In Warehouse to Check",
     color: "bg-orange-50 text-orange-800 border-orange-200",
+  },
+  {
+    id: "REMAINING_30_PAYMENT",
+    labelEs: "Pago del 30% Restante",
+    labelEn: "30% Remaining Payment",
+    color: "bg-amber-50 text-amber-900 border-amber-300",
   },
   {
     id: "PROGRAM_SERVICE",
@@ -451,10 +458,12 @@ export function OrdersPipelineTab({ onOrderDeleted, onOrderUpdated }: OrdersPipe
 
   // Rejection modal states
   const [rejectModalOrder, setRejectModalOrder] = useState<OrderData | null>(null);
-  const [rejectPaymentType, setRejectPaymentType] = useState<"ORDER" | "SERVICE" | "INSTALLATION">("ORDER");
+  const [rejectPaymentType, setRejectPaymentType] = useState<"ORDER" | "REMAINING_30" | "SERVICE" | "INSTALLATION">("ORDER");
   const [rejectionReason, setRejectionReason] = useState("");
   const [rejecting, setRejecting] = useState(false);
   const [rejectError, setRejectError] = useState<string | null>(null);
+  const [confirmingRem30Payment, setConfirmingRem30Payment] = useState(false);
+  const [uploadingRem30Proof, setUploadingRem30Proof] = useState(false);
 
   // Vehicle Return Delivery (50% Rate) configuration modal
   const [returnDeliveryOrder, setReturnDeliveryOrder] = useState<OrderData | null>(null);
@@ -580,10 +589,11 @@ export function OrdersPipelineTab({ onOrderDeleted, onOrderUpdated }: OrdersPipe
     return stage ? stage.color : "bg-slate-100 text-slate-700 border-slate-200";
   };
 
-  const getPredeterminedStagesForOrder = (order?: OrderData | { serviceType?: string; status?: string; items?: any; itemsJson?: any; installationCostCRC?: number; laborSubtotalCRC?: number } | null) => {
+  const getPredeterminedStagesForOrder = (order?: OrderData | { serviceType?: string; status?: string; items?: any; itemsJson?: any; installationCostCRC?: number; laborSubtotalCRC?: number; serviceDocumentsJson?: any } | null) => {
     if (!order) return WORKFLOW_STAGES;
     const category = normalizeServiceCategory(order?.serviceType);
     const skipInstallPayment = shouldSkipInstallationPayment(order, (order as any)?.installationCostCRC, (order as any)?.laborSubtotalCRC);
+    const isSplitOrder = isSplitPaymentOrder(order);
     const baseStageIds = [
       "COTIZACION",
       "PAYMENT_CONFIRMATION",
@@ -593,6 +603,7 @@ export function OrdersPipelineTab({ onOrderDeleted, onOrderUpdated }: OrdersPipe
       "SHIPPING_TO_CR",
       "IN_COSTA_RICA",
       "IN_WAREHOUSE_CHECK",
+      ...(isSplitOrder ? ["REMAINING_30_PAYMENT"] : []),
     ];
 
     let serviceStageIds: string[] = [];
@@ -632,6 +643,9 @@ export function OrdersPipelineTab({ onOrderDeleted, onOrderUpdated }: OrdersPipe
         try {
           docs = typeof order?.serviceDocumentsJson === "string" ? JSON.parse(order.serviceDocumentsJson) : (order?.serviceDocumentsJson || {});
         } catch {}
+        if (docs?.rejectionPaymentType === "REMAINING_30") {
+          return "REMAINING_30_PAYMENT";
+        }
         if (docs?.rejectionPaymentType === "SERVICE") {
           return "CONFIRM_SERVICE_PAYMENT";
         }
@@ -652,6 +666,8 @@ export function OrdersPipelineTab({ onOrderDeleted, onOrderUpdated }: OrdersPipe
       case "IN_COSTA_RICA":
         return "IN_WAREHOUSE_CHECK";
       case "IN_WAREHOUSE_CHECK":
+        return order && isSplitPaymentOrder(order) ? "REMAINING_30_PAYMENT" : "PROGRAM_SERVICE";
+      case "REMAINING_30_PAYMENT":
         return "PROGRAM_SERVICE";
       case "PROGRAM_SERVICE":
         return "CONFIRM_SERVICE_PAYMENT";
@@ -734,7 +750,9 @@ export function OrdersPipelineTab({ onOrderDeleted, onOrderUpdated }: OrdersPipe
       }
 
       const prefix =
-        rejectPaymentType === "SERVICE"
+        rejectPaymentType === "REMAINING_30"
+          ? "[Saldo 30% Rechazado]"
+          : rejectPaymentType === "SERVICE"
           ? "[Pago de Servicio Rechazado]"
           : rejectPaymentType === "INSTALLATION"
           ? "[Pago de Instalación Rechazado]"
@@ -868,6 +886,64 @@ export function OrdersPipelineTab({ onOrderDeleted, onOrderUpdated }: OrdersPipe
       alert("Error de conexión al confirmar pago de instalación.");
     } finally {
       setConfirmingInstallPayment(false);
+    }
+  };
+
+  const handleConfirmRemaining30Payment = async (targetOrder: OrderData) => {
+    setConfirmingRem30Payment(true);
+    try {
+      const res = await fetch(`/api/sys/orders/${targetOrder.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          confirmRemaining30Payment: true,
+          status: "PROGRAM_SERVICE",
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success && data.order) {
+        setOrders((prev) =>
+          prev.map((o) =>
+            o.id === targetOrder.id
+              ? {
+                  ...o,
+                  status: data.order.status,
+                  serviceDocumentsJson: data.order.serviceDocumentsJson,
+                }
+              : o
+          )
+        );
+        if (managingOrder && managingOrder.id === targetOrder.id) {
+          setManagingOrder((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  status: data.order.status,
+                  serviceDocumentsJson: data.order.serviceDocumentsJson,
+                }
+              : null
+          );
+          setManageForm((prev) => ({
+            ...prev,
+            status: data.order.status,
+          }));
+        }
+        onOrderUpdated?.();
+        setFeedback({
+          type: "success",
+          msg:
+            lang === "es"
+              ? "Saldo 30% confirmado. Recibo final enviado y pedido movido a Programar Servicio."
+              : "30% balance confirmed. Final receipt sent and order advanced to Program Service.",
+        });
+      } else {
+        alert(data.error || "Error al confirmar el pago del 30% restante.");
+      }
+    } catch (err) {
+      console.error("Error confirming 30% remaining payment:", err);
+      alert("Error de conexión al confirmar el pago del 30% restante.");
+    } finally {
+      setConfirmingRem30Payment(false);
     }
   };
 
@@ -1047,6 +1123,35 @@ export function OrdersPipelineTab({ onOrderDeleted, onOrderUpdated }: OrdersPipe
             lang === "es"
               ? "No se puede avanzar el pedido: se requiere adjuntar al menos un comprobante de compra de repuestos (proveedor) en el estado 'Por Ordenar Piezas (*un)'."
               : "Cannot advance order: at least one supplier purchase proof receipt must be attached in the 'Need to Get Order (*un)' state.",
+        });
+        handleOpenManageOrder(order);
+        return;
+      }
+    }
+
+    // RULE 1B (SPLIT 70/30): Can't advance to PROGRAM_SERVICE or beyond without 30% remaining payment proof
+    const splitForGuard = extractSplitPayment(order);
+    const stagesRequiring30Paid = [
+      "PROGRAM_SERVICE",
+      "CONFIRM_SERVICE_PAYMENT",
+      "WAITING_ON_DELIVERY",
+      "PICKUP_DATE_SET",
+      "HOME_INSTALL_SET",
+      "INSTALLING",
+      "INSTALLATION_PAYMENT",
+      "READY_TO_SET_RETURN_DATE",
+      "READY_FOR_PICKUP",
+      "READY_TO_PICK_UP",
+      "COMPLETED",
+    ];
+    if (splitForGuard && stagesRequiring30Paid.includes(targetUpper)) {
+      if (!splitForGuard.remaining30ProofUrl || !splitForGuard.remaining30ProofUrl.trim()) {
+        setFeedback({
+          type: "error",
+          msg:
+            lang === "es"
+              ? "No se puede avanzar a 'Programar Servicio': este pedido es Plan 70%/30% y requiere adjuntar el comprobante del 30% restante."
+              : "Cannot advance to 'Program Service': this is a 70%/30% split order and requires the remaining 30% payment proof.",
         });
         handleOpenManageOrder(order);
         return;
@@ -1877,17 +1982,18 @@ export function OrdersPipelineTab({ onOrderDeleted, onOrderUpdated }: OrdersPipe
     }
   };
 
-  // UPLOAD OR REPLACE PAYMENT PROOF AS STAFF (ORDER, SERVICE, OR INSTALLATION)
+  // UPLOAD OR REPLACE PAYMENT PROOF AS STAFF (ORDER, REMAINING 30%, SERVICE, OR INSTALLATION)
   const handleStaffUploadProof = async (
     e: React.ChangeEvent<HTMLInputElement>,
     targetOrder: OrderData,
-    proofField: "paymentProofUrl" | "servicePaymentProofUrl" | "installationPaymentProofUrl" = "paymentProofUrl"
+    proofField: "paymentProofUrl" | "remaining30ProofUrl" | "servicePaymentProofUrl" | "installationPaymentProofUrl" = "paymentProofUrl"
   ) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     if (proofField === "servicePaymentProofUrl") setUploadingServiceProof(true);
     else if (proofField === "installationPaymentProofUrl") setUploadingInstallProof(true);
+    else if (proofField === "remaining30ProofUrl") setUploadingRem30Proof(true);
     else setUploadingProof(true);
 
     try {
@@ -1930,12 +2036,14 @@ export function OrdersPipelineTab({ onOrderDeleted, onOrderUpdated }: OrdersPipe
         throw new Error(patchData.error || "Error al asociar comprobante al pedido");
       }
 
+      const nextDocsJson = patchData.order?.serviceDocumentsJson;
       setOrders((prev) =>
         prev.map((o) =>
           o.id === targetOrder.id
             ? {
                 ...o,
-                [proofField]: uploadedUrl,
+                ...(proofField !== "remaining30ProofUrl" ? { [proofField]: uploadedUrl } : {}),
+                ...(nextDocsJson !== undefined ? { serviceDocumentsJson: nextDocsJson } : {}),
                 ...(isAdvancingFromCotizacion ? { status: "PAYMENT_CONFIRMATION" } : {}),
               }
             : o
@@ -1946,16 +2054,19 @@ export function OrdersPipelineTab({ onOrderDeleted, onOrderUpdated }: OrdersPipe
           prev
             ? {
                 ...prev,
-                [proofField]: uploadedUrl,
+                ...(proofField !== "remaining30ProofUrl" ? { [proofField]: uploadedUrl } : {}),
+                ...(nextDocsJson !== undefined ? { serviceDocumentsJson: nextDocsJson } : {}),
                 ...(isAdvancingFromCotizacion ? { status: "PAYMENT_CONFIRMATION" } : {}),
               }
             : null
         );
-        setManageForm((prev) => ({
-          ...prev,
-          [proofField]: uploadedUrl,
-          ...(isAdvancingFromCotizacion ? { status: "PAYMENT_CONFIRMATION" } : {}),
-        }));
+        if (proofField !== "remaining30ProofUrl") {
+          setManageForm((prev) => ({
+            ...prev,
+            [proofField]: uploadedUrl,
+            ...(isAdvancingFromCotizacion ? { status: "PAYMENT_CONFIRMATION" } : {}),
+          }));
+        }
       }
       onOrderUpdated?.();
       setFeedback({
@@ -1977,6 +2088,7 @@ export function OrdersPipelineTab({ onOrderDeleted, onOrderUpdated }: OrdersPipe
     } finally {
       if (proofField === "servicePaymentProofUrl") setUploadingServiceProof(false);
       else if (proofField === "installationPaymentProofUrl") setUploadingInstallProof(false);
+      else if (proofField === "remaining30ProofUrl") setUploadingRem30Proof(false);
       else setUploadingProof(false);
       e.target.value = "";
     }
@@ -3008,14 +3120,18 @@ export function OrdersPipelineTab({ onOrderDeleted, onOrderUpdated }: OrdersPipe
   const renderRejectModal = () => {
     if (!rejectModalOrder) return null;
     const modalTitle =
-      rejectPaymentType === "SERVICE"
+      rejectPaymentType === "REMAINING_30"
+        ? (lang === "es" ? "Rechazar Comprobante del 30% Restante" : "Reject 30% Remaining Balance Receipt")
+        : rejectPaymentType === "SERVICE"
         ? (t.orderRejectServiceModalTitle || "Rechazar Comprobante de Servicio")
         : rejectPaymentType === "INSTALLATION"
         ? (t.orderRejectInstallModalTitle || "Rechazar Comprobante de Instalación")
         : (t.orderRejectModalTitle || "Rechazar Comprobante de Pago");
 
     const modalPlaceholder =
-      rejectPaymentType === "SERVICE"
+      rejectPaymentType === "REMAINING_30"
+        ? (lang === "es" ? "Ej: El monto no coincide con el 30% restante, comprobante ilegible o fondos no reflejados..." : "E.g.: Amount does not match remaining 30%, receipt unreadable, or transfer not found...")
+        : rejectPaymentType === "SERVICE"
         ? (lang === "es" ? "Ej: Comprobante ilegible, monto no coincide con la tarifa de traslado o no se refleja en la cuenta bancaria..." : "E.g.: Receipt unreadable, amount does not match transport rate or transfer not found...")
         : rejectPaymentType === "INSTALLATION"
         ? (lang === "es" ? "Ej: Comprobante ilegible, falta monto de piezas adicionales o mano de obra, o no se refleja en la cuenta..." : "E.g.: Receipt unreadable, missing amount for extra parts or labor, or transfer not found...")
@@ -4521,6 +4637,187 @@ export function OrdersPipelineTab({ onOrderDeleted, onOrderUpdated }: OrdersPipe
               )}
             </div>
 
+            {/* Split Payment 70% / 30% — Proof #2 & Confirmation Card */}
+            {(() => {
+              const splitInfo = extractSplitPayment(managingOrder);
+              if (!splitInfo) return null;
+              return (
+                <div className="p-5 bg-white rounded-3xl border-2 border-amber-300 shadow-xs space-y-4">
+                  <div className="flex items-center justify-between border-b border-amber-100 pb-2 gap-2 flex-wrap">
+                    <h3 className="text-xs font-extrabold uppercase tracking-wider text-amber-950 flex items-center gap-2">
+                      <CreditCard className="w-4 h-4 text-amber-600" />
+                      <span>
+                        {lang === "es"
+                          ? "Plan 70% / 30% — Comprobante #2 (Saldo 30%)"
+                          : "70% / 30% Plan — Proof #2 (30% Balance)"}
+                      </span>
+                    </h3>
+                    {splitInfo.remaining30Confirmed ? (
+                      <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                        {lang === "es" ? "30% Confirmado (100% Pagado)" : "30% Confirmed (100% Paid)"}
+                      </span>
+                    ) : splitInfo.remaining30ProofUrl ? (
+                      <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-1">
+                        <Clock className="w-3 h-3 text-amber-700" />
+                        {lang === "es" ? "Comprobante 30% en Revisión" : "30% Proof Under Review"}
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                        {lang === "es" ? "Pendiente de Pago 30%" : "Awaiting 30% Payment"}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Financial Split Breakdown */}
+                  <div className="grid grid-cols-3 gap-2 text-center bg-slate-50 border border-slate-200 rounded-2xl p-3 text-xs">
+                    <div>
+                      <div className="text-[10px] font-bold uppercase text-slate-500">
+                        {lang === "es" ? "Total 100%" : "Full 100%"}
+                      </div>
+                      <div className="font-mono font-black text-slate-900">
+                        {formatCRC(splitInfo.totalOrderCRC)}
+                      </div>
+                    </div>
+                    <div className="border-x border-slate-200">
+                      <div className="text-[10px] font-bold uppercase text-emerald-700">
+                        {lang === "es" ? "Adelanto 70%" : "70% Deposit"}
+                      </div>
+                      <div className="font-mono font-black text-emerald-700">
+                        {formatCRC(splitInfo.initial70AmountCRC)}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] font-bold uppercase text-amber-700">
+                        {lang === "es" ? "Saldo 30%" : "30% Balance"}
+                      </div>
+                      <div className="font-mono font-black text-amber-800">
+                        {formatCRC(splitInfo.remaining30AmountCRC)}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Proof #2 Preview or Staff Upload */}
+                  {splitInfo.remaining30ProofUrl ? (
+                    <div className="space-y-3">
+                      <div
+                        onClick={() =>
+                          setPreviewProofModal({
+                            orderNumber: managingOrder.orderNumber,
+                            status: managingOrder.status,
+                            title: t.paymentPlanProof2Label,
+                            subtitle: managingOrder.customerName || "Cliente",
+                            imageUrl: splitInfo.remaining30ProofUrl!,
+                            targetAmountLabel: t.paymentPlanRemaining30Label,
+                            targetAmountCRC: splitInfo.remaining30AmountCRC,
+                            paidCurrency: splitInfo.remaining30Currency || "CRC",
+                          })
+                        }
+                        className="group relative cursor-pointer overflow-hidden rounded-2xl border border-amber-200 bg-slate-950 p-2 flex items-center justify-center max-h-56 transition hover:border-amber-400"
+                      >
+                        <img
+                          src={splitInfo.remaining30ProofUrl}
+                          alt={`Comprobante 30% #${managingOrder.orderNumber}`}
+                          className="max-h-52 w-auto object-contain rounded-xl transition duration-300 group-hover:scale-105"
+                        />
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                          <span className="px-3 py-1.5 rounded-xl bg-white text-slate-900 text-xs font-bold shadow-md flex items-center gap-1.5">
+                            <Eye className="w-3.5 h-3.5" />
+                            <span>{t.orderPaymentProofOpenFull}</span>
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                        <div className="text-[11px] text-slate-600">
+                          {splitInfo.remaining30Reference && (
+                            <span className="font-mono font-bold text-slate-900 mr-2">
+                              Ref: #{splitInfo.remaining30Reference}
+                            </span>
+                          )}
+                          <span>
+                            {splitInfo.remaining30Currency === "USD" ? "USD ($)" : "CRC (₡)"}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <a
+                            href={splitInfo.remaining30ProofUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold flex items-center gap-1.5 transition"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5 text-slate-500" />
+                            <span>{t.orderPaymentProofNewTab}</span>
+                          </a>
+                          <label className="cursor-pointer px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold flex items-center gap-1.5 transition">
+                            <Upload className="w-3.5 h-3.5 text-slate-500" />
+                            <span>{uploadingRem30Proof ? t.devSaving : "Cambiar"}</span>
+                            <input
+                              type="file"
+                              accept="image/*,application/pdf"
+                              disabled={uploadingRem30Proof}
+                              onChange={(e) => handleStaffUploadProof(e, managingOrder, "remaining30ProofUrl")}
+                              className="hidden"
+                            />
+                          </label>
+                        </div>
+                      </div>
+
+                      {!splitInfo.remaining30Confirmed && (
+                        <div className="flex flex-wrap gap-2 pt-2 border-t border-amber-100">
+                          <button
+                            type="button"
+                            disabled={confirmingRem30Payment}
+                            onClick={() => handleConfirmRemaining30Payment(managingOrder)}
+                            className="flex-1 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-extrabold text-xs transition shadow-sm flex items-center justify-center gap-1.5 cursor-pointer"
+                          >
+                            <CheckCircle2 className="w-4 h-4" />
+                            <span>
+                              {confirmingRem30Payment
+                                ? t.devSaving
+                                : t.paymentPlanDevConfirm30Btn}
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setRejectPaymentType("REMAINING_30");
+                              setRejectModalOrder(managingOrder);
+                              setRejectionReason("");
+                              setRejectError(null);
+                            }}
+                            className="px-4 py-2.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 font-bold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
+                          >
+                            <AlertTriangle className="w-4 h-4 text-rose-600" />
+                            <span>{t.paymentPlanDevReject30Btn}</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-200 text-xs text-amber-950 space-y-3">
+                      <p className="text-[11px] leading-relaxed">
+                        {lang === "es"
+                          ? "Aún no se ha subido el comprobante del 30% restante. El cliente puede subirlo desde su resumen de orden una vez emitido el Certificado ZxZ, o el staff puede adjuntarlo aquí directamente."
+                          : "The remaining 30% payment proof has not been uploaded yet. The customer can upload it from their order overview once certified, or staff can attach it directly here."}
+                      </p>
+                      <label className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs transition shadow-xs">
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>{uploadingRem30Proof ? t.devSaving : t.paymentPlanDevUpload30Btn}</span>
+                        <input
+                          type="file"
+                          accept="image/*,application/pdf"
+                          disabled={uploadingRem30Proof}
+                          onChange={(e) => handleStaffUploadProof(e, managingOrder, "remaining30ProofUrl")}
+                          className="hidden"
+                        />
+                      </label>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
             {/* =========================================================================
                 SUPPLIER PURCHASE PROOFS CARD (STAFF ONLY *un)
                 User Requirement: Staff needs to add proof products have been purchased (multiple images).
@@ -5486,6 +5783,47 @@ export function OrdersPipelineTab({ onOrderDeleted, onOrderUpdated }: OrdersPipe
                     >
                       {getStageLabel(order.status)}
                     </span>
+
+                    {/* 70% / 30% SPLIT PAYMENT BADGE */}
+                    {(() => {
+                      const sp = extractSplitPayment(order);
+                      if (!sp) return null;
+                      return (
+                        <span
+                          className={`inline-flex items-center gap-1.5 text-[11px] font-extrabold px-2.5 py-0.5 rounded-full border shadow-2xs ${
+                            sp.remaining30Confirmed
+                              ? "bg-emerald-50 text-emerald-900 border-emerald-300"
+                              : sp.remaining30ProofUrl
+                              ? "bg-amber-100 text-amber-950 border-amber-400 animate-pulse"
+                              : "bg-blue-50 text-[#0052CC] border-[#C2DBFE]"
+                          }`}
+                          title={
+                            sp.remaining30Confirmed
+                              ? lang === "es"
+                                ? "Plan 70%/30% — 100% cancelado"
+                                : "70%/30% Plan — 100% paid"
+                              : sp.remaining30ProofUrl
+                              ? lang === "es"
+                                ? "Plan 70%/30% — Comprobante 30% listo para revisar"
+                                : "70%/30% Plan — 30% proof ready for review"
+                              : lang === "es"
+                              ? `Plan 70%/30% — Saldo 30% pendiente (${formatCRC(sp.remaining30AmountCRC)})`
+                              : `70%/30% Plan — 30% balance pending (${formatCRC(sp.remaining30AmountCRC)})`
+                          }
+                        >
+                          <CreditCard className="w-3.5 h-3.5 shrink-0" />
+                          <span>
+                            {sp.remaining30Confirmed
+                              ? "70/30 • 100% ✓"
+                              : sp.remaining30ProofUrl
+                              ? lang === "es"
+                                ? "70/30 • Revisar 30%"
+                                : "70/30 • Review 30%"
+                              : "70/30"}
+                          </span>
+                        </span>
+                      );
+                    })()}
 
                     {/* BAC COMPRA CLICK BADGE */}
                     {Boolean(

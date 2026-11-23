@@ -5,6 +5,7 @@ import { getStealthSession } from "@/lib/stealthAuth";
 import { checkRateLimit, createRateLimitResponse, getClientIp } from "@/lib/rateLimit";
 import { checkAndAcquireIdempotency, completeIdempotency, releaseIdempotency } from "@/lib/idempotency";
 import { isValidStorageUrl, sanitizePlainText } from "@/lib/security/inputSanitizer";
+import { canPayRemaining30, extractSplitPayment } from "@/lib/splitPayment";
 
 export async function POST(
   request: Request,
@@ -40,6 +41,7 @@ export async function POST(
       paidCurrency = "CRC",
       paymentProofUrl,
       claimToken,
+      paymentPhase,
     } = body;
 
     if (paymentProofUrl && !isValidStorageUrl(paymentProofUrl)) {
@@ -106,18 +108,6 @@ export async function POST(
 
     const normalizedCurrency = String(paidCurrency || "CRC").toUpperCase() === "USD" ? "USD" : "CRC";
 
-    const systemPaymentComment = {
-      id: `cmt-pay-${Date.now()}`,
-      authorRole: "SYSTEM",
-      authorName: "Sistema ZxZ Mods",
-      text: `Pago registrado mediante ${methodNameLabel} (${normalizedCurrency === "USD" ? "USD ($)" : "CRC (₡)"}).${
-        sanitizedReference ? ` Comprobante / Ref: #${sanitizedReference}.` : ""
-      }${sanitizedPhone ? ` Teléfono: ${sanitizedPhone}.` : ""}${sanitizedNotes ? ` Nota: ${sanitizedNotes}` : ""} Estado actualizado a comprobante en verificación.`,
-      createdAt: new Date().toISOString(),
-    };
-
-    const updatedComments = [...existingComments, systemPaymentComment];
-
     // PM-02: Support linear resumption after payment rejection
     let serviceDocs: any = {};
     if (order.serviceDocumentsJson) {
@@ -129,11 +119,62 @@ export async function POST(
       } catch {}
     }
 
-    const isCurrentRejected = (order.status || "").toUpperCase() === "PAYMENT_REJECTED";
+    const currentStatusUpper = (order.status || "").toUpperCase();
+    const isCurrentRejected = currentStatusUpper === "PAYMENT_REJECTED";
     const rejectionType = serviceDocs.rejectionPaymentType;
+
+    const isRemaining30Submission =
+      String(paymentPhase || "").toUpperCase() === "REMAINING_30" ||
+      (isCurrentRejected && rejectionType === "REMAINING_30") ||
+      currentStatusUpper === "REMAINING_30_PAYMENT";
+
+    if (isRemaining30Submission) {
+      const splitData = extractSplitPayment(order);
+      if (!splitData) {
+        if (idempotencyKey) releaseIdempotency(idempotencyKey);
+        return NextResponse.json(
+          { success: false, error: "Esta orden no corresponde a un plan de pago fraccionado 70% / 30%." },
+          { status: 400 }
+        );
+      }
+      if (!canPayRemaining30(order) && !isStaff) {
+        if (idempotencyKey) releaseIdempotency(idempotencyKey);
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "El pago del 30% restante solo está habilitado una vez que las piezas cuenten con el Certificado de Revisión ZxZ.",
+          },
+          { status: 400 }
+        );
+      }
+      if (!paymentProofUrl || !String(paymentProofUrl).trim()) {
+        if (idempotencyKey) releaseIdempotency(idempotencyKey);
+        return NextResponse.json(
+          { success: false, error: "Debes adjuntar el comprobante de pago del 30% restante." },
+          { status: 400 }
+        );
+      }
+    }
+
+    const systemPaymentComment = {
+      id: `cmt-pay-${Date.now()}`,
+      authorRole: "SYSTEM",
+      authorName: "Sistema ZxZ Mods",
+      text: isRemaining30Submission
+        ? `Pago del 30% restante registrado mediante ${methodNameLabel} (${normalizedCurrency === "USD" ? "USD ($)" : "CRC (₡)"}).${
+            sanitizedReference ? ` Comprobante / Ref: #${sanitizedReference}.` : ""
+          }${sanitizedNotes ? ` Nota: ${sanitizedNotes}` : ""} Comprobante #2 adjunto en revisión.`
+        : `Pago registrado mediante ${methodNameLabel} (${normalizedCurrency === "USD" ? "USD ($)" : "CRC (₡)"}).${
+            sanitizedReference ? ` Comprobante / Ref: #${sanitizedReference}.` : ""
+          }${sanitizedPhone ? ` Teléfono: ${sanitizedPhone}.` : ""}${sanitizedNotes ? ` Nota: ${sanitizedNotes}` : ""} Estado actualizado a comprobante en verificación.`,
+      createdAt: new Date().toISOString(),
+    };
+
+    const updatedComments = [...existingComments, systemPaymentComment];
+
     let targetStatus = "PAYMENT_CONFIRMATION";
     const updatePayload: any = {
-      paidCurrency: normalizedCurrency,
       commentsJson: JSON.stringify(updatedComments),
       customerPhone: sanitizedPhone || order.customerPhone,
       notes: sanitizedNotes ? (order.notes ? `${order.notes} | ${sanitizedNotes}` : sanitizedNotes) : order.notes,
@@ -141,7 +182,25 @@ export async function POST(
       updatedAt: new Date(),
     };
 
-    if (rejectionType === "SERVICE") {
+    if (!isRemaining30Submission) {
+      updatePayload.paidCurrency = normalizedCurrency;
+    }
+
+    if (isRemaining30Submission) {
+      targetStatus = "REMAINING_30_PAYMENT";
+      const existingSplit = extractSplitPayment(order)!;
+      serviceDocs.paymentPlan = "SPLIT_70_30";
+      serviceDocs.splitPayment = {
+        ...existingSplit,
+        remaining30ProofUrl: String(paymentProofUrl),
+        remaining30PaidAt: new Date().toISOString(),
+        remaining30Currency: normalizedCurrency,
+        remaining30Reference: sanitizedReference || existingSplit.remaining30Reference || null,
+        remaining30Rejected: false,
+        remaining30RejectionReason: null,
+      };
+      // IMPORTANT: Preserve order.paymentProofUrl (70% upfront proof #1) untouched!
+    } else if (rejectionType === "SERVICE") {
       targetStatus = "CONFIRM_SERVICE_PAYMENT";
       serviceDocs.servicePaymentRejected = false;
       serviceDocs.servicePaymentReceiptUrl = paymentProofUrl ? String(paymentProofUrl) : order.servicePaymentProofUrl;

@@ -18,6 +18,7 @@ import { isPlatformOrVehicleMatch, formatModelWithYear, isUniversalFit } from "@
 import { Skeleton } from "@/components/ui/Skeleton";
 import { PreCheckoutOptimizationModal } from "@/components/checkout/PreCheckoutOptimizationModal";
 import { ComboSwapOpportunity, RelatedPartSuggestion } from "@/app/api/cart/smart-checkout/route";
+import { PaymentPlanSelector } from "@/components/cart/PaymentPlanSelector";
 import {
   ShoppingCart,
   ArrowLeft,
@@ -67,6 +68,10 @@ export default function CartPage() {
     laborSubtotalUSD,
     finalLaborSubtotalUSD,
     totalUSD,
+    paymentPlan,
+    setPaymentPlan,
+    upfrontPayableCRC,
+    upfrontPayableUSD,
     formatPrice,
     generateWhatsAppLink,
     createOrderFromCart,
@@ -804,6 +809,14 @@ export default function CartPage() {
                 )}
 
 
+                {/* Payment Plan Selector: 100% Full vs 70% Upfront / 30% Balance */}
+                <PaymentPlanSelector
+                  totalCRC={partsSubtotal}
+                  paymentPlan={paymentPlan}
+                  onChange={setPaymentPlan}
+                  formatPrice={formatPrice}
+                />
+
                 {/* Primary CTA: Checkout (Transferencia Bancaria / SINPE Móvil) */}
                 <button
                   type="button"
@@ -819,8 +832,16 @@ export default function CartPage() {
                         <Landmark className="w-5 h-5 text-white" />
                       </div>
                     )}
-                    <div className="text-sm font-black tracking-wide leading-tight text-white drop-shadow-xs">
-                      {t.cartCheckout}
+                    <div>
+                      <div className="text-sm font-black tracking-wide leading-tight text-white drop-shadow-xs">
+                        {t.cartCheckout}
+                      </div>
+                      {paymentPlan === "SPLIT_70_30" && (
+                        <div className="text-[11px] font-bold text-white/90 normal-case tracking-normal mt-0.5">
+                          {lang === "es" ? "Adelanto 70% hoy:" : "70% deposit today:"}{" "}
+                          <span className="font-mono font-black">{formatPrice(upfrontPayableCRC)}</span>
+                        </div>
+                      )}
                     </div>
                   </div>
                   <div className="w-8 h-8 rounded-lg bg-white/15 flex items-center justify-center group-hover:bg-white/25 group-hover:translate-x-1 transition flex-shrink-0">

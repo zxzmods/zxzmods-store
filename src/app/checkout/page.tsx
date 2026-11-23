@@ -42,6 +42,8 @@ import { OFFICIAL_LEGAL_DOCS } from "@/types/document";
 import { COMPANY_CONFIG } from "@/config/company";
 import { ComboSwapOpportunity, RelatedPartSuggestion } from "@/app/api/cart/smart-checkout/route";
 import { useGarage } from "@/context/GarageContext";
+import { computeSplitPaymentAmounts } from "@/lib/splitPayment";
+import { PaymentPlanSelector } from "@/components/cart/PaymentPlanSelector";
 
 function formatIbanDisplay(iban: string): string {
   if (!iban) return "";
@@ -62,6 +64,8 @@ export default function CheckoutPage() {
     clearCart,
     clearActiveQuotation,
     sellRate,
+    paymentPlan,
+    setPaymentPlan,
     swapItemsForCombo,
     addItemSilently,
   } = useCart();
@@ -152,8 +156,15 @@ export default function CheckoutPage() {
   // 13% IVA portion included in the price (No additional surcharge)
   const facturaIncludedTaxCRC = requestFactura ? Math.round(subtotalAfterDiscountCRC - (subtotalAfterDiscountCRC / 1.13)) : 0;
 
-  // Final payable amount (IVA is already included, so NO +13% is added to the total)
-  const finalPayableCRC = subtotalAfterDiscountCRC;
+  // Final full order total (IVA is already included, so NO +13% is added to the total)
+  const fullOrderTotalCRC = subtotalAfterDiscountCRC;
+  const splitAmounts = useMemo(
+    () => computeSplitPaymentAmounts(fullOrderTotalCRC),
+    [fullOrderTotalCRC]
+  );
+  const isSplitPayment = paymentPlan === "SPLIT_70_30";
+  const finalPayableCRC = isSplitPayment ? splitAmounts.initial70AmountCRC : fullOrderTotalCRC;
+  const remaining30CRC = isSplitPayment ? splitAmounts.remaining30AmountCRC : 0;
   const finalPayableUSD = sellRate > 0 ? finalPayableCRC / sellRate : 0;
 
   const handleApplyDiscount = async (e?: React.FormEvent) => {
@@ -397,7 +408,9 @@ export default function CheckoutPage() {
       // Step 2: Create order with PAYMENT_CONFIRMATION status (never charge install in cart checkout)
       const orderBody = {
         items,
-        totalCRC: finalPayableCRC,
+        totalCRC: fullOrderTotalCRC,
+        clientClaimedTotalCRC: fullOrderTotalCRC,
+        paymentPlan,
         partsSubtotalCRC: partsSubtotal,
         laborSubtotalCRC: 0,
         status: "PAYMENT_CONFIRMATION",
@@ -1055,22 +1068,58 @@ export default function CheckoutPage() {
                   </div>
                 )}
 
+                {/* Payment Plan Selector / Confirmation inside Checkout */}
+                <div className="pt-2">
+                  <PaymentPlanSelector
+                    totalCRC={fullOrderTotalCRC}
+                    paymentPlan={paymentPlan}
+                    onChange={setPaymentPlan}
+                    formatPrice={formatPrice}
+                    compact
+                  />
+                </div>
+
                 {/* Total Line with highlight */}
-                <div className="pt-3 border-t border-slate-200 flex justify-between items-baseline">
-                  <div>
-                    <span className="text-base font-extrabold text-[#0A2540]">
-                      {t.cartTotal ||
-                        (lang === "es" ? "Total a Pagar:" : "Total Amount to Pay:")}
-                    </span>
-                    <div className="text-[11px] text-slate-500 font-mono mt-0.5">
-                      {currency === "USD"
-                        ? `Equivalente en Colones: ₡${formatCRC(finalPayableCRC)} (TC: ₡${sellRate.toFixed(2)})`
-                        : `Equivalente en Dólares: $${formatUSD(finalPayableUSD)} USD (TC: ₡${sellRate.toFixed(2)})`}
+                <div className="pt-3 border-t border-slate-200 space-y-2">
+                  {isSplitPayment && (
+                    <>
+                      <div className="flex justify-between items-center text-xs text-slate-600">
+                        <span className="font-semibold">{t.paymentPlanFullOrderTotalLabel}</span>
+                        <span className="font-mono font-bold text-slate-800">
+                          {formatPrice(fullOrderTotalCRC)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center text-xs text-emerald-700 bg-emerald-50/70 px-2.5 py-1.5 rounded-xl border border-emerald-200/80">
+                        <span className="font-semibold">{t.paymentPlanRemaining30Label}</span>
+                        <span className="font-mono font-bold">
+                          {formatPrice(remaining30CRC)}
+                        </span>
+                      </div>
+                    </>
+                  )}
+                  <div className="flex justify-between items-baseline">
+                    <div>
+                      <span className="text-base font-extrabold text-[#0A2540]">
+                        {isSplitPayment
+                          ? t.paymentPlanPayTodayLabel
+                          : t.cartTotal ||
+                            (lang === "es" ? "Total a Pagar:" : "Total Amount to Pay:")}
+                      </span>
+                      <div className="text-[11px] text-slate-500 font-mono mt-0.5">
+                        {currency === "USD"
+                          ? `Equivalente en Colones: ₡${formatCRC(finalPayableCRC)} (TC: ₡${sellRate.toFixed(2)})`
+                          : `Equivalente en Dólares: $${formatUSD(finalPayableUSD)} USD (TC: ₡${sellRate.toFixed(2)})`}
+                      </div>
+                    </div>
+                    <div className="text-2xl font-black font-mono text-[#0052CC]">
+                      {formatPrice(finalPayableCRC)}
                     </div>
                   </div>
-                  <div className="text-2xl font-black font-mono text-[#0052CC]">
-                    {formatPrice(finalPayableCRC)}
-                  </div>
+                  {isSplitPayment && (
+                    <div className="p-2.5 rounded-xl bg-[#EBF3FC] border border-[#C2DBFE] text-[11px] text-[#0A2540] leading-snug font-medium">
+                      {t.paymentPlanSplitActiveNotice}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

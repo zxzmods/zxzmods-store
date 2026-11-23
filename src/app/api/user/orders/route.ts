@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCustomerSession } from "@/lib/customerAuth";
 import { cleanExpiredQuotations, generateOrderNumber } from "@/lib/orders";
+import { createInitialSplitPaymentData } from "@/lib/splitPayment";
 
 export async function GET() {
   try {
@@ -416,6 +417,11 @@ export async function POST(request: Request) {
       } else if (!finalNotes.includes("BAC Compra Click")) {
         finalNotes = `${finalNotes} | ${bacTag}`;
       }
+    }
+
+    if (body.paymentPlan === "SPLIT_70_30" && !isBacRequested) {
+      docObj.paymentPlan = "SPLIT_70_30";
+      docObj.splitPayment = createInitialSplitPaymentData(resolvedPartsSubtotal || resolvedTotal);
     }
 
     const newOrder = await prisma.order.create({

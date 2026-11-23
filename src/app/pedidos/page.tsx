@@ -29,6 +29,7 @@ import {
   isInstallationPaymentPaidOrConfirmed,
   isRejectedPaymentCorrected,
 } from "@/lib/orderWorkflow";
+import { extractSplitPayment } from "@/lib/splitPayment";
 import {
   ShoppingBag,
   ShoppingCart,
@@ -462,15 +463,29 @@ export default function PedidosPage() {
                 (order as any).laborSubtotalCRC
               );
               const isPaidInstallation = isInstallationPaymentPaidOrConfirmed(order);
+              const splitInfo = extractSplitPayment(order);
+              const isSplitOrder = Boolean(splitInfo);
+              const programServiceStepNum = isSplitOrder ? 6 : 5;
               const currentStepIndex = isQuote
                 ? 1 // Cotizaciones start at step 1
-                : getCustomerOrderStepIndex(order.status, order.serviceType, skipInstallationPayment, (order as any).serviceDocumentsJson, isPaidInstallation);
+                : getCustomerOrderStepIndex(
+                    order.status,
+                    order.serviceType,
+                    skipInstallationPayment,
+                    (order as any).serviceDocumentsJson,
+                    isPaidInstallation,
+                    isSplitOrder
+                  );
 
-              // Program service check (Step 5)
-              const isProgramService = !isQuote && !isRejected && order.status?.toUpperCase() !== "CONFIRM_SERVICE_PAYMENT" && (
-                order.status?.toUpperCase() === "PROGRAM_SERVICE" ||
-                currentStepIndex === 5
-              );
+              // Program service check (Step 5, or Step 6 for 70/30 split orders once 30% is confirmed)
+              const isProgramService =
+                !isQuote &&
+                !isRejected &&
+                order.status?.toUpperCase() !== "CONFIRM_SERVICE_PAYMENT" &&
+                order.status?.toUpperCase() !== "REMAINING_30_PAYMENT" &&
+                (!isSplitOrder || Boolean(splitInfo?.remaining30Confirmed)) &&
+                (order.status?.toUpperCase() === "PROGRAM_SERVICE" ||
+                  currentStepIndex === programServiceStepNum);
 
               // Payment confirmation status check
               const isPaidOrBeyond = isPaymentConfirmedOrMore(order.status);
@@ -751,8 +766,8 @@ export default function PedidosPage() {
                       /* Placed Order Stepper (Progressive reveal up to Programar Servicio until scheduled) */
                       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-flow-col lg:auto-cols-fr gap-3">
                         {(() => {
-                          const isServiceProgrammed = Boolean((order as any).isServiceScheduled || currentStepIndex > 5);
-                          const stagesForOrder = getCustomerOrderStages(order.serviceType, isServiceProgrammed, skipInstallationPayment, isPaidInstallation);
+                          const isServiceProgrammed = Boolean((order as any).isServiceScheduled || currentStepIndex > programServiceStepNum);
+                          const stagesForOrder = getCustomerOrderStages(order.serviceType, isServiceProgrammed, skipInstallationPayment, isPaidInstallation, isSplitOrder);
                           return stagesForOrder.map((step) => {
                             const isDone = currentStepIndex > step.stepNum;
                             const isCurrent = currentStepIndex === step.stepNum;

@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { computeProductLivePricing } from "@/lib/productPricing";
 import { getLiveExchangeRate } from "@/lib/exchangeRate";
+import { extractSplitPayment } from "@/lib/splitPayment";
 
 export const MONTH_NAMES_ES = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -143,10 +144,17 @@ export async function syncMonthlyClosure(month: number, year: number, persist = 
         totalDiscountsCRC += discountCRC;
       }
 
-      const partsTotalCRC = Math.max(
+      const rawPartsTotalCRC = Math.max(
         0,
         (Number(order.partsSubtotalCRC) || Number(order.totalCRC) || 0) - discountCRC
       );
+      const splitData = extractSplitPayment(order);
+      // For 70/30 split orders, count only the 70% confirmed deposit until the remaining 30% is confirmed
+      const partsTotalCRC = splitData
+        ? splitData.remaining30Confirmed
+          ? rawPartsTotalCRC
+          : splitData.initial70AmountCRC
+        : rawPartsTotalCRC;
       if (partsTotalCRC > 0) {
         const vat = calculateReverseVat(partsTotalCRC);
         totalSalesSubtotal += vat.subtotal;

@@ -12,6 +12,7 @@ import {
 } from "@/lib/orderStepEmails";
 import { COMPANY_CONFIG } from "@/config/company";
 import { generateSecureClaimToken } from "@/lib/orders";
+import { extractSplitPayment } from "@/lib/splitPayment";
 
 export async function PATCH(
   request: Request,
@@ -133,6 +134,38 @@ export async function PATCH(
             {
               success: false,
               error: "No se puede avanzar el pedido desde 'Por Ordenar Piezas (*un)': se requiere adjuntar al menos un comprobante de compra de repuestos (proveedor).",
+            },
+            { status: 400 }
+          );
+        }
+      }
+
+      // RULE 1B (SPLIT 70/30): Can't advance to PROGRAM_SERVICE or beyond without 30% remaining payment proof
+      const existingSplitOrder = extractSplitPayment(existingOrder);
+      const stagesRequiring30Paid = [
+        "PROGRAM_SERVICE",
+        "CONFIRM_SERVICE_PAYMENT",
+        "WAITING_ON_DELIVERY",
+        "PICKUP_DATE_SET",
+        "HOME_INSTALL_SET",
+        "INSTALLING",
+        "INSTALLATION_PAYMENT",
+        "READY_TO_SET_RETURN_DATE",
+        "READY_FOR_PICKUP",
+        "READY_TO_PICK_UP",
+        "COMPLETED",
+      ];
+      if (existingSplitOrder && stagesRequiring30Paid.includes(targetUpper)) {
+        const effectiveRem30Proof =
+          body.remaining30ProofUrl !== undefined
+            ? body.remaining30ProofUrl
+            : existingSplitOrder.remaining30ProofUrl;
+        if (!effectiveRem30Proof || !String(effectiveRem30Proof).trim()) {
+          return NextResponse.json(
+            {
+              success: false,
+              error:
+                "No se puede avanzar a 'Programar Servicio': este pedido es Plan 70%/30% y requiere adjuntar y confirmar el comprobante del 30% restante en la etapa 'Pago del 30% Restante'.",
             },
             { status: 400 }
           );
@@ -298,7 +331,123 @@ export async function PATCH(
       currentDocs.installationPaymentRejected = false;
       updateData.serviceDocumentsJson = JSON.stringify(currentDocs);
     }
-    if (body.rejectPaymentType === "SERVICE") {
+
+    // Staff upload of 30% remaining payment proof (preserves paymentProofUrl for 70% deposit!)
+    if (body.remaining30ProofUrl !== undefined) {
+      const splitData = extractSplitPayment(existingOrder);
+      if (splitData) {
+        let currentDocs: any = {};
+        try {
+          const baseDoc = updateData.serviceDocumentsJson || existingOrder.serviceDocumentsJson;
+          currentDocs = typeof baseDoc === "string" ? JSON.parse(baseDoc) : (baseDoc || {});
+        } catch {}
+        currentDocs.paymentPlan = "SPLIT_70_30";
+        currentDocs.splitPayment = {
+          ...splitData,
+          ...(currentDocs.splitPayment || {}),
+          remaining30ProofUrl: body.remaining30ProofUrl ? String(body.remaining30ProofUrl) : null,
+          remaining30PaidAt: body.remaining30ProofUrl ? new Date().toISOString() : null,
+          remaining30Rejected: false,
+          remaining30RejectionReason: null,
+        };
+        updateData.serviceDocumentsJson = JSON.stringify(currentDocs);
+      }
+    }
+
+    // Confirm 30% remaining balance payment (explicit flag or advancing out of REMAINING_30_PAYMENT with proof)
+    const existingSplitForConfirm = extractSplitPayment(existingOrder);
+    const prevUpperPreConfirm = String(existingOrder.status || "").toUpperCase();
+    const targetUpperPreConfirm = status !== undefined ? String(status).toUpperCase() : prevUpperPreConfirm;
+    const isAdvancingPastRem30 =
+      Boolean(existingSplitForConfirm) &&
+      !existingSplitForConfirm?.remaining30Confirmed &&
+      (prevUpperPreConfirm === "REMAINING_30_PAYMENT" ||
+        (prevUpperPreConfirm === "PAYMENT_REJECTED" &&
+          (() => {
+            try {
+              const d =
+                typeof existingOrder.serviceDocumentsJson === "string"
+                  ? JSON.parse(existingOrder.serviceDocumentsJson)
+                  : existingOrder.serviceDocumentsJson;
+              return d?.rejectionPaymentType === "REMAINING_30";
+            } catch {
+              return false;
+            }
+          })())) &&
+      targetUpperPreConfirm !== "REMAINING_30_PAYMENT" &&
+      targetUpperPreConfirm !== "PAYMENT_REJECTED" &&
+      targetUpperPreConfirm !== "CANCELLED";
+
+    const isConfirmingRemaining30Payment =
+      Boolean(existingSplitForConfirm) &&
+      (body.confirmRemaining30Payment === true || isAdvancingPastRem30);
+
+    if (isConfirmingRemaining30Payment && existingSplitForConfirm) {
+      const effectiveProof30 =
+        body.remaining30ProofUrl !== undefined
+          ? body.remaining30ProofUrl
+          : existingSplitForConfirm.remaining30ProofUrl;
+      if (!effectiveProof30 || !String(effectiveProof30).trim()) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "No se puede confirmar el 30% restante: se requiere adjuntar el comprobante de pago del 30%.",
+          },
+          { status: 400 }
+        );
+      }
+      let currentDocs: any = {};
+      try {
+        const baseDoc = updateData.serviceDocumentsJson || existingOrder.serviceDocumentsJson;
+        currentDocs = typeof baseDoc === "string" ? JSON.parse(baseDoc) : (baseDoc || {});
+      } catch {}
+      currentDocs.paymentPlan = "SPLIT_70_30";
+      currentDocs.splitPayment = {
+        ...existingSplitForConfirm,
+        ...(currentDocs.splitPayment || {}),
+        remaining30ProofUrl: String(effectiveProof30),
+        remaining30Confirmed: true,
+        remaining30ConfirmedAt: new Date().toISOString(),
+        remaining30ConfirmedBy: auth.session.email || auth.session.role,
+        remaining30Rejected: false,
+        remaining30RejectionReason: null,
+        remaining30ReceiptEmailSent: true,
+        remaining30ReceiptEmailSentAt: new Date().toISOString(),
+      };
+      currentDocs.paymentCorrected = false;
+      currentDocs.hasNewProofToReview = false;
+      updateData.serviceDocumentsJson = JSON.stringify(currentDocs);
+      if (status === undefined) {
+        updateData.status = "PROGRAM_SERVICE";
+      }
+    }
+
+    if (body.rejectPaymentType === "REMAINING_30") {
+      let currentDocs: any = {};
+      try {
+        const baseDoc = updateData.serviceDocumentsJson || existingOrder.serviceDocumentsJson;
+        currentDocs = typeof baseDoc === "string" ? JSON.parse(baseDoc) : (baseDoc || {});
+      } catch {}
+      const sp = extractSplitPayment(existingOrder);
+      currentDocs.splitPayment = {
+        ...(sp || {}),
+        ...(currentDocs.splitPayment || {}),
+        remaining30Rejected: true,
+        remaining30RejectedAt: new Date().toISOString(),
+        remaining30RejectedBy: auth.session.email || auth.session.role,
+        remaining30RejectionReason: body.paymentRejectionReason || "",
+        remaining30Confirmed: false,
+      };
+      currentDocs.paymentCorrected = false;
+      currentDocs.hasNewProofToReview = false;
+      currentDocs.preRejectionStatus = "REMAINING_30_PAYMENT";
+      currentDocs.rejectionPaymentType = "REMAINING_30";
+      updateData.serviceDocumentsJson = JSON.stringify(currentDocs);
+      updateData.status = "PAYMENT_REJECTED";
+      if (body.paymentRejectionReason) {
+        updateData.paymentRejectionReason = `[Saldo 30% Rechazado]: ${body.paymentRejectionReason}`;
+      }
+    } else if (body.rejectPaymentType === "SERVICE") {
       let currentDocs: any = {};
       try {
         const baseDoc = updateData.serviceDocumentsJson || existingOrder.serviceDocumentsJson;
@@ -390,6 +539,12 @@ export async function PATCH(
         const baseDoc = updateData.serviceDocumentsJson || existingOrder.serviceDocumentsJson;
         currentDocs = typeof baseDoc === "string" ? JSON.parse(baseDoc) : (baseDoc || {});
       } catch {}
+      if (currentDocs.splitPayment && typeof currentDocs.splitPayment === "object") {
+        currentDocs.splitPayment.initial70Confirmed = true;
+        currentDocs.splitPayment.initial70ConfirmedAt = new Date().toISOString();
+        currentDocs.splitPayment.initial70ConfirmedBy = auth.session.email || auth.session.role;
+        updateData.serviceDocumentsJson = JSON.stringify(currentDocs);
+      }
       if (!currentDocs.receiptEmailSent) {
         currentDocs.receiptEmailSent = true;
         currentDocs.receiptEmailSentAt = new Date().toISOString();
@@ -541,6 +696,7 @@ export async function PATCH(
     // AUTOMATIC ZXZ CERTIFICATION PRODUCT:
     // Timing rule: attached only strictly AFTER the state 'en taller para revision' (IN_WAREHOUSE_CHECK)
     const stagesAfterWarehouseCheck = [
+      "REMAINING_30_PAYMENT",
       "PROGRAM_SERVICE",
       "CONFIRM_SERVICE_PAYMENT",
       "WAITING_ON_DELIVERY",
@@ -554,7 +710,8 @@ export async function PATCH(
       "COMPLETED"
     ];
 
-    const isTargetAfterWarehouseCheck = status && stagesAfterWarehouseCheck.includes(String(status).toUpperCase());
+    const effectiveNextStatus = updateData.status || status;
+    const isTargetAfterWarehouseCheck = effectiveNextStatus && stagesAfterWarehouseCheck.includes(String(effectiveNextStatus).toUpperCase());
     const shouldAutoAttachCert = (!existingOrder.isCertified || !existingOrder.zxzCertificationJson) && (isTargetAfterWarehouseCheck || body.attachCertification === true);
 
     if (shouldAutoAttachCert) {
@@ -705,6 +862,34 @@ export async function PATCH(
       }).catch((err) => console.error("[STEP_EMAIL_ORDER_PAY_CONFIRM_ERR]:", err));
     }
 
+    // 1B. Remaining 30% split payment confirmed -> Send Final 30% Receipt (100% Paid) + step email
+    if (isConfirmingRemaining30Payment && !isConfirmingOrderPayment) {
+      void resolveProfileEmail(updatedOrder).then((profileEmail) => {
+        if (profileEmail) {
+          void sendOrderReceiptEmail({
+            to: profileEmail,
+            order: updatedOrder,
+            lang: orderLang,
+            receiptType: "REMAINING_30",
+          }).catch((err) => console.error("[CONFIRMATION_REM30_RECEIPT_ERR]:", err));
+        }
+      });
+      void sendOrderStepNotificationEmail({
+        step: "REMAINING_30_CONFIRMED",
+        order: updatedOrder,
+        lang: orderLang,
+      }).catch((err) => console.error("[STEP_EMAIL_REM30_CONFIRM_ERR]:", err));
+    }
+
+    // 1C. Remaining 30% payment stage reached (after Check Certificate) -> Notify customer to pay 30%
+    if (newStatusUpper === "REMAINING_30_PAYMENT" && prevStatusUpper !== "REMAINING_30_PAYMENT") {
+      void sendOrderStepNotificationEmail({
+        step: "REMAINING_30_PAYMENT",
+        order: updatedOrder,
+        lang: orderLang,
+      }).catch((err) => console.error("[STEP_EMAIL_REM30_STAGE_ERR]:", err));
+    }
+
     // 2. Service payment confirmed -> Send service payment receipt + step email
     const isConfirmingServicePayment =
       body.confirmServicePayment === true ||
@@ -759,8 +944,9 @@ export async function PATCH(
 
     // 4. Payment rejected (every payment rejected)
     if (newStatusUpper === "PAYMENT_REJECTED" && (prevStatusUpper !== "PAYMENT_REJECTED" || Boolean(body.rejectPaymentType))) {
-      let rejType: "ORDER" | "SERVICE" | "INSTALLATION" = "ORDER";
-      if (body.rejectPaymentType === "SERVICE") rejType = "SERVICE";
+      let rejType: "ORDER" | "REMAINING_30" | "SERVICE" | "INSTALLATION" = "ORDER";
+      if (body.rejectPaymentType === "REMAINING_30") rejType = "REMAINING_30";
+      else if (body.rejectPaymentType === "SERVICE") rejType = "SERVICE";
       else if (body.rejectPaymentType === "INSTALLATION") rejType = "INSTALLATION";
       else {
         try {
