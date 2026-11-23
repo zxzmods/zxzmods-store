@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCustomerSession } from "@/lib/customerAuth";
 import { cleanExpiredQuotations, generateOrderNumber } from "@/lib/orders";
-import { createInitialSplitPaymentData } from "@/lib/splitPayment";
+import { createInitialSplitPaymentData, isEligibleForSplitPayment } from "@/lib/splitPayment";
 
 export async function GET() {
   try {
@@ -420,8 +420,18 @@ export async function POST(request: Request) {
     }
 
     if (body.paymentPlan === "SPLIT_70_30" && !isBacRequested) {
+      const splitBaseCRC = resolvedPartsSubtotal || resolvedTotal;
+      if (!isEligibleForSplitPayment(splitBaseCRC)) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "El pago fraccionado 70% / 30% está disponible únicamente para pedidos desde ₡80 000 en productos.",
+          },
+          { status: 400 }
+        );
+      }
       docObj.paymentPlan = "SPLIT_70_30";
-      docObj.splitPayment = createInitialSplitPaymentData(resolvedPartsSubtotal || resolvedTotal);
+      docObj.splitPayment = createInitialSplitPaymentData(splitBaseCRC);
     }
 
     const newOrder = await prisma.order.create({

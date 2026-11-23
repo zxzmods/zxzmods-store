@@ -1,5 +1,12 @@
 export type PaymentPlanType = "FULL_100" | "SPLIT_70_30";
 
+/** Minimum parts/products total in CRC required to enable the 70% / 30% split payment option */
+export const SPLIT_PAYMENT_MIN_PRODUCTS_CRC = 80000;
+
+export function isEligibleForSplitPayment(productsTotalCRC: number): boolean {
+  return Math.round(Number(productsTotalCRC) || 0) >= SPLIT_PAYMENT_MIN_PRODUCTS_CRC;
+}
+
 export interface SplitPaymentData {
   enabled: true;
   plan: "SPLIT_70_30";

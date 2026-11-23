@@ -76,8 +76,17 @@ export async function POST(request: Request) {
 
     const finalTotalCRC = Math.max(0, grossSubtotal - discountCRC);
 
-    const targetStatus = body.status || "COTIZACION";
-    const isQuotation = targetStatus === "COTIZACION" || targetStatus === "cotizacion";
+    const requestedStatusUpper = String(body.status || "").toUpperCase();
+    const hasInitialPaymentProof = Boolean(
+      typeof body.paymentProofUrl === "string" && body.paymentProofUrl.trim().length > 0
+    );
+    // Orders created by staff for client review/claim MUST start in COTIZACION unless a payment proof is explicitly attached
+    const targetStatus =
+      !requestedStatusUpper ||
+      (requestedStatusUpper === "PAYMENT_CONFIRMATION" && !hasInitialPaymentProof)
+        ? "COTIZACION"
+        : body.status;
+    const isQuotation = String(targetStatus).toUpperCase() === "COTIZACION";
 
     // Generate unique order number and high-entropy claim token
     const orderNumber = generateOrderNumber(isQuotation);

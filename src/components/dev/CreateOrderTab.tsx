@@ -385,7 +385,7 @@ export function CreateOrderTab({
       customerPhone: selectedUser ? selectedUser.phoneNumber : guestPhone || null,
       shippingAddress: shippingAddress || null,
       serviceType,
-      status: "PAYMENT_CONFIRMATION",
+      status: "COTIZACION",
       items: selectedItems,
       partsSubtotalCRC: partsSubtotal,
       installationCostCRC: 0,

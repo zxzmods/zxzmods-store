@@ -42,7 +42,7 @@ import { OFFICIAL_LEGAL_DOCS } from "@/types/document";
 import { COMPANY_CONFIG } from "@/config/company";
 import { ComboSwapOpportunity, RelatedPartSuggestion } from "@/app/api/cart/smart-checkout/route";
 import { useGarage } from "@/context/GarageContext";
-import { computeSplitPaymentAmounts } from "@/lib/splitPayment";
+import { computeSplitPaymentAmounts, isEligibleForSplitPayment } from "@/lib/splitPayment";
 import { PaymentPlanSelector } from "@/components/cart/PaymentPlanSelector";
 
 function formatIbanDisplay(iban: string): string {
@@ -162,7 +162,10 @@ export default function CheckoutPage() {
     () => computeSplitPaymentAmounts(fullOrderTotalCRC),
     [fullOrderTotalCRC]
   );
-  const isSplitPayment = paymentPlan === "SPLIT_70_30";
+  const isSplitEligible = isEligibleForSplitPayment(fullOrderTotalCRC);
+  const effectivePaymentPlan =
+    paymentPlan === "SPLIT_70_30" && isSplitEligible ? "SPLIT_70_30" : "FULL_100";
+  const isSplitPayment = effectivePaymentPlan === "SPLIT_70_30";
   const finalPayableCRC = isSplitPayment ? splitAmounts.initial70AmountCRC : fullOrderTotalCRC;
   const remaining30CRC = isSplitPayment ? splitAmounts.remaining30AmountCRC : 0;
   const finalPayableUSD = sellRate > 0 ? finalPayableCRC / sellRate : 0;
@@ -410,7 +413,7 @@ export default function CheckoutPage() {
         items,
         totalCRC: fullOrderTotalCRC,
         clientClaimedTotalCRC: fullOrderTotalCRC,
-        paymentPlan,
+        paymentPlan: effectivePaymentPlan,
         partsSubtotalCRC: partsSubtotal,
         laborSubtotalCRC: 0,
         status: "PAYMENT_CONFIRMATION",

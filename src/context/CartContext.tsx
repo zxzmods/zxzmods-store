@@ -7,7 +7,11 @@ import { useLanguage } from "@/context/LanguageContext";
 import { getWhatsAppUrl } from "@/config/company";
 
 import { SelectedParameterItem } from "@/lib/products";
-import { PaymentPlanType, computeSplitPaymentAmounts } from "@/lib/splitPayment";
+import {
+  PaymentPlanType,
+  computeSplitPaymentAmounts,
+  isEligibleForSplitPayment,
+} from "@/lib/splitPayment";
 
 export interface CartItem {
   id: string;
@@ -709,12 +713,22 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const finalLaborSubtotalUSD = convertCRCToUSD(finalLaborSubtotal, activeSellRate);
   const totalUSD = convertCRCToUSD(totalCRC, activeSellRate);
 
-  // Payment plan breakdown (100% vs 70/30)
+  // Payment plan breakdown (100% vs 70/30 — requires >= ₡80,000 in products)
+  const isSplitEligible = isEligibleForSplitPayment(partsSubtotal);
+  const effectivePaymentPlan: PaymentPlanType =
+    paymentPlan === "SPLIT_70_30" && isSplitEligible ? "SPLIT_70_30" : "FULL_100";
+
+  useEffect(() => {
+    if (paymentPlan === "SPLIT_70_30" && !isSplitEligible) {
+      setPaymentPlan("FULL_100");
+    }
+  }, [paymentPlan, isSplitEligible]);
+
   const splitAmounts = computeSplitPaymentAmounts(totalCRC);
   const upfrontPayableCRC =
-    paymentPlan === "SPLIT_70_30" ? splitAmounts.initial70AmountCRC : totalCRC;
+    effectivePaymentPlan === "SPLIT_70_30" ? splitAmounts.initial70AmountCRC : totalCRC;
   const remainingBalanceCRC =
-    paymentPlan === "SPLIT_70_30" ? splitAmounts.remaining30AmountCRC : 0;
+    effectivePaymentPlan === "SPLIT_70_30" ? splitAmounts.remaining30AmountCRC : 0;
   const upfrontPayableUSD = convertCRCToUSD(upfrontPayableCRC, activeSellRate);
   const remainingBalanceUSD = convertCRCToUSD(remainingBalanceCRC, activeSellRate);
 
@@ -946,7 +960,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         exchangeRate,
         isRateLoading,
         sellRate: activeSellRate,
-        paymentPlan,
+        paymentPlan: effectivePaymentPlan,
         setPaymentPlan,
         upfrontPayableCRC,
         remainingBalanceCRC,

@@ -6,7 +6,7 @@ import { getStealthSession } from "@/lib/stealthAuth";
 import { checkRateLimit, createRateLimitResponse, getClientIp } from "@/lib/rateLimit";
 import { checkAndAcquireIdempotency, completeIdempotency, releaseIdempotency } from "@/lib/idempotency";
 import { logger, getOrCreateRequestId } from "@/lib/logger";
-import { createInitialSplitPaymentData } from "@/lib/splitPayment";
+import { createInitialSplitPaymentData, isEligibleForSplitPayment } from "@/lib/splitPayment";
 
 export async function GET(request: Request) {
   try {
@@ -551,10 +551,20 @@ export async function POST(request: Request) {
     const orderLanguage = body.language === "en" ? "en" : "es";
     docObj.language = orderLanguage;
 
-    // 70% Upfront / 30% Remaining Split Payment Plan
+    // 70% Upfront / 30% Remaining Split Payment Plan (requires >= ₡80,000 in products)
     if (body.paymentPlan === "SPLIT_70_30" && !isBacRequested) {
       const partsNetTotalCRC = Math.max(0, resolvedPartsSubtotal - discountCRC);
       const splitBaseCRC = partsNetTotalCRC > 0 ? partsNetTotalCRC : resolvedTotal;
+      if (!isEligibleForSplitPayment(splitBaseCRC)) {
+        if (idempotencyKey) releaseIdempotency(idempotencyKey);
+        return NextResponse.json(
+          {
+            success: false,
+            error: "El pago fraccionado 70% / 30% está disponible únicamente para pedidos desde ₡80 000 en productos.",
+          },
+          { status: 400 }
+        );
+      }
       docObj.paymentPlan = "SPLIT_70_30";
       docObj.splitPayment = createInitialSplitPaymentData(splitBaseCRC);
     }

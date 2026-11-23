@@ -134,6 +134,12 @@ export async function POST(request: Request) {
         return null;
       }
 
+      const existingStatusUpper = String(existing.status || "").toUpperCase();
+      const hasPaymentProof = Boolean(existing.paymentProofUrl && existing.paymentProofUrl.trim().length > 0);
+      const shouldNormalizeToCotizacion =
+        !hasPaymentProof &&
+        (existingStatusUpper === "PAYMENT_CONFIRMATION" || existingStatusUpper === "PENDING");
+
       // Guarded atomic update ensuring token hasn't been redeemed concurrently
       const updateResult = await tx.order.updateMany({
         where: {
@@ -148,6 +154,7 @@ export async function POST(request: Request) {
           isRedeemed: true,
           redeemedAt: new Date(),
           claimToken: null, // Invalidate token permanently
+          ...(shouldNormalizeToCotizacion ? { status: "COTIZACION" } : {}),
         },
       });
 

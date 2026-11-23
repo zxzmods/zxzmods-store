@@ -2146,6 +2146,7 @@ export interface Translations {
   paymentPlanSplitTitle: string;
   paymentPlanSplitBadge: string;
   paymentPlanSplitDesc: string;
+  paymentPlanSplitMinNotice: string;
   paymentPlanPayTodayLabel: string;
   paymentPlanRemaining30Label: string;
   paymentPlanRemaining30DueHint: string;
@@ -4300,6 +4301,7 @@ export const translations: Record<Language, Translations> = {
     paymentPlanSplitTitle: "Adelanto 70% / Saldo 30%",
     paymentPlanSplitBadge: "70% HOY • 30% AL LLEGAR",
     paymentPlanSplitDesc: "Paga el 70% hoy para ordenar tus piezas y el 30% restante una vez emitido el Certificado de Revisión ZxZ, antes de la entrega o instalación.",
+    paymentPlanSplitMinNotice: "Disponible para pedidos desde ₡80 000 en productos.",
     paymentPlanPayTodayLabel: "A pagar hoy (70%):",
     paymentPlanRemaining30Label: "Saldo restante (30%):",
     paymentPlanRemaining30DueHint: "Se paga al recibir el Certificado de Revisión en taller, antes de programar entrega o instalación.",
@@ -6452,6 +6454,7 @@ export const translations: Record<Language, Translations> = {
     paymentPlanSplitTitle: "70% Upfront / 30% Balance",
     paymentPlanSplitBadge: "70% TODAY • 30% ON ARRIVAL",
     paymentPlanSplitDesc: "Pay 70% today to order your parts and the remaining 30% once the ZxZ Inspection Certificate is issued, prior to delivery or installation.",
+    paymentPlanSplitMinNotice: "Available for orders of ₡80,000 or more in products.",
     paymentPlanPayTodayLabel: "Due today (70%):",
     paymentPlanRemaining30Label: "Remaining balance (30%):",
     paymentPlanRemaining30DueHint: "Due once the Workshop Check Certificate is issued, prior to scheduling delivery or installation.",
