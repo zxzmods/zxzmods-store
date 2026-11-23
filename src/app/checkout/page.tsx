@@ -1110,8 +1110,8 @@ export default function CheckoutPage() {
                       </span>
                       <div className="text-[11px] text-slate-500 font-mono mt-0.5">
                         {currency === "USD"
-                          ? `Equivalente en Colones: ₡${formatCRC(finalPayableCRC)} (TC: ₡${sellRate.toFixed(2)})`
-                          : `Equivalente en Dólares: $${formatUSD(finalPayableUSD)} USD (TC: ₡${sellRate.toFixed(2)})`}
+                          ? `Equivalente en Colones: ${formatCRC(finalPayableCRC)} (TC: ₡${sellRate.toFixed(2)})`
+                          : `Equivalente en Dólares: ${formatUSD(finalPayableUSD)} USD (TC: ₡${sellRate.toFixed(2)})`}
                       </div>
                     </div>
                     <div className="text-2xl font-black font-mono text-[#0052CC]">

@@ -5,7 +5,12 @@ import { getStealthSession } from "@/lib/stealthAuth";
 import { checkRateLimit, createRateLimitResponse, getClientIp } from "@/lib/rateLimit";
 import { checkAndAcquireIdempotency, completeIdempotency, releaseIdempotency } from "@/lib/idempotency";
 import { isValidStorageUrl, sanitizePlainText } from "@/lib/security/inputSanitizer";
-import { canPayRemaining30, extractSplitPayment } from "@/lib/splitPayment";
+import {
+  canPayRemaining30,
+  createInitialSplitPaymentData,
+  extractSplitPayment,
+  isEligibleForSplitPayment,
+} from "@/lib/splitPayment";
 
 export async function POST(
   request: Request,
@@ -211,10 +216,30 @@ export async function POST(
       serviceDocs.installationPaymentReceiptUrl = paymentProofUrl ? String(paymentProofUrl) : order.installationPaymentProofUrl;
       updatePayload.installationPaymentProofUrl = serviceDocs.installationPaymentReceiptUrl;
     } else {
-      // Primary order payment retry
+      // Primary order payment / quotation conversion
       serviceDocs.orderPaymentRejected = false;
       updatePayload.paymentProofUrl =
         paymentProofUrl !== undefined ? (paymentProofUrl ? String(paymentProofUrl) : null) : order.paymentProofUrl;
+
+      if (body.paymentPlan === "SPLIT_70_30" && !extractSplitPayment(order)) {
+        const splitBaseCRC = Math.max(
+          0,
+          (order.partsSubtotalCRC || order.totalCRC || 0) - (order.discountCRC || 0)
+        ) || order.totalCRC || 0;
+        if (!isEligibleForSplitPayment(splitBaseCRC)) {
+          if (idempotencyKey) releaseIdempotency(idempotencyKey);
+          return NextResponse.json(
+            {
+              success: false,
+              error:
+                "El pago fraccionado 70% / 30% está disponible únicamente para pedidos desde ₡80 000 en productos.",
+            },
+            { status: 400 }
+          );
+        }
+        serviceDocs.paymentPlan = "SPLIT_70_30";
+        serviceDocs.splitPayment = createInitialSplitPaymentData(splitBaseCRC);
+      }
     }
 
     if (isCurrentRejected) {

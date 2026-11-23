@@ -128,6 +128,7 @@ import {
 import { getOrderPendingInstallationCost } from "@/lib/orderServices";
 import { extractSplitPayment, isRemaining30Confirmed } from "@/lib/splitPayment";
 import { Remaining30PaymentCard } from "@/components/orders/Remaining30PaymentCard";
+import { OrderPaymentModal } from "@/components/orders/OrderPaymentModal";
 
 export default function OrderDetailPage() {
   const params = useParams();
@@ -1638,7 +1639,7 @@ export default function OrderDetailPage() {
                               </span>
                               {!isCurrencyBonded && displayCurrency === "USD" && (
                                 <span className="text-[10px] text-gray-400 font-mono">
-                                  ₡{formatCRC(lineTotal)}
+                                  {formatCRC(lineTotal)}
                                 </span>
                               )}
                             </div>
@@ -2166,11 +2167,11 @@ export default function OrderDetailPage() {
                           {!isCurrencyBonded && (
                             displayCurrency === "USD" ? (
                               <div className="text-xs text-gray-500 font-mono mt-0.5">
-                                ₡{formatCRC(order.totalCRC)}
+                                {formatCRC(order.totalCRC)}
                               </div>
                             ) : (
                               <div className="text-xs text-gray-500 font-mono mt-0.5">
-                                ${formatUSD(convertCRCToUSD(order.totalCRC, sellRate))} USD
+                                {formatUSD(convertCRCToUSD(order.totalCRC, sellRate))} USD
                               </div>
                             )
                           )}
@@ -2337,16 +2338,8 @@ export default function OrderDetailPage() {
                     <div className="space-y-2">
                       <button
                         type="button"
-                        onClick={() => setUploadProofModalOpen(true)}
-                        className="w-full flex items-center justify-center gap-2.5 py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs tracking-wider uppercase shadow-md hover:shadow-lg transition-all cursor-pointer shadow-emerald-600/20"
-                      >
-                        <Upload className="w-4 h-4" />
-                        <span>{t.orderUploadPaymentProofBtn}</span>
-                      </button>
-                      <button
-                        type="button"
                         onClick={() => setPayModalOpen(true)}
-                        className="w-full flex items-center justify-center gap-2.5 py-3 rounded-2xl bg-[#0052CC] hover:bg-[#0040A8] text-white font-bold text-xs tracking-wider uppercase shadow-xs hover:shadow-md transition-all cursor-pointer"
+                        className="w-full flex items-center justify-center gap-2.5 py-4 rounded-2xl bg-[#0052CC] hover:bg-[#0040A8] text-white font-extrabold text-xs tracking-wider uppercase shadow-md hover:shadow-lg transition-all cursor-pointer shadow-[#0052CC]/25"
                       >
                         <CreditCard className="w-4 h-4" />
                         <span>{t.orderProceedToPay}</span>
@@ -2641,415 +2634,30 @@ export default function OrderDetailPage() {
       </main>
       <Footer />
 
-      {/* Payment Modal */}
-      {payModalOpen && order && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
-          <div
-            className="fixed inset-0"
-            onClick={() => setPayModalOpen(false)}
-            aria-hidden="true"
-          />
-          <div className="relative bg-white rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl border border-gray-200 z-10 space-y-5">
-            <div>
-              <div className="flex items-center justify-between">
-                <span className={`text-xs font-mono font-bold uppercase tracking-wider ${
-                  isRejected ? "text-rose-600" : "text-[#0052CC]"
-                }`}>
-                  #{order.orderNumber}
-                </span>
-                <span className={`text-sm font-black font-mono ${
-                  isRejected ? "text-rose-600" : "text-gray-900"
-                }`}>
-                  {formatPrice(order.totalCRC)}
-                </span>
-              </div>
-              <h2 className="text-xl font-extrabold text-gray-900 mt-1">
-                {isRejected
-                  ? (t.orderPayModalFixTitle || "Actualizar Comprobante de Pago")
-                  : t.orderPayModalTitle}
-              </h2>
-              <p className="text-xs text-gray-500 mt-0.5">
-                {isRejected
-                  ? (t.orderPayModalFixSubtitle || "Adjunta la nueva foto o captura de tu transferencia para verificar tu pago.")
-                  : t.orderPayModalSubtitle}
-              </p>
-            </div>
-
-            {paySuccessMsg ? (
-              <div className="p-6 bg-emerald-50 rounded-2xl border border-emerald-200 text-center space-y-2">
-                <CheckCircle2 className="w-10 h-10 text-emerald-600 mx-auto" />
-                <h3 className="text-sm font-bold text-emerald-900">{paySuccessMsg}</h3>
-              </div>
-            ) : isRejected ? (
-              /* Streamlined Fix Payment Mode: ONLY needs to update payment proof image */
-              <form onSubmit={handleFixRejectedPayment} className="space-y-4">
-                <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 space-y-1.5">
-                  <div className="flex items-center gap-2 text-rose-900 font-bold text-xs">
-                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-                    <span>{lang === "es" ? "Actualización de Comprobante Requerida" : "Receipt Update Required"}</span>
-                  </div>
-                  <p className="text-xs text-rose-800 leading-relaxed">
-                    {order.paymentRejectionReason
-                      ? (lang === "es" ? `Motivo del rechazo: ${order.paymentRejectionReason}` : `Rejection reason: ${order.paymentRejectionReason}`)
-                      : (lang === "es" ? "Por favor adjunta una foto o captura clara de tu transferencia bancaria para verificar los fondos." : "Please attach a clear photo or screenshot of your wire transfer to verify funds.")}
-                  </p>
-                </div>
-
-                {/* Dropzone File Upload */}
-                <div className="space-y-2">
-                  <label className="block text-xs font-bold text-gray-700">
-                    {lang === "es" ? "Nuevo Comprobante de Pago:" : "New Payment Receipt:"}
-                  </label>
-                  <label className="border-2 border-dashed border-rose-300 hover:border-rose-400 bg-rose-50/30 rounded-2xl p-6 flex flex-col items-center justify-center gap-2.5 cursor-pointer transition-colors text-center group">
-                    <input
-                      type="file"
-                      accept="image/*,application/pdf"
-                      className="hidden"
-                      onChange={(e) => {
-                        if (e.target.files && e.target.files[0]) {
-                          const f = e.target.files[0];
-                          if (f.size > 100 * 1024 * 1024) {
-                            alert(lang === "es" ? "El archivo supera el límite de 100MB." : "File exceeds the 100MB limit.");
-                            return;
-                          }
-                          setPayReceiptFile(f);
-                        }
-                      }}
-                    />
-                    <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center group-hover:scale-105 transition-transform shadow-xs">
-                      <Upload className="w-6 h-6" />
-                    </div>
-                    <div>
-                      <p className="text-xs font-bold text-gray-900">
-                        {payReceiptFile ? payReceiptFile.name : (t.orderPayModalFixDropzonePrompt || "Haz clic o arrastra aquí tu nuevo comprobante de pago")}
-                      </p>
-                      <p className="text-[11px] text-gray-400 mt-0.5">
-                        {payReceiptFile
-                          ? `${(payReceiptFile.size / 1024).toFixed(1)} KB • Listo para enviar`
-                          : (lang === "es" ? "Formatos aceptados: JPG, PNG, WEBP, PDF (Máx 100MB)" : "Accepted formats: JPG, PNG, WEBP, PDF (Max 100MB)")}
-                      </p>
-                    </div>
-                  </label>
-                </div>
-
-                <div className="pt-2 flex justify-end gap-2.5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPayModalOpen(false);
-                      setPayReceiptFile(null);
-                    }}
-                    className="px-4 py-2.5 rounded-xl text-xs font-bold text-gray-600 hover:bg-gray-100 transition-colors"
-                  >
-                    {lang === "es" ? "Cancelar" : "Cancel"}
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={submittingPayment || !payReceiptFile}
-                    className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition-all disabled:opacity-50 cursor-pointer shadow-md shadow-rose-600/20"
-                  >
-                    {submittingPayment
-                      ? (lang === "es" ? "Subiendo Comprobante..." : "Uploading Receipt...")
-                      : (t.orderPayModalFixSubmitBtn || "Enviar Comprobante Corregido")}
-                  </button>
-                </div>
-              </form>
-            ) : (
-              <form onSubmit={handleConfirmPayment} className="space-y-4">
-                {/* Currency Selection - ONLY show if not bonded */}
-                {!isCurrencyBonded && (
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-1">
-                      {t.orderPayModalCurrencyLabel}
-                    </label>
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setModalPayCurrency("CRC")}
-                        className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-between transition-all cursor-pointer ${
-                          modalPayCurrency === "CRC"
-                            ? "border-[#0052CC] bg-blue-50/70 text-[#0052CC] ring-1 ring-[#0052CC]"
-                            : "border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100"
-                        }`}
-                      >
-                        <span className="flex items-center gap-1">
-                          <span className="font-extrabold">₡</span> CRC
-                        </span>
-                        <span className="font-mono text-[11px] font-black">{formatCRC(order.totalCRC)}</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setModalPayCurrency("USD")}
-                        className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-between transition-all cursor-pointer ${
-                          modalPayCurrency === "USD"
-                            ? "border-[#0052CC] bg-blue-50/70 text-[#0052CC] ring-1 ring-[#0052CC]"
-                            : "border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100"
-                        }`}
-                      >
-                        <span className="flex items-center gap-1">
-                          <span className="font-extrabold">$</span> USD
-                        </span>
-                        <span className="font-mono text-[11px] font-black">${formatUSD(convertCRCToUSD(order.totalCRC, sellRate))}</span>
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Method indicator */}
-                <div className="p-3.5 rounded-2xl bg-[#EBF3FC] border border-[#0052CC] flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-xl bg-[#0052CC] text-white flex items-center justify-center font-bold">
-                      <CreditCard className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <span className="block font-black text-sm text-[#0A2540]">
-                        {lang === "es" ? "Transferencia Bancaria (IBAN)" : "Bank Wire Transfer (IBAN)"}
-                      </span>
-                      <span className="text-[10px] text-slate-500 font-normal">
-                        {lang === "es" ? "BAC Credomatic / Cuentas Verificadas" : "BAC Credomatic / Verified Accounts"}
-                      </span>
-                    </div>
-                  </div>
-                  <span className="text-[10px] font-bold text-[#0052CC] bg-white px-2 py-0.5 rounded-full border border-[#0052CC]/30 font-mono">
-                    OFICIAL
-                  </span>
-                </div>
-
-                {/* Reference number */}
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">
-                    {lang === "es" ? "Número de Comprobante / Referencia:" : "Receipt / Reference Number:"}
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={payReference}
-                    onChange={(e) => setPayReference(e.target.value)}
-                    placeholder="Ej: 123456789"
-                    className="w-full p-3 rounded-xl bg-gray-50 border border-gray-200 text-xs font-mono text-gray-900 focus:bg-white focus:border-[#0052CC] outline-none"
-                  />
-                </div>
-
-                {/* Phone */}
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">
-                    {lang === "es" ? "Teléfono que realizó el pago:" : "Phone used for payment:"}
-                  </label>
-                  <input
-                    type="tel"
-                    required
-                    value={payPhone}
-                    onChange={(e) => setPayPhone(e.target.value)}
-                    placeholder="8888-8888"
-                    className="w-full p-3 rounded-xl bg-gray-50 border border-gray-200 text-xs font-mono text-gray-900 focus:bg-white focus:border-[#0052CC] outline-none"
-                  />
-                </div>
-
-                {/* Notes */}
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">
-                    {lang === "es" ? "Notas adicionales (opcional):" : "Additional notes (optional):"}
-                  </label>
-                  <input
-                    type="text"
-                    value={payNotes}
-                    onChange={(e) => setPayNotes(e.target.value)}
-                    placeholder="Detalles sobre el pago"
-                    className="w-full p-3 rounded-xl bg-gray-50 border border-gray-200 text-xs text-gray-900 focus:bg-white focus:border-[#0052CC] outline-none"
-                  />
-                </div>
-
-                {/* Receipt Upload File */}
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">
-                    {lang === "es" ? "Comprobante de Pago (Foto / Captura):" : "Payment Proof (Photo / Screenshot):"}
-                  </label>
-                  <input
-                    type="file"
-                    accept="image/*,application/pdf"
-                    onChange={(e) => {
-                      if (e.target.files && e.target.files[0]) {
-                        setPayReceiptFile(e.target.files[0]);
-                      }
-                    }}
-                    className="w-full text-xs text-slate-500 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-[#0052CC]/10 file:text-[#0052CC] hover:file:bg-[#0052CC]/20 cursor-pointer"
-                  />
-                  {payReceiptFile && (
-                    <p className="text-[11px] text-emerald-600 font-semibold mt-1">
-                      ✓ {payReceiptFile.name} ({(payReceiptFile.size / 1024).toFixed(1)} KB)
-                    </p>
-                  )}
-                </div>
-
-                <div className="pt-2 flex justify-end gap-2.5">
-                  <button
-                    type="button"
-                    onClick={() => setPayModalOpen(false)}
-                    className="px-4 py-2.5 rounded-xl text-xs font-bold text-gray-600 hover:bg-gray-100 transition-colors"
-                  >
-                    {lang === "es" ? "Cancelar" : "Cancel"}
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={submittingPayment || !payReference.trim() || !payPhone.trim()}
-                    className="px-5 py-2.5 rounded-xl bg-[#0052CC] hover:bg-[#0040A8] text-white text-xs font-bold transition-all disabled:opacity-50 cursor-pointer shadow-md shadow-[#0052CC]/20"
-                  >
-                    {submittingPayment
-                      ? (lang === "es" ? "Registrando..." : "Submitting...")
-                      : (lang === "es" ? "Confirmar Pago" : "Confirm Payment")}
-                  </button>
-                </div>
-              </form>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Small Upload Payment Proof Modal (BAC / Wire Transfer direct upload) */}
-      {uploadProofModalOpen && order && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
-          <div
-            className="fixed inset-0"
-            onClick={() => {
-              if (!uploadingDirectProof) {
-                setUploadProofModalOpen(false);
-                setDirectProofFile(null);
-              }
-            }}
-            aria-hidden="true"
-          />
-          <div className="relative bg-white rounded-3xl p-6 sm:p-7 max-w-md w-full shadow-2xl border border-gray-200 z-10 space-y-4">
-            <div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-mono font-bold uppercase tracking-wider text-emerald-700">
-                  #{order.orderNumber}
-                </span>
-                <span className="text-sm font-black font-mono text-gray-900">
-                  {formatPrice(order.totalCRC)}
-                </span>
-              </div>
-              <h2 className="text-lg font-extrabold text-gray-900 mt-1 flex items-center gap-2">
-                <Upload className="w-5 h-5 text-emerald-600 shrink-0" />
-                <span>{t.orderUploadProofModalTitle}</span>
-              </h2>
-              <p className="text-xs text-gray-500 mt-0.5">
-                {t.orderUploadProofModalSubtitle}
-              </p>
-            </div>
-
-            {directProofSuccess ? (
-              <div className="p-6 bg-emerald-50 rounded-2xl border border-emerald-200 text-center space-y-2 animate-fade-in">
-                <CheckCircle2 className="w-10 h-10 text-emerald-600 mx-auto" />
-                <h3 className="text-sm font-bold text-emerald-900">{directProofSuccess}</h3>
-              </div>
-            ) : (
-              <form onSubmit={handleUploadProofAndConfirm} className="space-y-4">
-                {/* Currency Selection - ONLY show if not bonded */}
-                {!isCurrencyBonded && (
-                  <div>
-                    <label className="block text-[11px] font-bold text-gray-700 mb-1.5 uppercase tracking-wide">
-                      {t.orderPayModalCurrencyLabel}
-                    </label>
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setModalPayCurrency("CRC")}
-                        className={`py-2 px-3 rounded-xl border text-xs font-extrabold transition-all flex items-center justify-center gap-1.5 ${
-                          modalPayCurrency === "CRC"
-                            ? "border-emerald-600 bg-emerald-50 text-emerald-950 ring-2 ring-emerald-500/30"
-                            : "border-gray-200 hover:bg-gray-50 text-gray-700"
-                        }`}
-                      >
-                        <span>Colones (CRC ₡)</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setModalPayCurrency("USD")}
-                        className={`py-2 px-3 rounded-xl border text-xs font-extrabold transition-all flex items-center justify-center gap-1.5 ${
-                          modalPayCurrency === "USD"
-                            ? "border-emerald-600 bg-emerald-50 text-emerald-950 ring-2 ring-emerald-500/30"
-                            : "border-gray-200 hover:bg-gray-50 text-gray-700"
-                        }`}
-                      >
-                        <span>Dólares (USD $)</span>
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Dropzone File Upload */}
-                <div className="space-y-2">
-                  <label className="border-2 border-dashed border-emerald-300 hover:border-emerald-400 bg-emerald-50/30 rounded-2xl p-6 flex flex-col items-center justify-center gap-2.5 cursor-pointer transition-colors text-center group">
-                    <input
-                      type="file"
-                      accept="image/*,application/pdf"
-                      className="hidden"
-                      onChange={(e) => {
-                        if (e.target.files && e.target.files[0]) {
-                          const f = e.target.files[0];
-                          if (f.size > 100 * 1024 * 1024) {
-                            alert(lang === "es" ? "El archivo supera el límite de 100MB." : "File exceeds the 100MB limit.");
-                            return;
-                          }
-                          setDirectProofFile(f);
-                        }
-                      }}
-                    />
-                    <div className="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center group-hover:scale-105 transition-transform shadow-xs">
-                      <Upload className="w-6 h-6" />
-                    </div>
-                    <div>
-                      <p className="text-xs font-bold text-gray-900">
-                        {directProofFile ? directProofFile.name : t.orderUploadProofDropzonePrompt}
-                      </p>
-                      <p className="text-[11px] text-gray-400 mt-0.5">
-                        {directProofFile
-                          ? `${(directProofFile.size / 1024).toFixed(1)} KB • Listo para enviar`
-                          : (lang === "es" ? "Formatos: JPG, PNG, WEBP, PDF (Máx 100MB)" : "Formats: JPG, PNG, WEBP, PDF (Max 100MB)")}
-                      </p>
-                    </div>
-                  </label>
-                </div>
-
-                <div className="pt-2 flex justify-end gap-2.5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setUploadProofModalOpen(false);
-                      setDirectProofFile(null);
-                    }}
-                    disabled={uploadingDirectProof}
-                    className="px-4 py-2.5 rounded-xl text-xs font-bold text-gray-600 hover:bg-gray-100 transition-colors"
-                  >
-                    {lang === "es" ? "Cancelar" : "Cancel"}
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={uploadingDirectProof || !directProofFile}
-                    className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all disabled:opacity-50 cursor-pointer shadow-md shadow-emerald-600/20 flex items-center gap-1.5"
-                  >
-                    {uploadingDirectProof ? (
-                      <>
-                        <RefreshCw className="w-3.5 h-3.5 animate-spin text-white" />
-                        <span>{lang === "es" ? "Subiendo..." : "Uploading..."}</span>
-                      </>
-                    ) : (
-                      <>
-                        <Upload className="w-3.5 h-3.5" />
-                        <span>{t.orderUploadProofSubmitBtn}</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              </form>
-            )}
-          </div>
-        </div>
-      )}
+      {/* Payment Modal (Mobile-First with Official IBAN Bank Accounts, Copy Buttons, 70/30 Option & Proof Dropzone) */}
+      <OrderPaymentModal
+        isOpen={Boolean((payModalOpen || uploadProofModalOpen) && order)}
+        onClose={() => {
+          setPayModalOpen(false);
+          setUploadProofModalOpen(false);
+        }}
+        order={order}
+        isRejected={isRejected}
+        isCurrencyBonded={isCurrencyBonded}
+        initialCurrency={modalPayCurrency}
+        sellRate={sellRate}
+        userPhone={user?.phoneNumber || order?.customerPhone}
+        claimToken={searchParams?.get("token") || order?.claimToken}
+        onPaymentCompleted={async () => {
+          clearActiveQuotation();
+          window.dispatchEvent(new Event("zxz-order-updated"));
+          await fetchOrder();
+        }}
+      />
 
       {/* Fullscreen Proof Modal for Client */}
       {clientProofModalUrl && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
           <div
             className="fixed inset-0"
             onClick={() => setClientProofModalUrl(null)}

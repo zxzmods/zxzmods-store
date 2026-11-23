@@ -564,11 +564,11 @@ export default function CartPage() {
                             </span>
                             {currency === "USD" ? (
                               <span className="text-xs text-gray-400 font-mono">
-                                (₡{formatCRC(item.priceCRC)})
+                                ({formatCRC(item.priceCRC)})
                               </span>
                             ) : (
                               <span className="text-xs text-gray-400 font-mono">
-                                (${formatUSD(item.priceCRC / sellRate)} USD)
+                                ({formatUSD(item.priceCRC / sellRate)} USD)
                               </span>
                             )}
                           </div>
