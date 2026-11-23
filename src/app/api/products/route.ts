@@ -998,6 +998,17 @@ export async function GET(request: Request) {
 
     const productSearchScoreMap = new Map<string, number>();
 
+    const isEffectiveUniversal = (product: ProductItem): boolean => {
+      if (!isUniversalFit(product.comp)) return false;
+      if (product.isCombo) {
+        const comboTitleText = `${product.p_title || ""} ${product.nameEs || ""} ${product.nameEn || ""} ${product.slug || ""}`;
+        if (getVehicleFamily(comboTitleText) || detectVehiclePlatform(comboTitleText)) {
+          return false;
+        }
+      }
+      return true;
+    };
+
     // Contextual Filter Evaluator: applies parameters 1 through 7 (excluding category itself)
     // This allows us to calculate EXACT category counts and find only existing categories for the active vehicle/brand/search parameters
     const matchesContextualFilters = (product: ProductItem): boolean => {
@@ -1013,7 +1024,7 @@ export async function GET(request: Request) {
       // 2. Compatibility filter (SXS)
       if (comp && comp.toLowerCase() !== "all") {
         const targetComp = comp.toLowerCase();
-        const isUniversal = product.comp.some((c) => c.toLowerCase() === "all");
+        const isUniversal = isEffectiveUniversal(product);
         const matchesSxs = product.comp.some((c) =>
           c.toLowerCase().includes(targetComp)
         );
@@ -1023,7 +1034,7 @@ export async function GET(request: Request) {
       // 3. Active Vehicle Compatibility
       if (vehicleModel) {
         const vehicleLower = vehicleModel.toLowerCase().trim();
-        const isUniversal = isUniversalFit(product.comp);
+        const isUniversal = isEffectiveUniversal(product);
 
         if (!isUniversal) {
           let matchesVehicle = false;
@@ -1068,10 +1079,10 @@ export async function GET(request: Request) {
         }
       }
 
-      // 3.1 Model Category filter (e.g. "Maverick X3", "Maverick R", "Defender", "Commander", "Outlander (ATV)", etc.)
+      // 3.1 Model Category filter (e.g. "Maverick X3", "Maverick R", "RZR XP Turbo", "RZR XP", "Defender", etc.)
       if (modelCategory && modelCategory.toLowerCase() !== "all") {
         const targetCategoryNorm = modelCategory.toLowerCase().trim();
-        const isUniversal = isUniversalFit(product.comp);
+        const isUniversal = isEffectiveUniversal(product);
 
         if (!isUniversal) {
           const targetFam = getVehicleFamily(targetCategoryNorm);
@@ -1091,20 +1102,30 @@ export async function GET(request: Request) {
                 if (fam) productFamilies.add(fam);
               }
             }
+            if (product.isCombo && productFamilies.size === 0) {
+              const titleFam = getVehicleFamily(`${product.p_title || ""} ${product.nameEs || ""} ${product.nameEn || ""} ${product.slug || ""}`);
+              if (titleFam) productFamilies.add(titleFam);
+            }
             // If product has detected families and NONE match targetFam, reject it immediately
             if (productFamilies.size > 0 && !productFamilies.has(targetFam)) {
               return false;
             }
           }
 
-          // Gather models under this category
+          // Gather models under this category (scoped to selected vehicleBrand when provided)
           const tokensToMatch = new Set<string>();
           tokensToMatch.add(targetCategoryNorm);
           const cleanToken = targetCategoryNorm.replace(/\([^)]*\)/g, "").trim();
           if (cleanToken) tokensToMatch.add(cleanToken);
 
-          // Check if any registered brand model matches this modelCategory
-          for (const [_, bModels] of Object.entries(sxsBrandModels)) {
+          const brandEntriesToScan =
+            vehicleBrand && vehicleBrand.toLowerCase() !== "all"
+              ? Object.entries(sxsBrandModels).filter(
+                  ([bSlug]) => bSlug.toLowerCase() === vehicleBrand.toLowerCase().trim()
+                )
+              : Object.entries(sxsBrandModels);
+
+          for (const [_, bModels] of brandEntriesToScan) {
             for (const m of bModels) {
               const catMatch =
                 (m.modelCategory && m.modelCategory.toLowerCase() === targetCategoryNorm) ||
@@ -1130,7 +1151,7 @@ export async function GET(request: Request) {
       // 4. Vehicle Brand Filter (Separated parameter: e.g. "cfmoto", "can-am", "polaris", "kawasaki")
       if (vehicleBrand && vehicleBrand.toLowerCase() !== "all") {
         const targetVehicleBrand = vehicleBrand.toLowerCase().trim();
-        const isUniversal = isUniversalFit(product.comp);
+        const isUniversal = isEffectiveUniversal(product);
         const pVehicleBrands = detectProductVehicleBrands(product);
         const matchesVehicleBrand = pVehicleBrands.includes(targetVehicleBrand);
         if (!isUniversal && !matchesVehicleBrand) return false;

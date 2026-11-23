@@ -699,13 +699,12 @@ export function extractAndCleanDescription(
 
 /**
  * Evaluates whether a product's compatibility list represents universal fit (fits all makes and models).
- * This includes "all", "universal", or an explicit universal token.
+ * Returns true ONLY if it contains an explicit universal token AND has no vehicle-specific model/platform tokens.
  */
 export function isUniversalFit(comp?: string[] | null): boolean {
   if (!comp || comp.length === 0) return false;
-  return comp.some((c) => {
-    if (!c) return false;
-    const cl = c.toLowerCase().trim();
+  const isUnivToken = (raw: string): boolean => {
+    const cl = raw.toLowerCase().trim();
     return (
       cl === "all" ||
       cl === "all sxs" ||
@@ -715,7 +714,13 @@ export function isUniversalFit(comp?: string[] | null): boolean {
       cl === "todas" ||
       cl === "ajuste directo / universal"
     );
-  });
+  };
+  const cleaned = comp.map((c) => String(c || "").trim()).filter(Boolean);
+  if (cleaned.length === 0) return false;
+  const hasUniversal = cleaned.some(isUnivToken);
+  if (!hasUniversal) return false;
+  const hasSpecific = cleaned.some((c) => !isUnivToken(c));
+  return !hasSpecific;
 }
 
 /**
@@ -1207,28 +1212,58 @@ export function detectVehiclePlatform(token: string): string | null {
     return "talon";
   }
 
-  // 11a. Polaris RZR XP 4 (4-seater)
+  // 10b. Polaris RZR XP 4 Turbo / XP 4 Turbo S (4-seater Turbo — strictly distinct from naturally aspirated XP 1000!)
   if (
     !t.includes("pro") &&
     !t.includes("turbo-r") &&
     !t.includes("turbo r") &&
+    !t.includes("turbor") &&
+    (t.includes("turbo") || /\bxpt\b/i.test(t)) &&
     (/\b4\b/i.test(t) || t.includes("-4") || t.includes(" 4") || t.includes("max") || t.includes("crew")) &&
-    (t.includes("rzr-xp") || t.includes("rzr xp") || (t.includes("rzr") && t.includes("xp")))
+    (t.includes("rzr") || t.includes("xp") || /\bxpt\b/i.test(t))
   ) {
-    return "rzr-xp-4";
+    return "rzr-xp-4-turbo";
   }
 
-  // 11b. Polaris RZR XP (2-seater)
+  // 10c. Polaris RZR XP Turbo / XP Turbo S / XPT (2-seater Turbo — strictly distinct from naturally aspirated XP 1000!)
   if (
     !t.includes("pro") &&
     !t.includes("turbo-r") &&
     !t.includes("turbo r") &&
+    !t.includes("turbor") &&
     !t.includes("-4") &&
     !t.includes(" 4") &&
     !t.includes("max") &&
     !t.includes("crew") &&
     !/\b4\b/i.test(t) &&
-    (t.includes("rzr-xp") || t.includes("rzr xp") || (t.includes("rzr") && t.includes("xp")))
+    (t.includes("turbo") || /\bxpt\b/i.test(t)) &&
+    (t.includes("rzr") || t.includes("xp") || /\bxpt\b/i.test(t))
+  ) {
+    return "rzr-xp-turbo";
+  }
+
+  // 11a. Polaris RZR XP 4 (4-seater naturally aspirated XP 1000 / XP 4 1000 — NOT Turbo, NOT Pro)
+  if (
+    !t.includes("pro") &&
+    !t.includes("turbo") &&
+    !/\bxpt\b/i.test(t) &&
+    (/\b4\b/i.test(t) || t.includes("-4") || t.includes(" 4") || t.includes("max") || t.includes("crew")) &&
+    (t.includes("rzr-xp") || t.includes("rzr xp") || (t.includes("rzr") && t.includes("xp")) || /\bxp[-_\s]*4[-_\s]*1000\b/i.test(t))
+  ) {
+    return "rzr-xp-4";
+  }
+
+  // 11b. Polaris RZR XP (2-seater naturally aspirated XP 1000 / XP S 1000 — NOT Turbo, NOT Pro)
+  if (
+    !t.includes("pro") &&
+    !t.includes("turbo") &&
+    !/\bxpt\b/i.test(t) &&
+    !t.includes("-4") &&
+    !t.includes(" 4") &&
+    !t.includes("max") &&
+    !t.includes("crew") &&
+    !/\b4\b/i.test(t) &&
+    (t.includes("rzr-xp") || t.includes("rzr xp") || (t.includes("rzr") && t.includes("xp")) || /\bxp[-_\s]*(?:s[-_\s]*)?1000\b/i.test(t))
   ) {
     return "rzr-xp";
   }
@@ -1238,6 +1273,7 @@ export function detectVehiclePlatform(token: string): string | null {
 
 export type VehicleFamily =
   | "rzr-pro"
+  | "rzr-xp-turbo"
   | "rzr-xp"
   | "maverick-x3"
   | "maverick-r"
@@ -1252,7 +1288,7 @@ export type VehicleFamily =
 
 /**
  * Detects the macro vehicle family for strict cross-family isolation.
- * Prevents non-compatible families (e.g. Polaris RZR PRO vs RZR XP, Can-Am Maverick R vs X3)
+ * Prevents non-compatible families (e.g. Polaris RZR PRO vs RZR XP Turbo vs RZR XP 1000, Can-Am Maverick R vs X3)
  * from ever cross-matching or polluting filtered views.
  */
 export function getVehicleFamily(token: string): VehicleFamily | null {
@@ -1288,11 +1324,36 @@ export function getVehicleFamily(token: string): VehicleFamily | null {
     return "rzr-pro";
   }
 
-  // 2. Polaris RZR XP Family (Standard XP 1000, XP 4 1000, XP Turbo standard)
+  // 2a. Polaris RZR XP Turbo Family (XP Turbo, XP 4 Turbo, XP Turbo S, XPT — strictly separate from NA XP 1000!)
   if (
+    !t.includes("maverick") &&
+    !t.includes("can-am") &&
     !t.includes("pro") &&
     !t.includes("turbo-r") &&
     !t.includes("turbo r") &&
+    !t.includes("turbor") &&
+    (t.includes("turbo") || /\bxpt\b/i.test(t)) &&
+    (
+      t.includes("rzr-xp") ||
+      t.includes("rzr xp") ||
+      t.includes("xp-turbo") ||
+      t.includes("xp turbo") ||
+      t.includes("xp-4-turbo") ||
+      t.includes("xp 4 turbo") ||
+      t.includes("turbo-s") ||
+      t.includes("turbo s") ||
+      /\bxpt\b/i.test(t) ||
+      (t.includes("rzr") && t.includes("turbo"))
+    )
+  ) {
+    return "rzr-xp-turbo";
+  }
+
+  // 2b. Polaris RZR XP Family (Naturally Aspirated XP 1000, XP 4 1000, XP S 1000 — NOT Turbo, NOT Pro)
+  if (
+    !t.includes("pro") &&
+    !t.includes("turbo") &&
+    !/\bxpt\b/i.test(t) &&
     (
       t === "rzr xp" ||
       t === "rzr-xp" ||
@@ -1303,7 +1364,7 @@ export function getVehicleFamily(token: string): VehicleFamily | null {
       t.includes("xp1000") ||
       t.startsWith("rzr-xp") ||
       /\brzr[-_\s]*xp\b/i.test(t) ||
-      /\bxp[-_\s]*1000\b/i.test(t)
+      /\bxp[-_\s]*(?:s[-_\s]*)?1000\b/i.test(t)
     )
   ) {
     return "rzr-xp";
@@ -1431,14 +1492,16 @@ export function isPlatformOrVehicleMatch(compItem: string, targetToken: string):
   // Cross-family negative guards when one token has a recognized family:
   if (famC && !famTarget) {
     if (famC === "rzr-pro" && (target.includes("rzr-xp") || target.includes("rzr xp") || /\brzr[-_\s]*xp\b/i.test(target))) return false;
-    if (famC === "rzr-xp" && (target.includes("pro") || target.includes("turbo-r") || target.includes("turbo r"))) return false;
+    if (famC === "rzr-xp" && (target.includes("pro") || target.includes("turbo") || /\bxpt\b/i.test(target))) return false;
+    if (famC === "rzr-xp-turbo" && (target.includes("pro") || target.includes("turbo-r") || target.includes("turbo r") || (!target.includes("turbo") && !/\bxpt\b/i.test(target) && target.includes("1000")))) return false;
     if (famC === "maverick-r" && (target.includes("x3") || /\bx3\b/i.test(target))) return false;
     if (famC === "maverick-x3" && (target.includes("maverick-r") || target.includes("maverick r") || /\bmaverick[-_\s]?r\b/i.test(target))) return false;
   }
 
   if (famTarget && !famC) {
     if (famTarget === "rzr-pro" && (c.includes("rzr-xp") || c.includes("rzr xp") || /\brzr[-_\s]*xp\b/i.test(c))) return false;
-    if (famTarget === "rzr-xp" && (c.includes("pro") || c.includes("turbo-r") || c.includes("turbo r"))) return false;
+    if (famTarget === "rzr-xp" && (c.includes("pro") || c.includes("turbo") || /\bxpt\b/i.test(c))) return false;
+    if (famTarget === "rzr-xp-turbo" && (c.includes("pro") || c.includes("turbo-r") || c.includes("turbo r") || (!c.includes("turbo") && !/\bxpt\b/i.test(c) && c.includes("1000")))) return false;
     if (famTarget === "maverick-r" && (c.includes("x3") || /\bx3\b/i.test(c))) return false;
     if (famTarget === "maverick-x3" && (c.includes("maverick-r") || c.includes("maverick r") || /\bmaverick[-_\s]?r\b/i.test(c))) return false;
   }
@@ -2698,7 +2761,54 @@ export function resolveComboIncludedProducts(combo: any, catalogProducts: any[] 
     }
   }
 
+  // Also resolve products referenced inside combo_product_choice parameters
+  let rawParams: any[] = [];
+  if (Array.isArray(combo.parameters)) {
+    rawParams = combo.parameters;
+  } else if (typeof combo.parametersJson === "string" && combo.parametersJson.trim()) {
+    try {
+      const parsed = JSON.parse(combo.parametersJson);
+      if (Array.isArray(parsed)) rawParams = parsed;
+    } catch {}
+  }
+
+  if (rawParams.length > 0 && Array.isArray(catalogProducts) && catalogProducts.length > 0) {
+    for (const param of rawParams) {
+      if (param?.type !== "combo_product_choice" || !Array.isArray(param.options)) continue;
+      for (const opt of param.options) {
+        const ref = String(opt?.choiceProductId || opt?.choiceProductSku || opt?.choiceProductSlug || "")
+          .toLowerCase()
+          .trim();
+        if (!ref) continue;
+        const found = catalogProducts.find(
+          (p) =>
+            (p.id && String(p.id).toLowerCase().trim() === ref) ||
+            (p.sku && String(p.sku).toLowerCase().trim() === ref) ||
+            (p.slug && String(p.slug).toLowerCase().trim() === ref)
+        );
+        if (found) addProd(found);
+      }
+    }
+  }
+
   return matched;
+}
+
+/**
+ * Extracts explicit platform/family compatibility from a combo's own title/slug/badge
+ * so vehicle-specific combos (e.g. "Combo Stage 1 CFMOTO Z10") never mistakenly fall back to universal ["all"].
+ */
+function detectComboTitleExplicitPlatforms(combo: any): string[] {
+  if (!combo) return [];
+  const text = `${combo.titleEs || ""} ${combo.titleEn || ""} ${combo.badgeEs || ""} ${combo.badgeEn || ""} ${combo.slug || ""}`
+    .toLowerCase()
+    .trim();
+  if (!text) return [];
+  const detected = detectVehiclePlatform(text);
+  if (detected) return [detected];
+  const fam = getVehicleFamily(text);
+  if (fam) return [fam];
+  return [];
 }
 
 /**
@@ -2742,8 +2852,20 @@ export function deriveInheritedComboCompatibilityFromProducts(combo: any, catalo
       return Array.from(union);
     }
 
-    // All listed products in the combo are universal
+    // Before marking a combo universal ["all"], check if its own title/slug explicitly targets a vehicle platform (e.g. Z10)
+    const titlePlatforms = detectComboTitleExplicitPlatforms(combo);
+    if (titlePlatforms.length > 0) {
+      return titlePlatforms;
+    }
+
+    // All listed products in the combo are universal and combo title does not specify a vehicle
     return ["all"];
+  }
+
+  // If no listed products resolved (e.g., exclusive/custom items only), infer from title/slug if present
+  const titlePlatforms = detectComboTitleExplicitPlatforms(combo);
+  if (titlePlatforms.length > 0) {
+    return titlePlatforms;
   }
 
   return [];
