@@ -1071,7 +1071,7 @@ export function detectVehiclePlatform(token: string): string | null {
       t.includes("pro r") ||
       /\bpro[-_\s]*r\b/i.test(t)
     ) &&
-    !t.includes("4")
+    !is4SeaterToken(t)
   ) {
     return "pror";
   }
@@ -1104,7 +1104,7 @@ export function detectVehiclePlatform(token: string): string | null {
       t.includes("pro s") ||
       /\bpro[-_\s]*s\b/i.test(t)
     ) &&
-    !t.includes("4")
+    !is4SeaterToken(t)
   ) {
     return "pro-s";
   }
@@ -1137,7 +1137,7 @@ export function detectVehiclePlatform(token: string): string | null {
       t.includes("pro xp") ||
       /\bpro[-_\s]*xp\b/i.test(t)
     ) &&
-    !t.includes("4")
+    !is4SeaterToken(t)
   ) {
     return "proxp";
   }
@@ -1174,7 +1174,7 @@ export function detectVehiclePlatform(token: string): string | null {
       t.includes("polaris turbo r") ||
       /\b(rzr[-_\s]*)?turbo[-_\s]*r\b/i.test(t)
     ) &&
-    !t.includes("4")
+    !is4SeaterToken(t)
   ) {
     return "turbor";
   }
@@ -1454,11 +1454,91 @@ export function getVehicleFamily(token: string): VehicleFamily | null {
 }
 
 /**
+ * Splits compound vehicle compatibility labels (e.g. "CFMOTO ZForce Z10 & Z10-4 (2026+)",
+ * "ZForce 950 Sport / Sport-4", "Polaris RZR XP 1000 / XP 4 1000", "Maverick X3 / MAX")
+ * into individual model tokens while inheriting brand/model prefixes onto short suffixes.
+ */
+function expandCompoundVehicleTokens(raw: string): string[] {
+  const trimmed = (raw || "").trim();
+  if (!trimmed) return [];
+
+  // Strip trailing/inline year ranges or width/HP parentheticals like "(2026+)", "(2017-2027)", "(64\" / 72\")"
+  const stripped = trimmed
+    .replace(/\s*\([^)]*(?:\d{4}|64|72|hp|dct)[^)]*\)\s*/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const base = stripped || trimmed;
+
+  // Only split when an explicit compound separator is present
+  if (!/[&/+,]/.test(base)) {
+    return [base];
+  }
+
+  const rawParts = base
+    .split(/\s*(?:&|\/|\+|,)\s*/)
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0 && !/^\d{4}\+?$/.test(p) && !/^\d{2}["']?$/.test(p));
+
+  if (rawParts.length <= 1) {
+    return [base];
+  }
+
+  const primary = rawParts[0];
+  const primaryWords = primary.split(/\s+/).filter(Boolean);
+  const expanded: string[] = [primary];
+
+  for (let i = 1; i < rawParts.length; i++) {
+    const part = rawParts[i];
+    // If part is already a standalone recognizable platform (e.g. "Z10-4", "X3 MAX"), include directly
+    if (detectVehiclePlatform(part)) {
+      expanded.push(part);
+      continue;
+    }
+
+    // Inherit prefix from primary token for short variants like "MAX", "Sport-4", "XP 4 1000"
+    const partFirstWord = (part.split(/[\s-]+/)[0] || "").toLowerCase();
+    const matchIdx = primaryWords.findIndex(
+      (w) => w.toLowerCase().replace(/[^a-z0-9]/g, "") === partFirstWord.replace(/[^a-z0-9]/g, "")
+    );
+    if (matchIdx > 0) {
+      expanded.push(`${primaryWords.slice(0, matchIdx).join(" ")} ${part}`.trim());
+    } else {
+      expanded.push(`${primary} ${part}`.trim());
+    }
+    expanded.push(part);
+  }
+
+  return Array.from(new Set(expanded.filter(Boolean)));
+}
+
+/**
  * Standardized vehicle and platform compatibility matcher.
  * Uses canonical platform aliases and whole-token matching to strictly prevent false
  * cross-brand, cross-platform, or 2-seater vs 4-seater collisions.
  */
 export function isPlatformOrVehicleMatch(compItem: string, targetToken: string): boolean {
+  const rawC = (compItem || "").toLowerCase().trim();
+  const rawTarget = (targetToken || "").toLowerCase().trim();
+  if (!rawC || !rawTarget) return false;
+  if (rawC === "all" || rawTarget === "all") return true;
+  if (rawC.includes("universal") || rawTarget.includes("universal")) return true;
+
+  // STRICT RULE: Vehicle manufacturer brand names (Can-Am, Polaris, CFMOTO, etc.)
+  // are BRANDS, NEVER individual vehicle models or platforms! They must NEVER match as platforms!
+  if (isVehicleBrand(rawC) || isVehicleBrand(rawTarget)) {
+    return false;
+  }
+
+  const compParts = expandCompoundVehicleTokens(compItem);
+  const targetParts = expandCompoundVehicleTokens(targetToken);
+
+  return compParts.some((cp) =>
+    targetParts.some((tp) => matchSinglePlatformOrVehicle(cp, tp))
+  );
+}
+
+function matchSinglePlatformOrVehicle(compItem: string, targetToken: string): boolean {
   const c = compItem.toLowerCase().trim();
   const target = targetToken.toLowerCase().trim();
   if (!c || !target) return false;
@@ -2254,7 +2334,7 @@ export async function searchAndFilterProducts(options: FilterOptions = {}): Prom
         if (compMatch) return true;
 
         const myCompMatch = product.modelYearCompatibility && product.modelYearCompatibility.some((m) =>
-          isPlatformOrVehicleMatch(m.model, platLower) || (m.make && isPlatformOrVehicleMatch(m.make, platLower))
+          isPlatformOrVehicleMatch(m.model, platLower) || (m.make && doVehicleMakesMatch(m.make, platLower))
         );
         if (myCompMatch) return true;
 
@@ -2325,6 +2405,151 @@ export function normalizeMakeToBrandSlug(make?: string | null): string | null {
   if (m === "segway") return "segway";
   if (m === "kawasaki") return "kawasaki";
   return null;
+}
+
+/**
+ * Canonical vehicle make/brand comparator.
+ * Unlike `isPlatformOrVehicleMatch` (which explicitly rejects brand-only strings),
+ * this helper compares manufacturer names/slugs like "CFMOTO" vs "cf-moto" or "Can-Am" vs "canam".
+ */
+export function doVehicleMakesMatch(makeA?: string | null, makeB?: string | null): boolean {
+  const a = (makeA || "").toLowerCase().trim();
+  const b = (makeB || "").toLowerCase().trim();
+  if (!a || !b) return false;
+  if (a === "all" || b === "all" || a.includes("universal") || b.includes("universal")) {
+    return true;
+  }
+
+  const slugA = normalizeMakeToBrandSlug(a);
+  const slugB = normalizeMakeToBrandSlug(b);
+  if (slugA && slugB) {
+    return slugA === slugB;
+  }
+
+  const normA = a.replace(/[^a-z0-9]/g, "");
+  const normB = b.replace(/[^a-z0-9]/g, "");
+  if (!normA || !normB) return false;
+  return normA === normB || normA.includes(normB) || normB.includes(normA);
+}
+
+/**
+ * Unified product-to-garage-vehicle fitment evaluator used across product pages,
+ * catalog cards, and API filters.
+ *
+ * - Universal products always match.
+ * - Structured `modelYearCompatibility` compares make via `doVehicleMakesMatch`,
+ *   model via `isPlatformOrVehicleMatch`, and enforces year bounds when valid.
+ * - If a structured entry matches the vehicle's make & model but fails ONLY due to year bounds,
+ *   that year mismatch is respected (does NOT falsely fall back to `comp`).
+ * - If no structured entry covers the vehicle's model (or `modelYearCompatibility` is empty),
+ *   falls back cleanly to `product.comp`.
+ */
+export function isProductCompatibleWithVehicle(
+  product: {
+    comp?: string[] | null;
+    modelYearCompatibility?: Array<{
+      make?: string | null;
+      model?: string | null;
+      yearFrom?: number | null;
+      yearTo?: number | null;
+    }> | null;
+  } | null | undefined,
+  vehicle: {
+    brandName?: string | null;
+    brandSlug?: string | null;
+    modelName?: string | null;
+    modelSlug?: string | null;
+    year?: number | string | null;
+  } | null | undefined
+): boolean {
+  if (!product || !vehicle) return false;
+
+  if (isUniversalFit(product.comp)) return true;
+
+  const vYearNum = Number(vehicle.year);
+  const hasValidYear = Number.isFinite(vYearNum) && vYearNum >= 1980 && vYearNum <= 2100;
+
+  const vehicleModelTokens = Array.from(
+    new Set(
+      [
+        vehicle.modelName || "",
+        vehicle.modelSlug || "",
+        `${vehicle.brandName || ""} ${vehicle.modelName || ""}`.trim(),
+        `${vehicle.brandSlug || ""} ${vehicle.modelSlug || ""}`.trim(),
+      ]
+        .map((s) => s.trim())
+        .filter(Boolean)
+    )
+  );
+
+  if (vehicleModelTokens.length === 0) return false;
+
+  const vehicleBrandTokens = [vehicle.brandName || "", vehicle.brandSlug || ""]
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0 && s.toLowerCase() !== "all");
+
+  let matchedModelWithYearMismatch = false;
+
+  if (Array.isArray(product.modelYearCompatibility) && product.modelYearCompatibility.length > 0) {
+    for (const fit of product.modelYearCompatibility) {
+      if (!fit) continue;
+      const fitModel = (fit.model || "").trim();
+      const fitModelLower = fitModel.toLowerCase();
+      const fitMake = (fit.make || "").trim();
+      const fitMakeLower = fitMake.toLowerCase();
+
+      if (fitModelLower === "all" || fitModelLower.includes("universal")) {
+        return true;
+      }
+
+      // Verify vehicle make when both product fitment make and vehicle brand are specified
+      if (
+        fitMakeLower &&
+        fitMakeLower !== "all" &&
+        !fitMakeLower.includes("universal") &&
+        vehicleBrandTokens.length > 0
+      ) {
+        const brandMatches = vehicleBrandTokens.some((vb) => doVehicleMakesMatch(fitMake, vb));
+        if (!brandMatches) continue;
+      }
+
+      // Verify model match
+      const modelMatches =
+        fitModel.length > 0 &&
+        vehicleModelTokens.some((tok) => isPlatformOrVehicleMatch(fitModel, tok));
+      if (!modelMatches) continue;
+
+      // Check year bounds if valid vehicle year is provided
+      const yFrom = Number(fit.yearFrom);
+      const yTo = Number(fit.yearTo);
+      const hasFrom = Number.isFinite(yFrom) && yFrom >= 1980 && yFrom <= 2100;
+      const hasTo = Number.isFinite(yTo) && yTo >= 1980 && yTo <= 2100;
+
+      if (hasValidYear) {
+        if ((hasFrom && vYearNum < yFrom) || (hasTo && vYearNum > yTo)) {
+          matchedModelWithYearMismatch = true;
+          continue;
+        }
+      }
+
+      return true;
+    }
+
+    // If structured fitment explicitly recognized this vehicle model but rejected its year, honor that rejection
+    if (matchedModelWithYearMismatch) {
+      return false;
+    }
+  }
+
+  // Fallback to product.comp tokens (covers products without modelYearCompatibility or with models added in comp)
+  if (Array.isArray(product.comp) && product.comp.length > 0) {
+    return product.comp.some((c) => {
+      if (!c) return false;
+      return vehicleModelTokens.some((tok) => isPlatformOrVehicleMatch(c, tok));
+    });
+  }
+
+  return false;
 }
 
 export function normalizeModelSlugToBrandSlug(slug?: string | null): string | null {

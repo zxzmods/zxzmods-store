@@ -4,6 +4,7 @@ import {
   normalizeBrandName,
   extractDescriptionText,
   isPlatformOrVehicleMatch,
+  isProductCompatibleWithVehicle,
   detectVehiclePlatform,
   getVehicleFamily,
   isUniversalFit,
@@ -11,7 +12,6 @@ import {
   normalizeVideoUrl,
   detectProductVehicleBrands,
   getRecommendedFillerProducts,
-  getRecommendedFillerCombos,
   sortVehicleModels,
   sortVehicleBrands,
   deriveComboCompatibilityFromProducts,
@@ -771,30 +771,24 @@ export async function GET(request: Request) {
         finalProduct.suggestedProducts = [];
       }
 
-      // Combos recommendation: prioritize vehicle compatibility and category
-      const dbCombos = await prisma.combo.findMany({
-        where: { isArchived: false },
-      });
-      const parsedCombos = dbCombos.map((c) => ({
-        ...c,
-        items: (() => {
-          try { return JSON.parse(c.itemsJson || "[]"); } catch { return []; }
-        })(),
-      }));
-
-      let explicitCombos: any[] = [];
+      // Suggested combos: ONLY include combos explicitly configured on this product (never auto-fill random combos)
       if (finalProduct.suggestedComboIds && finalProduct.suggestedComboIds.length > 0) {
+        const dbCombos = await prisma.combo.findMany({
+          where: { isArchived: false },
+        });
+        const parsedCombos = dbCombos.map((c) => ({
+          ...c,
+          items: (() => {
+            try { return JSON.parse(c.itemsJson || "[]"); } catch { return []; }
+          })(),
+        }));
         const sugComboIds = new Set(finalProduct.suggestedComboIds.map((r: string) => r.toLowerCase()));
-        explicitCombos = parsedCombos.filter((c) => sugComboIds.has(c.id.toLowerCase()) || sugComboIds.has(c.slug.toLowerCase()));
+        finalProduct.suggestedCombos = parsedCombos.filter(
+          (c) => sugComboIds.has(c.id.toLowerCase()) || sugComboIds.has(c.slug.toLowerCase())
+        );
+      } else {
+        finalProduct.suggestedCombos = [];
       }
-
-      finalProduct.suggestedCombos = getRecommendedFillerCombos(
-        finalProduct,
-        parsedCombos,
-        candidates,
-        4,
-        explicitCombos
-      );
 
       if (finalProduct.requiredProductIds && finalProduct.requiredProductIds.length > 0) {
         const reqIds = finalProduct.requiredProductIds;
@@ -1033,48 +1027,16 @@ export async function GET(request: Request) {
 
       // 3. Active Vehicle Compatibility
       if (vehicleModel) {
-        const vehicleLower = vehicleModel.toLowerCase().trim();
         const isUniversal = isEffectiveUniversal(product);
 
         if (!isUniversal) {
-          let matchesVehicle = false;
-
-          // A. If product has structured modelYearCompatibility
-          if (product.modelYearCompatibility && product.modelYearCompatibility.length > 0) {
-            matchesVehicle = product.modelYearCompatibility.some((m) => {
-              const fitModel = (m.model || "").toLowerCase().trim();
-              const fitMake = (m.make || "").toLowerCase().trim();
-
-              if (fitModel === "all" || fitModel.includes("universal")) return true;
-
-              // If make is specified, verify vehicle brand doesn't contradict
-              if (vehicleBrand && vehicleBrand.toLowerCase() !== "all" && fitMake && fitMake !== "all" && !fitMake.includes("universal")) {
-                const brandMatches =
-                  isPlatformOrVehicleMatch(fitMake, vehicleBrand) ||
-                  fitMake.includes(vehicleBrand.toLowerCase()) ||
-                  vehicleBrand.toLowerCase().includes(fitMake);
-                if (!brandMatches) return false;
-              }
-
-              // Model match: vehicle model MUST match fit.model
-              const modelMatches = isPlatformOrVehicleMatch(fitModel, vehicleLower);
-              if (!modelMatches) return false;
-
-              // Year check: if vehicleYear is provided, it must be within range
-              if (vehicleYear && !isNaN(vehicleYear)) {
-                if (m.yearFrom && vehicleYear < m.yearFrom) return false;
-                if (m.yearTo && vehicleYear > m.yearTo) return false;
-              }
-
-              return true;
-            });
-          }
-
-          // B. Fallback to product.comp array
-          if (!matchesVehicle && product.comp && product.comp.length > 0) {
-            matchesVehicle = product.comp.some((c) => isPlatformOrVehicleMatch(c, vehicleLower));
-          }
-
+          const matchesVehicle = isProductCompatibleWithVehicle(product, {
+            brandName: vehicleBrand || "",
+            brandSlug: vehicleBrand || "",
+            modelName: vehicleModel,
+            modelSlug: vehicleModel,
+            year: vehicleYear && !isNaN(vehicleYear) ? vehicleYear : undefined,
+          });
           if (!matchesVehicle) return false;
         }
       }

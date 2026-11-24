@@ -25,6 +25,7 @@ import {
   normalizeBrandName,
   DescriptionSection,
   isPlatformOrVehicleMatch,
+  isProductCompatibleWithVehicle,
   isUniversalFit,
   formatCompListWithYears,
   SelectedParameterItem,
@@ -1368,41 +1369,9 @@ export default function ProductDetailPage() {
   // Compatibility display with year model only to the right side of compatible models (e.g. Z10 & z10-4  2026+)
   const compDisplay = formatCompListWithYears(product?.comp);
 
-  // Vehicle compatibility logic (matching platform and optional year bounds)
-  const isUniversal = isUniversalFit(product?.comp);
+  // Vehicle compatibility logic (matching make, platform, and optional year bounds)
   const isVehicleCompatible = Boolean(
-    vehicle &&
-    (isUniversal ||
-      (product?.modelYearCompatibility && product.modelYearCompatibility.length > 0
-        ? product.modelYearCompatibility.some((fit) => {
-            const fitModelLower = (fit.model || "").toLowerCase();
-            const fitMakeLower = (fit.make || "").toLowerCase();
-            if (fitModelLower === "all" || fitModelLower.includes("universal")) return true;
-
-            // Brand/Make match: if make is specified and not universal, vehicle brand MUST match
-            if (fitMakeLower && fitMakeLower !== "all" && !fitMakeLower.includes("universal")) {
-              const brandMatches =
-                isPlatformOrVehicleMatch(fit.make || "", vehicle.brandName || "") ||
-                isPlatformOrVehicleMatch(fit.make || "", (vehicle as any).brandSlug || "");
-              if (!brandMatches) return false;
-            }
-
-            // Model match: vehicle model MUST match fit.model
-            const modelMatches =
-              isPlatformOrVehicleMatch(fit.model || "", vehicle.modelName || "") ||
-              isPlatformOrVehicleMatch(fit.model || "", vehicle.modelSlug || "") ||
-              isPlatformOrVehicleMatch(fit.model || "", `${vehicle.brandName || ""} ${vehicle.modelName || ""}`.trim());
-            if (!modelMatches) return false;
-
-            if (fit.yearFrom && vehicle.year < fit.yearFrom) return false;
-            if (fit.yearTo && vehicle.year > fit.yearTo) return false;
-            return true;
-          })
-        : product?.comp?.some((c) =>
-            isPlatformOrVehicleMatch(c, vehicle.modelName) ||
-            isPlatformOrVehicleMatch(c, vehicle.modelSlug) ||
-            isPlatformOrVehicleMatch(c, `${vehicle.brandName} ${vehicle.modelName}`)
-          )))
+    vehicle && isProductCompatibleWithVehicle(product, vehicle)
   );
 
   // Cart quantity for this specific product variant (replaces Add to cart button when > 0)

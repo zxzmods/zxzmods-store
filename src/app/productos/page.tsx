@@ -19,7 +19,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { CatalogPagination } from "@/components/ui/CatalogPagination";
 import { CustomSelect } from "@/components/ui/CustomSelect";
 import { motion, AnimatePresence } from "framer-motion";
-import { ProductItem, normalizeBrandList, isPlatformOrVehicleMatch, detectVehiclePlatform, isUniversalFit, SelectedParameterItem } from "@/lib/products";
+import { ProductItem, normalizeBrandList, isPlatformOrVehicleMatch, isProductCompatibleWithVehicle, detectVehiclePlatform, isUniversalFit, SelectedParameterItem } from "@/lib/products";
 import {
   parseSmartSearchQuery,
   buildSmartSearchSuggestions,
@@ -1131,40 +1131,7 @@ function ProductsContent() {
 
     if (!vehicle) return { isCompatible: false, isUniversal: false, pending: true };
 
-    if (product.modelYearCompatibility && product.modelYearCompatibility.length > 0) {
-      const match = product.modelYearCompatibility.some((fit) => {
-        const fitModelLower = (fit.model || "").toLowerCase();
-        const fitMakeLower = (fit.make || "").toLowerCase();
-        if (fitModelLower === "all" || fitModelLower.includes("universal")) return true;
-
-        if (fitMakeLower && fitMakeLower !== "all" && !fitMakeLower.includes("universal")) {
-          const brandMatches =
-            isPlatformOrVehicleMatch(fit.make || "", vehicle.brandName || "") ||
-            isPlatformOrVehicleMatch(fit.make || "", (vehicle as any).brandSlug || "");
-          if (!brandMatches) return false;
-        }
-
-        const modelMatches =
-          isPlatformOrVehicleMatch(fit.model || "", vehicle.modelName || "") ||
-          isPlatformOrVehicleMatch(fit.model || "", vehicle.modelSlug || "") ||
-          isPlatformOrVehicleMatch(fit.model || "", `${vehicle.brandName || ""} ${vehicle.modelName || ""}`.trim());
-        if (!modelMatches) return false;
-
-        if (fit.yearFrom && vehicle.year < fit.yearFrom) return false;
-        if (fit.yearTo && vehicle.year > fit.yearTo) return false;
-        return true;
-      });
-
-      return { isCompatible: match, isUniversal: false, pending: false };
-    }
-
-    const vehicleString = `${vehicle.brandName} ${vehicle.modelName}`.toLowerCase();
-    const isCompatible = Boolean(product.comp?.some((c) =>
-      isPlatformOrVehicleMatch(c, vehicleString) ||
-      isPlatformOrVehicleMatch(c, vehicle.modelName) ||
-      isPlatformOrVehicleMatch(c, vehicle.modelSlug)
-    ));
-
+    const isCompatible = isProductCompatibleWithVehicle(product, vehicle);
     return { isCompatible, isUniversal: false, pending: false };
   };
 
