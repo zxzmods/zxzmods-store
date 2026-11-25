@@ -87,6 +87,7 @@ interface ComboItem {
   leadDaysMin?: number;
   leadDaysMax?: number;
   parameters?: ConfigurableParameter[];
+  inheritedProductParameters?: ConfigurableParameter[];
   uniqueProduct?: ComboUniqueProduct | null;
   reviews?: {
     stars: number;
@@ -217,21 +218,32 @@ export default function ComboDetailPage() {
           setTextInputValues({});
           setTextInputErrors({});
           setTextInputErrorMsg(null);
-          if (data.data.combo.parameters && Array.isArray(data.data.combo.parameters)) {
-            const initialOpts: Record<string, string> = {};
-            data.data.combo.parameters.forEach((param: any) => {
-              if (param.type === "text_input" || param.type === "cart_addon") return;
-              if (param.options && param.options.length > 0) {
-                if (param.type === "combo_product_choice") {
-                  const firstInStock = param.options.find((o: any) => !o.isOutOfStock);
-                  initialOpts[param.id] = (firstInStock || param.options[0]).id;
-                } else {
-                  initialOpts[param.id] = param.options[0].id;
+          const initialOpts: Record<string, string> = {};
+          const seedParams = [
+            ...(Array.isArray(data.data.combo.parameters) ? data.data.combo.parameters : []),
+            ...(Array.isArray(data.data.combo.inheritedProductParameters) ? data.data.combo.inheritedProductParameters : []),
+          ];
+          seedParams.forEach((param: any) => {
+            if (param.type === "text_input" || param.type === "cart_addon") return;
+            if (param.options && param.options.length > 0) {
+              if (param.type === "combo_product_choice") {
+                const firstInStock = param.options.find((o: any) => !o.isOutOfStock);
+                const chosenOpt = firstInStock || param.options[0];
+                initialOpts[param.id] = chosenOpt.id;
+                if (Array.isArray(chosenOpt.choiceProductParameters)) {
+                  chosenOpt.choiceProductParameters.forEach((cp: any) => {
+                    if (cp.type === "text_input" || cp.type === "cart_addon") return;
+                    if (cp.options && cp.options.length > 0) {
+                      initialOpts[cp.id] = cp.options[0].id;
+                    }
+                  });
                 }
+              } else {
+                initialOpts[param.id] = param.options[0].id;
               }
-            });
-            setSelectedOptions(initialOpts);
-          }
+            }
+          });
+          setSelectedOptions(initialOpts);
           if (data.data.combo.uniqueProduct?.enabled && Array.isArray(data.data.combo.uniqueProduct.fields)) {
             const initialUnique: Record<string, string> = {};
             data.data.combo.uniqueProduct.fields.forEach((f: ComboUniqueProductField) => {
@@ -306,24 +318,93 @@ export default function ComboDetailPage() {
     };
   }, [isLightboxOpen]);
 
+  // Combine combo's own parameters + fixed included products' parameters + active combo_product_choice product parameters
+  const activeParameters = useMemo<ConfigurableParameter[]>(() => {
+    if (!combo) return [];
+    const list: ConfigurableParameter[] = [];
+    const ownParams = Array.isArray(combo.parameters) ? combo.parameters : [];
+
+    for (const param of ownParams) {
+      list.push(param);
+      // Immediately include the currently selected choice product's own parameters right beneath its choice selector
+      if (param.type === "combo_product_choice" && Array.isArray(param.options) && param.options.length > 0) {
+        const chosenOptId = selectedOptions[param.id] || param.options.find((o) => !o.isOutOfStock)?.id || param.options[0].id;
+        const chosenOpt = param.options.find((o) => o.id === chosenOptId) || param.options[0];
+        if (chosenOpt && Array.isArray(chosenOpt.choiceProductParameters) && chosenOpt.choiceProductParameters.length > 0) {
+          chosenOpt.choiceProductParameters.forEach((cp) => list.push(cp));
+        }
+      }
+    }
+
+    const inheritedParams = Array.isArray(combo.inheritedProductParameters)
+      ? combo.inheritedProductParameters
+      : [];
+    for (const ip of inheritedParams) {
+      list.push(ip);
+    }
+
+    return list;
+  }, [combo, selectedOptions]);
+
   const standardParameters = useMemo(() => {
-    return (combo?.parameters || []).filter(
+    return activeParameters.filter(
       (p) => p.type !== "text_input" && p.type !== "cart_addon"
     );
-  }, [combo?.parameters]);
+  }, [activeParameters]);
 
   const textInputParameters = useMemo(() => {
-    return (combo?.parameters || []).filter((p) => p.type === "text_input");
-  }, [combo?.parameters]);
+    return activeParameters.filter((p) => p.type === "text_input");
+  }, [activeParameters]);
+
+  // Ensure any newly visible standard parameter (e.g. when switching combo_product_choice options) gets its default option selected
+  useEffect(() => {
+    if (standardParameters.length === 0) return;
+    setSelectedOptions((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const param of standardParameters) {
+        if (!Array.isArray(param.options) || param.options.length === 0) continue;
+        if (!next[param.id] || !param.options.some((o) => o.id === next[param.id])) {
+          if (param.type === "combo_product_choice") {
+            const firstInStock = param.options.find((o) => !o.isOutOfStock);
+            next[param.id] = (firstInStock || param.options[0]).id;
+          } else {
+            next[param.id] = param.options[0].id;
+          }
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [standardParameters]);
+
+  // Helper to resolve an option's CRC delta (handles CRC directly or converts USD delta using active sellRate)
+  const resolveOptionDeltaCRC = useCallback(
+    (opt?: { priceDeltaCRC?: number; priceDeltaUSD?: number } | null): number => {
+      if (!opt) return 0;
+      if (typeof opt.priceDeltaCRC === "number" && opt.priceDeltaCRC !== 0) {
+        return Math.round(opt.priceDeltaCRC);
+      }
+      if (typeof opt.priceDeltaUSD === "number" && opt.priceDeltaUSD !== 0) {
+        return Math.round(opt.priceDeltaUSD * (sellRate || 455.21));
+      }
+      return 0;
+    },
+    [sellRate]
+  );
 
   const filledTextParameterItems: SelectedParameterItem[] = useMemo(() => {
     const list: SelectedParameterItem[] = [];
     textInputParameters.forEach((param) => {
       const val = (textInputValues[param.id] || "").trim();
       if (val) {
+        const baseName = lang === "es" ? param.nameEs : (param.nameEn || param.nameEs);
+        const sourceName = param.inheritedFromProduct
+          ? (lang === "es" ? param.sourceProductNameEs : (param.sourceProductNameEn || param.sourceProductNameEs))
+          : null;
         list.push({
           parameterId: param.id,
-          parameterName: lang === "es" ? param.nameEs : (param.nameEn || param.nameEs),
+          parameterName: sourceName ? `${sourceName} — ${baseName}` : baseName,
           optionId: `txt_${encodeURIComponent(val).slice(0, 32)}`,
           optionLabel: val,
           priceDeltaCRC: 0,
@@ -333,7 +414,7 @@ export default function ComboDetailPage() {
     return list;
   }, [textInputParameters, textInputValues, lang]);
 
-  // Dynamic Calculation of Parameters & Price Delta (includes Combo-Exclusive Product Choice options)
+  // Dynamic Calculation of Parameters & Price Delta (includes Combo-Exclusive Product Choice + Inherited Product Parameters)
   const selectedParametersList: SelectedParameterItem[] = useMemo(() => {
     if (standardParameters.length === 0) return [];
     const list: SelectedParameterItem[] = [];
@@ -341,15 +422,21 @@ export default function ComboDetailPage() {
       const selectedOptionId = selectedOptions[param.id] || param.options?.[0]?.id;
       const option = param.options?.find((o) => o.id === selectedOptionId);
       if (option) {
+        const baseName = lang === "es" ? param.nameEs : (param.nameEn || param.nameEs);
+        const sourceName = param.inheritedFromProduct
+          ? (lang === "es" ? param.sourceProductNameEs : (param.sourceProductNameEn || param.sourceProductNameEs))
+          : null;
+        const deltaCRC =
+          param.type === "combo_product_choice"
+            ? (option.liveProductPriceCRC ?? option.originalPriceDeltaCRC ?? option.priceDeltaCRC ?? 0)
+            : resolveOptionDeltaCRC(option);
+
         list.push({
           parameterId: param.id,
-          parameterName: lang === "es" ? param.nameEs : (param.nameEn || param.nameEs),
+          parameterName: sourceName ? `${sourceName} — ${baseName}` : baseName,
           optionId: option.id,
           optionLabel: lang === "es" ? option.labelEs : (option.labelEn || option.labelEs),
-          priceDeltaCRC:
-            param.type === "combo_product_choice"
-              ? (option.liveProductPriceCRC ?? option.originalPriceDeltaCRC ?? option.priceDeltaCRC ?? 0)
-              : (option.priceDeltaCRC || 0),
+          priceDeltaCRC: deltaCRC,
           priceDeltaUSD: option.priceDeltaUSD || 0,
           colorHex: option.colorHex,
           imageUrl: option.imageUrl,
@@ -360,7 +447,7 @@ export default function ComboDetailPage() {
       }
     });
     return list;
-  }, [standardParameters, selectedOptions, lang]);
+  }, [standardParameters, selectedOptions, lang, resolveOptionDeltaCRC]);
 
   // Track currently selected combo_product_choice options (for live out-of-stock reflection & original price)
   const selectedChoiceDetails = useMemo(() => {
@@ -412,9 +499,12 @@ export default function ComboDetailPage() {
         isSelectedChoiceOutOfStock)
   );
 
-  // Dual parameter matrix resolution (Param 1 x Param 2 expansion)
+  // Dual parameter matrix resolution for combo's own local parameters
   const dualResolution = useMemo(() => {
-    return resolveDualParameterConnection(standardParameters, selectedOptions);
+    const comboOwnParams = standardParameters.filter(
+      (p) => !p.inheritedFromProduct && p.type !== "combo_product_choice"
+    );
+    return resolveDualParameterConnection(comboOwnParams, selectedOptions);
   }, [standardParameters, selectedOptions]);
 
   // Complete combo image gallery (selected parameter variant images first, followed by deduplicated gallery images)
@@ -477,25 +567,59 @@ export default function ComboDetailPage() {
     return allImages[activeImageIndex] || allImages[0] || "/images/sxs/z10_front.png";
   }, [selectedImageOverride, allImages, activeImageIndex]);
 
+  // Compute total parameter delta accurately per owner scope (combo's own params + each included/chosen product's params)
+  const nonChoiceParametersDeltaCRC = useMemo(() => {
+    const scopeMap = new Map<string, ConfigurableParameter[]>();
+    for (const param of standardParameters) {
+      if (param.type === "combo_product_choice") continue;
+      const scopeKey = param.inheritedFromProduct
+        ? `${param.sourceChoiceParamId || "item"}::${param.sourceChoiceOptionId || "fixed"}::${param.sourceProductId || param.id}`
+        : "__combo__";
+      const arr = scopeMap.get(scopeKey) || [];
+      arr.push(param);
+      scopeMap.set(scopeKey, arr);
+    }
+
+    let sum = 0;
+    scopeMap.forEach((scopeParams) => {
+      const dual = resolveDualParameterConnection(scopeParams, selectedOptions);
+      if (scopeParams.length >= 2 && dual.connection) {
+        const dualDelta =
+          dual.effectivePriceDeltaCRC !== 0
+            ? dual.effectivePriceDeltaCRC
+            : dual.effectivePriceDeltaUSD !== 0
+            ? Math.round(dual.effectivePriceDeltaUSD * (sellRate || 455.21))
+            : 0;
+        sum += dualDelta;
+        // Include any 3rd+ parameters in this same scope beyond the first two local variant params
+        const handledIds = new Set<string>([scopeParams[0].id, scopeParams[1].id]);
+        for (const p of scopeParams) {
+          if (handledIds.has(p.id)) continue;
+          const optId = selectedOptions[p.id] || p.options?.[0]?.id;
+          const opt = p.options?.find((o) => o.id === optId);
+          sum += resolveOptionDeltaCRC(opt);
+        }
+      } else {
+        for (const p of scopeParams) {
+          const optId = selectedOptions[p.id] || p.options?.[0]?.id;
+          const opt = p.options?.find((o) => o.id === optId);
+          sum += resolveOptionDeltaCRC(opt);
+        }
+      }
+    });
+
+    return sum;
+  }, [standardParameters, selectedOptions, sellRate, resolveOptionDeltaCRC]);
+
   const totalDeltaCRC = useMemo(() => {
     const choiceDelta = selectedChoiceDetails.reduce((acc, c) => acc + (c.priceDeltaCRC || 0), 0);
-    const nonChoiceParams = selectedParametersList.filter(
-      (p) => !selectedChoiceDetails.some((c) => c.paramId === p.parameterId)
-    );
-    if (combo?.parameters && combo.parameters.length >= 2 && dualResolution.connection) {
-      return dualResolution.effectivePriceDeltaCRC + choiceDelta;
-    }
-    const nonChoiceDelta = nonChoiceParams.reduce((acc, p) => acc + (p.priceDeltaCRC || 0), 0);
-    return nonChoiceDelta + choiceDelta;
-  }, [selectedParametersList, selectedChoiceDetails, combo?.parameters, dualResolution]);
+    return nonChoiceParametersDeltaCRC + choiceDelta;
+  }, [selectedChoiceDetails, nonChoiceParametersDeltaCRC]);
 
   const totalOriginalDeltaCRC = useMemo(() => {
     const choiceOrig = selectedChoiceDetails.reduce((acc, c) => acc + (c.originalPriceDeltaCRC || 0), 0);
-    const nonChoiceDelta = selectedParametersList
-      .filter((p) => !selectedChoiceDetails.some((c) => c.paramId === p.parameterId))
-      .reduce((acc, p) => acc + (p.priceDeltaCRC || 0), 0);
-    return nonChoiceDelta + choiceOrig;
-  }, [selectedParametersList, selectedChoiceDetails]);
+    return nonChoiceParametersDeltaCRC + choiceOrig;
+  }, [selectedChoiceDetails, nonChoiceParametersDeltaCRC]);
 
   const effectivePriceCRC = (combo?.priceCRC || 0) + totalDeltaCRC;
   const effectiveOriginalPriceCRC = (combo?.originalPriceCRC || combo?.priceCRC || 0) + totalOriginalDeltaCRC;
@@ -1190,9 +1314,32 @@ export default function ComboDetailPage() {
                         const activeOptionId = selectedOptions[param.id] || param.options?.[0]?.id;
                         const paramTitle = lang === "es" ? param.nameEs : (param.nameEn || param.nameEs);
                         const isChoiceParam = param.type === "combo_product_choice";
+                        const inheritedProductTitle = param.inheritedFromProduct
+                          ? (lang === "es" ? param.sourceProductNameEs : (param.sourceProductNameEn || param.sourceProductNameEs))
+                          : null;
 
                         return (
-                          <div key={param.id} className="space-y-2">
+                          <div
+                            key={param.id}
+                            className={`space-y-2 ${
+                              param.sourceChoiceParamId
+                                ? "pl-3 border-l-2 border-[#C02030]/35 bg-white/60 rounded-r-xl py-2 pr-2"
+                                : param.inheritedFromProduct
+                                ? "pt-2.5 border-t border-gray-200/70 first:pt-0 first:border-t-0"
+                                : ""
+                            }`}
+                          >
+                            {inheritedProductTitle && (
+                              <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500">
+                                <Package className="w-3 h-3 text-[#C02030] shrink-0" />
+                                <span className="uppercase tracking-wider text-slate-400">
+                                  {t.comboInheritedProductParamBadge}:
+                                </span>
+                                <span className="text-slate-700 truncate font-extrabold">
+                                  {inheritedProductTitle}
+                                </span>
+                              </div>
+                            )}
                             <div className="flex items-center justify-between gap-2 text-xs">
                               <span className="font-bold text-gray-800 flex items-center gap-1.5">
                                 {isChoiceParam && <Package className="w-3.5 h-3.5 text-[#C02030]" />}
@@ -1351,23 +1498,25 @@ export default function ComboDetailPage() {
                                         />
                                       )}
                                       <span>{optLabel}</span>
-                                      {(opt.priceDeltaCRC !== 0 || (opt.priceDeltaUSD !== undefined && opt.priceDeltaUSD !== 0)) && (
-                                        <span
-                                          className={`text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded-md ${
-                                            isSelected
-                                              ? "bg-black/25 text-white"
-                                              : "bg-gray-100 text-[#C02030]"
-                                          }`}
-                                        >
-                                          {opt.priceDeltaCRC !== 0
-                                            ? (opt.priceDeltaCRC > 0
-                                                ? `+${formatCRC(opt.priceDeltaCRC)}`
-                                                : `-${formatCRC(Math.abs(opt.priceDeltaCRC))}`)
-                                            : (opt.priceDeltaUSD && opt.priceDeltaUSD > 0
-                                                ? `+$${opt.priceDeltaUSD}`
-                                                : `-$${Math.abs(opt.priceDeltaUSD || 0)}`)}
-                                        </span>
-                                      )}
+                                      {(() => {
+                                        const optDeltaCRC = resolveOptionDeltaCRC(opt);
+                                        if (optDeltaCRC === 0) return null;
+                                        const formattedDelta =
+                                          currency === "USD"
+                                            ? formatUSD(convertCRCToUSD(Math.abs(optDeltaCRC), sellRate))
+                                            : formatCRC(Math.abs(optDeltaCRC));
+                                        return (
+                                          <span
+                                            className={`text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded-md ${
+                                              isSelected
+                                                ? "bg-black/25 text-white"
+                                                : "bg-gray-100 text-[#C02030]"
+                                            }`}
+                                          >
+                                            {optDeltaCRC > 0 ? `+${formattedDelta}` : `-${formattedDelta}`}
+                                          </span>
+                                        );
+                                      })()}
                                     </button>
                                   );
                                 })}
@@ -1650,6 +1799,9 @@ export default function ComboDetailPage() {
                           lang === "es"
                             ? field.nameEs || field.nameEn || ""
                             : field.nameEn || field.nameEs || "";
+                        const inheritedFieldProduct = field.inheritedFromProduct
+                          ? (lang === "es" ? field.sourceProductNameEs : (field.sourceProductNameEn || field.sourceProductNameEs))
+                          : null;
                         const fieldPlaceholder =
                           lang === "es"
                             ? field.placeholderEs || field.placeholderEn || "Escribe aquí..."
@@ -1657,6 +1809,12 @@ export default function ComboDetailPage() {
 
                         return (
                           <div key={field.id} className="space-y-1.5">
+                            {inheritedFieldProduct && (
+                              <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500">
+                                <Package className="w-3 h-3 text-[#C02030] shrink-0" />
+                                <span className="truncate">{inheritedFieldProduct}</span>
+                              </div>
+                            )}
                             <div className="flex items-center justify-between gap-2">
                               <label
                                 htmlFor={`combo-txt-${field.id}`}

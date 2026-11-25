@@ -16,6 +16,7 @@ import {
   isPlatformOrVehicleMatch,
   isUniversalFit,
   hydrateComboChoiceParameters,
+  extractInheritedComboProductParameters,
 } from "@/lib/products";
 import { SXS_BRAND_PLATFORMS, SXS_BRANDS, getBrandLogo } from "@/lib/sxsBrands";
 import { evaluateComboSearch, buildDealerBrandSearchRefs } from "@/lib/search";
@@ -311,6 +312,7 @@ export async function GET(request: NextRequest) {
         isArchived: true,
         supplierLeadDaysMin: true,
         supplierLeadDaysMax: true,
+        parametersJson: true,
       },
     });
 
@@ -434,6 +436,7 @@ export async function GET(request: NextRequest) {
         catalogProducts,
         combo.discountPercent || 0
       );
+      const singleInherited = extractInheritedComboProductParameters(combo, catalogProducts);
 
       return NextResponse.json({
         success: true,
@@ -455,6 +458,7 @@ export async function GET(request: NextRequest) {
             suggestedCombos: explicitCombos,
             relatedCombos,
             parameters: singleHydrated.parameters,
+            inheritedProductParameters: singleInherited.inheritedParameters,
             uniqueProduct: (() => {
               if ((combo as any).uniqueProductJson) {
                 try {
@@ -551,9 +555,10 @@ export async function GET(request: NextRequest) {
         return [];
       })();
       const choiceInfo = hydrateComboChoiceParameters(rawParams, catalogProducts, c.discountPercent || 0);
-      const effectivePriceCRC = (c.priceCRC || 0) + choiceInfo.minChoiceDeltaCRC;
+      const inheritedInfo = extractInheritedComboProductParameters(c, catalogProducts);
+      const effectivePriceCRC = (c.priceCRC || 0) + choiceInfo.minChoiceDeltaCRC + inheritedInfo.minInheritedDeltaCRC;
       const effectiveOriginalPriceCRC =
-        (c.originalPriceCRC || c.priceCRC || 0) + choiceInfo.minChoiceOriginalDeltaCRC;
+        (c.originalPriceCRC || c.priceCRC || 0) + choiceInfo.minChoiceOriginalDeltaCRC + inheritedInfo.minInheritedDeltaCRC;
 
       return {
         ...c,

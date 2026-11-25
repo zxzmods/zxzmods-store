@@ -7,6 +7,7 @@ import {
   getRecommendedFillerProducts,
   getRecommendedFillerCombos,
   hydrateComboChoiceParameters,
+  extractInheritedComboProductParameters,
 } from "@/lib/products";
 
 export const dynamic = "force-dynamic";
@@ -139,6 +140,7 @@ export async function GET(
           isArchived: true,
           supplierLeadDaysMin: true,
           supplierLeadDaysMax: true,
+          parametersJson: true,
         },
       }),
     ]);
@@ -330,6 +332,7 @@ export async function GET(
       catalogProducts,
       combo.discountPercent || 0
     );
+    const inheritedInfo = extractInheritedComboProductParameters(combo, catalogProducts);
     const effectiveStockStatus = hydratedChoiceInfo.allChoicesOutOfStock
       ? "OUT_OF_STOCK"
       : availability.status;
@@ -351,6 +354,7 @@ export async function GET(
           images: comboImgs,
           items: JSON.parse(combo.itemsJson || "[]") as string[],
           parameters: hydratedChoiceInfo.parameters,
+          inheritedProductParameters: inheritedInfo.inheritedParameters,
           suggestedProductIds: sugProdIds,
           suggestedComboIds: sugComboIds,
           suggestedProducts: explicitProducts,

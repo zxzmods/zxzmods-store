@@ -163,6 +163,7 @@ export interface ParameterOption {
   liveProductPriceCRC?: number; // Live DB price of the referenced choice product before combo discount
   originalPriceDeltaCRC?: number; // Regular (pre-discount) price delta added to combo originalPriceCRC
   isOutOfStock?: boolean; // Live out-of-stock status of the referenced choice product
+  choiceProductParameters?: ConfigurableParameter[]; // Selectable parameters inherited from the chosen product in a combo_product_choice option
   isDefault?: boolean;
   isCurrentProduct?: boolean;
   connections?: ParameterOptionConnection[]; // Matrix connections to 2nd parameter options (expansion)
@@ -262,6 +263,14 @@ export interface ConfigurableParameter {
   placeholderEn?: string;
   required?: boolean;
   options: ParameterOption[];
+  // Metadata when a parameter is inherited from a product included in a combo
+  inheritedFromProduct?: boolean;
+  sourceProductId?: string;
+  sourceProductSku?: string;
+  sourceProductNameEs?: string;
+  sourceProductNameEn?: string;
+  sourceChoiceParamId?: string;
+  sourceChoiceOptionId?: string;
 }
 
 export interface SelectedParameterItem {
@@ -360,8 +369,80 @@ export function isLocalVariantParameter(param?: ConfigurableParameter | null): b
 }
 
 /**
+ * Extracts customer-selectable parameters from a single catalog product so they can be
+ * reflected and chosen inside a combo (colors, buttons, selects, text inputs — excluding
+ * cart_addon, product_linking, and combo_product_choice).
+ */
+export function extractSelectableProductParameters(
+  prod: any,
+  scopePrefix: string,
+  extraMeta?: Partial<ConfigurableParameter>
+): ConfigurableParameter[] {
+  if (!prod) return [];
+
+  let rawParams: any[] = [];
+  if (Array.isArray(prod.parameters)) {
+    rawParams = prod.parameters;
+  } else if (typeof prod.parametersJson === "string" && prod.parametersJson.trim()) {
+    try {
+      const parsed = JSON.parse(prod.parametersJson);
+      if (Array.isArray(parsed)) rawParams = parsed;
+    } catch {}
+  }
+
+  if (rawParams.length === 0) return [];
+
+  const prodId = String(prod.id || prod.sku || prod.slug || "");
+  const prodSku = String(prod.sku || "");
+  const prodNameEs = String(prod.nameEs || prod.p_title || prod.sku || "Producto").trim();
+  const prodNameEn = String(prod.nameEn || prod.nameEs || prod.p_title || prod.sku || "Product").trim();
+
+  const result: ConfigurableParameter[] = [];
+
+  for (let idx = 0; idx < rawParams.length; idx++) {
+    const param = rawParams[idx];
+    if (!param || typeof param !== "object") continue;
+
+    const pType = param.type;
+    if (
+      pType === "cart_addon" ||
+      pType === "product_linking" ||
+      pType === "product_link" ||
+      pType === "combo_product_choice"
+    ) {
+      continue;
+    }
+
+    const rawOpts: any[] = Array.isArray(param.options) ? param.options : [];
+    if (pType !== "text_input") {
+      if (rawOpts.length === 0) continue;
+      // Skip parameters that act as product-linking navigators to different catalog products
+      if (rawOpts.some((o) => Boolean(o?.linkedProductId))) continue;
+    }
+
+    const baseParamId = String(param.id || `p${idx}`);
+    result.push({
+      ...param,
+      id: `${scopePrefix}__${baseParamId}`,
+      nameEs: param.nameEs || param.nameEn || "Opción",
+      nameEn: param.nameEn || param.nameEs || "Option",
+      options: rawOpts,
+      inheritedFromProduct: true,
+      sourceProductId: prodId,
+      sourceProductSku: prodSku || undefined,
+      sourceProductNameEs: prodNameEs,
+      sourceProductNameEn: prodNameEn,
+      ...(extraMeta || {}),
+    });
+  }
+
+  return result;
+}
+
+/**
  * Hydrates combo-exclusive `combo_product_choice` parameters with live DB product pricing
- * (at full product price — without applying the combo discount) and live stock availability.
+ * (at full product price — without applying the combo discount), live stock availability,
+ * and each choice product's own selectable parameters (`choiceProductParameters`).
  */
 export function hydrateComboChoiceParameters(
   rawParameters: any[],
@@ -395,7 +476,7 @@ export function hydrateComboChoiceParameters(
 
     hasChoiceParams = true;
     const rawOpts: any[] = Array.isArray(param.options) ? param.options : [];
-    const hydratedOpts: ParameterOption[] = rawOpts.map((opt) => {
+    const hydratedOpts: ParameterOption[] = rawOpts.map((opt, optIdx) => {
       const refCandidates = [
         opt?.choiceProductId,
         opt?.choiceProductSku,
@@ -437,8 +518,21 @@ export function hydrateComboChoiceParameters(
         (Array.isArray(matchedProd?.imgs) && matchedProd.imgs[0] ? String(matchedProd.imgs[0]).trim() : "") ||
         "/images/logo.png";
 
+      const optId = String(opt?.id || `choice_opt_${optIdx}`);
+      const choiceProductParameters = matchedProd
+        ? extractSelectableProductParameters(
+            matchedProd,
+            `choiceprod__${param.id}__${optId}`,
+            {
+              sourceChoiceParamId: param.id,
+              sourceChoiceOptionId: optId,
+            }
+          )
+        : [];
+
       return {
         ...opt,
+        id: optId,
         labelEs: opt?.labelEs || matchedProd?.nameEs || matchedProd?.p_title || "Producto",
         labelEn: opt?.labelEn || matchedProd?.nameEn || opt?.labelEs || matchedProd?.nameEs || "Product",
         choiceProductId: matchedProd?.id || opt?.choiceProductId,
@@ -453,6 +547,7 @@ export function hydrateComboChoiceParameters(
         supplierStockStatus: isOutOfStock ? "OUT_OF_STOCK" : supStatus,
         stockStatus: isOutOfStock ? "OUT_OF_STOCK" : (matchedProd?.stockStatus || opt?.stockStatus || "IN_STOCK_US"),
         isOutOfStock,
+        choiceProductParameters,
       };
     });
 
@@ -482,6 +577,108 @@ export function hydrateComboChoiceParameters(
     hasChoiceParams,
     allChoicesOutOfStock,
   };
+}
+
+/**
+ * Extracts selectable parameters from all fixed products included in a combo (`items` / `itemsJson`)
+ * so customers can configure each product's options (colors, finishes, sizes, text inputs, etc.)
+ * directly inside the combo and have any option price delta added to the combo's total price.
+ */
+export function extractInheritedComboProductParameters(
+  combo: { itemsJson?: string | null; items?: any[] | null },
+  catalogProducts: any[]
+): {
+  inheritedParameters: ConfigurableParameter[];
+  minInheritedDeltaCRC: number;
+} {
+  if (!combo || !Array.isArray(catalogProducts) || catalogProducts.length === 0) {
+    return { inheritedParameters: [], minInheritedDeltaCRC: 0 };
+  }
+
+  let items: any[] = [];
+  if (Array.isArray(combo.items)) {
+    items = combo.items;
+  } else if (typeof combo.itemsJson === "string" && combo.itemsJson.trim()) {
+    try {
+      const parsed = JSON.parse(combo.itemsJson);
+      if (Array.isArray(parsed)) items = parsed;
+    } catch {}
+  }
+
+  if (items.length === 0) {
+    return { inheritedParameters: [], minInheritedDeltaCRC: 0 };
+  }
+
+  const seenProdIds = new Set<string>();
+  const inheritedParameters: ConfigurableParameter[] = [];
+  let minInheritedDeltaCRC = 0;
+
+  for (const item of items) {
+    let matched: any = null;
+
+    if (typeof item === "object" && item !== null) {
+      const refId = String(item.id || "").toLowerCase().trim();
+      const refSku = String(item.sku || "").toLowerCase().trim();
+      const refSlug = String(item.slug || "").toLowerCase().trim();
+      matched = catalogProducts.find(
+        (p) =>
+          (refId && String(p.id || "").toLowerCase().trim() === refId) ||
+          (refSku && String(p.sku || "").toLowerCase().trim() === refSku) ||
+          (refSlug && String(p.slug || "").toLowerCase().trim() === refSlug)
+      );
+    } else if (typeof item === "string") {
+      const trimmed = item.trim();
+      if (!trimmed) continue;
+      const rawLower = trimmed.toLowerCase();
+      const bracketMatch = trimmed.match(/\[([A-Za-z0-9\-_]+)\]/);
+      const extractedSku = bracketMatch ? bracketMatch[1].toLowerCase().trim() : null;
+      const titleWithoutSku = trimmed.replace(/\s*\[[A-Za-z0-9\-_]+\]\s*$/, "").trim().toLowerCase();
+
+      matched = catalogProducts.find((p) => {
+        const pSku = String(p.sku || "").toLowerCase().trim();
+        const pSlug = String(p.slug || "").toLowerCase().trim();
+        const pId = String(p.id || "").toLowerCase().trim();
+        if (extractedSku && (pSku === extractedSku || pSlug === extractedSku || pId === extractedSku)) {
+          return true;
+        }
+        if (pSku === rawLower || pSlug === rawLower || pId === rawLower) {
+          return true;
+        }
+        const pNameEs = String(p.nameEs || p.p_title || "").toLowerCase().trim();
+        const pNameEn = String(p.nameEn || "").toLowerCase().trim();
+        if (titleWithoutSku && titleWithoutSku.length > 4) {
+          if (pNameEs === titleWithoutSku || pNameEn === titleWithoutSku) return true;
+        }
+        return false;
+      });
+    }
+
+    if (!matched) continue;
+    const key = String(matched.id || matched.sku || matched.slug || "").toLowerCase();
+    if (!key || seenProdIds.has(key)) continue;
+    seenProdIds.add(key);
+
+    const prodParams = extractSelectableProductParameters(
+      matched,
+      `comboitem__${matched.id || matched.sku || key}`
+    );
+
+    if (prodParams.length === 0) continue;
+
+    for (const pp of prodParams) {
+      inheritedParameters.push(pp);
+      if (pp.type !== "text_input" && Array.isArray(pp.options) && pp.options.length > 0) {
+        const minOptDelta = Math.min(
+          ...pp.options.map((o) => Number(o?.priceDeltaCRC || 0))
+        );
+        if (minOptDelta > 0) {
+          minInheritedDeltaCRC += minOptDelta;
+        }
+      }
+    }
+  }
+
+  return { inheritedParameters, minInheritedDeltaCRC };
 }
 
 /**

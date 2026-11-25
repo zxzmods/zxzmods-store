@@ -2139,6 +2139,7 @@ export interface Translations {
   comboChoiceInStockBadge: string;
   comboChoiceSelectedOutOfStockNotice: string;
   comboChoiceProductLabel: string;
+  comboInheritedProductParamBadge: string;
   // Split Payment 70% / 30%
   paymentPlanSectionTitle: string;
   paymentPlanFullTitle: string;
@@ -4294,6 +4295,7 @@ export const translations: Record<Language, Translations> = {
     comboChoiceInStockBadge: "En Stock",
     comboChoiceSelectedOutOfStockNotice: "El producto seleccionado en esta opción del combo se encuentra agotado actualmente. Selecciona otra opción disponible o solicita una cotización por WhatsApp.",
     comboChoiceProductLabel: "Opción elegida",
+    comboInheritedProductParamBadge: "Parámetro del producto",
     // Split Payment 70% / 30%
     paymentPlanSectionTitle: "Modalidad de Pago de Piezas",
     paymentPlanFullTitle: "Pago Completo (100%)",
@@ -6447,6 +6449,7 @@ export const translations: Record<Language, Translations> = {
     comboChoiceInStockBadge: "In Stock",
     comboChoiceSelectedOutOfStockNotice: "The selected product option in this combo is currently out of stock. Please select another available option or request a quote via WhatsApp.",
     comboChoiceProductLabel: "Selected option",
+    comboInheritedProductParamBadge: "Product option",
     // Split Payment 70% / 30%
     paymentPlanSectionTitle: "Parts Payment Option",
     paymentPlanFullTitle: "Full Payment (100%)",

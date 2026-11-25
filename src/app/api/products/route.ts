@@ -16,6 +16,7 @@ import {
   sortVehicleBrands,
   deriveComboCompatibilityFromProducts,
   hydrateComboChoiceParameters,
+  extractInheritedComboProductParameters,
 } from "@/lib/products";
 import { calculateComboAvailability } from "@/lib/comboAvailability";
 import { prisma } from "@/lib/prisma";
@@ -348,10 +349,14 @@ function dbComboToProductItem(combo: any, activeDbProducts: any[]): ProductItem 
     activeDbProducts,
     combo.discountPercent || 0
   );
-  const parameters = choiceInfo.parameters;
-  const effectiveComboPriceCRC = (combo.priceCRC || 0) + choiceInfo.minChoiceDeltaCRC;
+  const inheritedInfo = extractInheritedComboProductParameters(combo, activeDbProducts);
+  const parameters = [...choiceInfo.parameters, ...inheritedInfo.inheritedParameters];
+  const effectiveComboPriceCRC =
+    (combo.priceCRC || 0) + choiceInfo.minChoiceDeltaCRC + inheritedInfo.minInheritedDeltaCRC;
   const effectiveComboOriginalCRC =
-    (combo.originalPriceCRC || combo.priceCRC || 0) + choiceInfo.minChoiceOriginalDeltaCRC;
+    (combo.originalPriceCRC || combo.priceCRC || 0) +
+    choiceInfo.minChoiceOriginalDeltaCRC +
+    inheritedInfo.minInheritedDeltaCRC;
   const effectiveComboStockStatus = choiceInfo.allChoicesOutOfStock
     ? "OUT_OF_STOCK"
     : (availability.status || "IN_STOCK");
