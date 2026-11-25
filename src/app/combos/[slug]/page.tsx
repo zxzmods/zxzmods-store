@@ -346,7 +346,10 @@ export default function ComboDetailPage() {
           parameterName: lang === "es" ? param.nameEs : (param.nameEn || param.nameEs),
           optionId: option.id,
           optionLabel: lang === "es" ? option.labelEs : (option.labelEn || option.labelEs),
-          priceDeltaCRC: option.priceDeltaCRC || 0,
+          priceDeltaCRC:
+            param.type === "combo_product_choice"
+              ? (option.liveProductPriceCRC ?? option.originalPriceDeltaCRC ?? option.priceDeltaCRC ?? 0)
+              : (option.priceDeltaCRC || 0),
           priceDeltaUSD: option.priceDeltaUSD || 0,
           colorHex: option.colorHex,
           imageUrl: option.imageUrl,
@@ -382,14 +385,15 @@ export default function ComboDetailPage() {
         supStatus === "OUT_OF_STOCK" ||
         supStatus === "UNAVAILABLE" ||
         String(option.stockStatus || "").toLowerCase() === "agotado";
+      const fullChoicePrice = option.liveProductPriceCRC ?? option.originalPriceDeltaCRC ?? option.priceDeltaCRC ?? 0;
       details.push({
         paramId: param.id,
         paramName: lang === "es" ? param.nameEs : (param.nameEn || param.nameEs),
         optionId: option.id,
         label: lang === "es" ? option.labelEs : (option.labelEn || option.labelEs),
         sku: option.choiceProductSku,
-        priceDeltaCRC: option.priceDeltaCRC || 0,
-        originalPriceDeltaCRC: option.originalPriceDeltaCRC ?? option.liveProductPriceCRC ?? option.priceDeltaCRC ?? 0,
+        priceDeltaCRC: fullChoicePrice,
+        originalPriceDeltaCRC: fullChoicePrice,
         isOutOfStock: isOut,
       });
     });
@@ -1215,9 +1219,7 @@ export default function ComboDetailPage() {
                                     supStatus === "OUT_OF_STOCK" ||
                                     supStatus === "UNAVAILABLE" ||
                                     String(opt.stockStatus || "").toLowerCase() === "agotado";
-                                  const discountedDelta = opt.priceDeltaCRC || 0;
-                                  const originalDelta = opt.originalPriceDeltaCRC ?? opt.liveProductPriceCRC ?? discountedDelta;
-                                  const hasDiscount = originalDelta > discountedDelta && (combo.discountPercent || 0) > 0;
+                                  const choicePriceCRC = opt.liveProductPriceCRC ?? opt.originalPriceDeltaCRC ?? opt.priceDeltaCRC ?? 0;
 
                                   return (
                                     <button
@@ -1284,21 +1286,11 @@ export default function ComboDetailPage() {
                                                 <span>{t.comboChoiceInStockBadge}</span>
                                               </span>
                                             )}
-                                            {hasDiscount && !isOut && (
-                                              <span className="text-[10px] font-black px-1.5 py-0.5 rounded-md bg-rose-50 text-[#C02030] border border-rose-200 font-mono">
-                                                -{combo.discountPercent}% OFF
-                                              </span>
-                                            )}
                                           </div>
                                         </div>
                                       </div>
 
                                       <div className="text-right shrink-0">
-                                        {hasDiscount && (
-                                          <span className="text-[10px] font-mono text-gray-400 line-through block">
-                                            +{currency === "USD" ? formatUSD(convertCRCToUSD(originalDelta, sellRate)) : formatCRC(originalDelta)}
-                                          </span>
-                                        )}
                                         <span
                                           className={`text-xs font-black font-mono block ${
                                             isOut
@@ -1308,7 +1300,7 @@ export default function ComboDetailPage() {
                                               : "text-gray-900"
                                           }`}
                                         >
-                                          +{currency === "USD" ? formatUSD(convertCRCToUSD(discountedDelta, sellRate)) : formatCRC(discountedDelta)}
+                                          +{currency === "USD" ? formatUSD(convertCRCToUSD(choicePriceCRC, sellRate)) : formatCRC(choicePriceCRC)}
                                         </span>
                                       </div>
                                     </button>

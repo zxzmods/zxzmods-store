@@ -361,12 +361,12 @@ export function isLocalVariantParameter(param?: ConfigurableParameter | null): b
 
 /**
  * Hydrates combo-exclusive `combo_product_choice` parameters with live DB product pricing
- * (applying the combo's discountPercent automatically) and live stock availability.
+ * (at full product price — without applying the combo discount) and live stock availability.
  */
 export function hydrateComboChoiceParameters(
   rawParameters: any[],
   catalogProducts: any[],
-  comboDiscountPercent: number = 0
+  _comboDiscountPercent: number = 0
 ): {
   parameters: ConfigurableParameter[];
   minChoiceDeltaCRC: number;
@@ -375,8 +375,6 @@ export function hydrateComboChoiceParameters(
   allChoicesOutOfStock: boolean;
 } {
   const safeParams: any[] = Array.isArray(rawParameters) ? rawParameters : [];
-  const discountPct = Math.max(0, Math.min(99, Number(comboDiscountPercent) || 0));
-  const discountFactor = 1 - discountPct / 100;
 
   // Fast lookup map for catalog products by id, sku, slug (case-insensitive)
   const prodMap = new Map<string, any>();
@@ -420,8 +418,6 @@ export function hydrateComboChoiceParameters(
         ? Math.max(0, Math.round(Number(matchedProd.priceCRC ?? matchedProd.price?.T_price ?? 0) || 0))
         : Math.max(0, Math.round(Number(opt?.liveProductPriceCRC ?? opt?.originalPriceDeltaCRC ?? opt?.priceDeltaCRC ?? 0) || 0));
 
-      const discountedDelta = Math.round(livePrice * discountFactor);
-
       const supStatus = String(
         matchedProd?.supplierStockStatus ?? opt?.supplierStockStatus ?? "IN_STOCK"
       ).toUpperCase();
@@ -451,7 +447,7 @@ export function hydrateComboChoiceParameters(
         linkedProductId: matchedProd?.id || opt?.linkedProductId || opt?.choiceProductId,
         liveProductPriceCRC: livePrice,
         originalPriceDeltaCRC: livePrice,
-        priceDeltaCRC: discountedDelta,
+        priceDeltaCRC: livePrice,
         imageUrl: resolvedImg,
         images: Array.isArray(opt?.images) && opt.images.length > 0 ? opt.images : resolvedImg ? [resolvedImg] : [],
         supplierStockStatus: isOutOfStock ? "OUT_OF_STOCK" : supStatus,

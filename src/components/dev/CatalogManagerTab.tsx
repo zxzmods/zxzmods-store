@@ -1761,8 +1761,6 @@ function ParametersEditorSection({
     }
 
     const rawPrice = Math.max(0, Math.round(Number(targetProd.price?.T_price || targetProd.priceCRC || 0) || 0));
-    const discPct = Math.max(0, Math.min(99, Number(comboDiscountPercent) || 0));
-    const discountedDelta = Math.round(rawPrice * (1 - discPct / 100));
     const targetTitleEs = targetProd.nameEs || targetProd.p_title || "";
     const targetTitleEn = targetProd.nameEn || targetTitleEs;
     const targetImg =
@@ -1780,7 +1778,7 @@ function ParametersEditorSection({
       id: `opt-choice-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       labelEs: targetTitleEs,
       labelEn: targetTitleEn,
-      priceDeltaCRC: discountedDelta,
+      priceDeltaCRC: rawPrice,
       liveProductPriceCRC: rawPrice,
       originalPriceDeltaCRC: rawPrice,
       imageUrl: targetImg,
@@ -2335,11 +2333,6 @@ function ParametersEditorSection({
                     <div>
                       <span className="font-bold block">
                         {t.devParamTypeComboProductChoice || "Selección entre Productos (Combo)"}
-                        {comboDiscountPercent > 0 && (
-                          <span className="ml-2 px-2 py-0.5 rounded-full bg-purple-600 text-white text-[9px] font-mono">
-                            -{comboDiscountPercent}% OFF
-                          </span>
-                        )}
                       </span>
                       <span className="text-purple-800">
                         {t.devComboProductChoiceDesc}
@@ -2436,8 +2429,6 @@ function ParametersEditorSection({
                           ) : (
                             matchingAddonProducts.map((prod) => {
                               const pPrice = Math.max(0, Math.round(Number(prod.price?.T_price || prod.priceCRC || 0) || 0));
-                              const discPct = Math.max(0, Math.min(99, Number(comboDiscountPercent) || 0));
-                              const discountedAdd = Math.round(pPrice * (1 - discPct / 100));
                               const pTitle = prod.nameEs || prod.p_title || prod.sku;
                               const pThumb =
                                 prod.imageUrl ||
@@ -2483,12 +2474,7 @@ function ParametersEditorSection({
                                       </div>
                                       <span className="text-[10px] font-mono text-slate-500">
                                         SKU: {prod.sku || prod.id} ·{" "}
-                                        <strong className="text-slate-700">{formatCRC(pPrice)}</strong>
-                                        {discPct > 0 && (
-                                          <span className="text-purple-700 font-bold">
-                                            {" "}→ +{formatCRC(discountedAdd)} (-{discPct}%)
-                                          </span>
-                                        )}
+                                        <strong className="text-purple-700">+{formatCRC(pPrice)}</strong>
                                       </span>
                                     </div>
                                   </div>
@@ -2525,8 +2511,7 @@ function ParametersEditorSection({
                           const livePrice = linkedProd
                             ? Math.max(0, Math.round(Number(linkedProd.price?.T_price || linkedProd.priceCRC || 0) || 0))
                             : Math.max(0, Math.round(Number(opt.liveProductPriceCRC || opt.originalPriceDeltaCRC || opt.priceDeltaCRC || 0) || 0));
-                          const discPct = Math.max(0, Math.min(99, Number(comboDiscountPercent) || 0));
-                          const discountedAdd = Math.round(livePrice * (1 - discPct / 100));
+
                           const supStatus = String(linkedProd?.supplierStockStatus || opt.supplierStockStatus || "IN_STOCK").toUpperCase();
                           const isOut =
                             Boolean(linkedProd?.isArchived) ||
@@ -2568,16 +2553,9 @@ function ParametersEditorSection({
                                       >
                                         {isOut ? t.comboChoiceOutOfStockBadge : t.comboChoiceInStockBadge}
                                       </span>
-                                      {discPct > 0 ? (
-                                        <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-800 font-mono text-[10px] font-extrabold">
-                                          <span className="line-through text-slate-400 mr-1">{formatCRC(livePrice)}</span>
-                                          <span className="text-purple-700">+{formatCRC(discountedAdd)} (-{discPct}%)</span>
-                                        </span>
-                                      ) : (
-                                        <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-800 font-mono text-[10px] font-extrabold">
-                                          +{formatCRC(livePrice)}
-                                        </span>
-                                      )}
+                                      <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-800 font-mono text-[10px] font-extrabold">
+                                        +{formatCRC(livePrice)}
+                                      </span>
                                     </div>
                                     <span className="text-xs font-bold text-slate-900 truncate block mt-0.5">
                                       {linkedProd ? (linkedProd.nameEs || linkedProd.p_title) : opt.labelEs}
