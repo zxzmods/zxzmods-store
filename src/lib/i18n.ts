@@ -1648,6 +1648,13 @@ export interface Translations {
   devSupplierDealerDiscountHelp: string;
   devSupplierDealerDiscountAppliedBadge: string;
   devSupplierEffectiveCostLabel: string;
+  devEvpManualPriceBadge: string;
+  devEvpManualPriceCardValue: string;
+  devEvpManualPriceRetailRef: string;
+  devEvpManualPriceBannerTitle: string;
+  devEvpManualPriceBannerDesc: string;
+  devEvpManualPriceFieldNote: string;
+  devEvpManualPriceToast: string;
 
   // BarrialCR Community & Page
   barrialCrHeroBadge: string;
@@ -3838,6 +3845,13 @@ export const translations: Record<Language, Translations> = {
     devSupplierDealerDiscountHelp: "Descuento otorgado por la marca/proveedor a ZxZ Mods sobre el precio de lista. Se auto-aplica si la marca seleccionada tiene descuento registrado.",
     devSupplierDealerDiscountAppliedBadge: "Descuento de marca auto-aplicado",
     devSupplierEffectiveCostLabel: "Costo Real Distribuidor (USD $) → P_price_D",
+    devEvpManualPriceBadge: "Precio Manual EVP",
+    devEvpManualPriceCardValue: "Manual (EVP)",
+    devEvpManualPriceRetailRef: "Ref. retail web:",
+    devEvpManualPriceBannerTitle: "Precio manual requerido para productos EVP",
+    devEvpManualPriceBannerDesc: "El stock se verificó automáticamente, pero el portal B2B de EVP maneja precios privados por cuenta. Por seguridad, P_price_D NO se sobreescribe (tampoco en el chequeo diario de las 3:00 AM): ingresa tu costo real de distribuidor en dólares abajo en P_price_D.",
+    devEvpManualPriceFieldNote: "Producto EVP: escribe manualmente tu precio real de distribuidor en $ USD. La sincronización automática nunca sobreescribirá este valor.",
+    devEvpManualPriceToast: "Stock de EVP verificado correctamente. El precio P_price_D se mantiene en modo manual (ingresa tu costo real de distribuidor en USD).",
 
     // BarrialCR Community & Page
     barrialCrHeroBadge: "Comunidad Oficial",
@@ -6024,6 +6038,13 @@ export const translations: Record<Language, Translations> = {
     devSupplierDealerDiscountHelp: "Wholesale discount granted by brand/supplier to ZxZ Mods over listed price. Auto-applies if selected brand has a registered discount.",
     devSupplierDealerDiscountAppliedBadge: "Brand discount auto-applied",
     devSupplierEffectiveCostLabel: "Effective Dealer Cost (USD $) → P_price_D",
+    devEvpManualPriceBadge: "EVP Manual Price",
+    devEvpManualPriceCardValue: "Manual (EVP)",
+    devEvpManualPriceRetailRef: "Web retail ref:",
+    devEvpManualPriceBannerTitle: "Manual price entry required for EVP products",
+    devEvpManualPriceBannerDesc: "Stock availability was verified automatically, but the EVP B2B portal uses private account-tier pricing. P_price_D is NOT overwritten (including during the 3:00 AM daily check): enter your exact USD dealer cost manually below in P_price_D.",
+    devEvpManualPriceFieldNote: "EVP product: manually enter your exact dealer cost in $ USD. Automatic sync will never overwrite this value.",
+    devEvpManualPriceToast: "EVP stock verified successfully. P_price_D remains in manual mode (enter your exact dealer cost in USD).",
 
     // BarrialCR Community & Page
     barrialCrHeroBadge: "Official Community",

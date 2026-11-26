@@ -8,6 +8,7 @@ import { requireStealthSession } from "@/lib/stealthAuth";
 import {
   resolveEffectiveDealerDiscount,
   computeEffectiveDealerCostUSD,
+  isManualPriceSupplier,
 } from "@/lib/dealerBrands";
 
 export const dynamic = "force-dynamic";
@@ -89,51 +90,72 @@ export async function POST(request: Request) {
     // Inspect live availability from US website
     const result = await fetchLiveSupplierAvailability(url);
 
-    // Resolve dealer discount cleanly across product override, brand alias/case-insensitive match, and supplierUrl domain (e.g. dealers.evopowersports.com -> EVP)
-    const activeDealerBrands = await prisma.dealerBrand.findMany({
-      where: { isActive: true },
-      select: {
-        name: true,
-        slug: true,
-        code: true,
-        redirectUrl: true,
-        dealerDiscountPercent: true,
-      },
-    });
+    // Resolve dealer discount cleanly across product override, brand alias/case-insensitive match, and supplierUrl domain
+    const [activeDealerBrands, vehicleBrands, existingProd] = await Promise.all([
+      prisma.dealerBrand.findMany({
+        select: {
+          name: true,
+          slug: true,
+          code: true,
+          redirectUrl: true,
+          dealerDiscountPercent: true,
+        },
+      }),
+      prisma.brand.findMany({
+        select: {
+          name: true,
+          slug: true,
+          dealerDiscountPercent: true,
+        },
+      }),
+      targetProductId
+        ? prisma.product.findUnique({
+            where: { id: targetProductId },
+            select: {
+              dealerDiscountPercent: true,
+              brandName: true,
+              supplierLastPriceUSD: true,
+              processingPriceD: true,
+            },
+          })
+        : Promise.resolve(null),
+    ]);
 
-    const existingProd = targetProductId
-      ? await prisma.product.findUnique({
-          where: { id: targetProductId },
-          select: {
-            dealerDiscountPercent: true,
-            brandName: true,
-            supplierLastPriceUSD: true,
-            processingPriceD: true,
-          },
-        })
-      : null;
+    const manualPriceRequired = isManualPriceSupplier({
+      supplierUrl: url,
+      brandName: body.brandName || existingProd?.brandName,
+    });
+    if (manualPriceRequired) {
+      result.manualPriceRequired = true;
+    }
 
     const requestedDisc =
       body.dealerDiscountPercent !== undefined && body.dealerDiscountPercent !== null
         ? Number(body.dealerDiscountPercent)
         : 0;
 
-    const effectiveDiscount = resolveEffectiveDealerDiscount(activeDealerBrands, {
-      productDealerDiscount: requestedDisc > 0 ? requestedDisc : existingProd?.dealerDiscountPercent,
-      brandName: body.brandName || existingProd?.brandName,
-      supplierUrl: url,
-    });
+    const combinedBrandRefs = [...activeDealerBrands, ...vehicleBrands];
+    const effectiveDiscount = manualPriceRequired
+      ? 0
+      : resolveEffectiveDealerDiscount(combinedBrandRefs, {
+          productDealerDiscount: requestedDisc > 0 ? requestedDisc : existingProd?.dealerDiscountPercent,
+          brandName: body.brandName || existingProd?.brandName,
+          supplierUrl: url,
+        });
 
-    const effectivePPriceD =
-      result.supplierPriceUSD && result.supplierPriceUSD > 0
-        ? computeEffectiveDealerCostUSD(
-            result.supplierPriceUSD,
-            effectiveDiscount,
-            result.supplierSalePriceUSD
-          )
-        : null;
+    const effectivePPriceD = manualPriceRequired
+      ? existingProd?.processingPriceD && existingProd.processingPriceD > 0
+        ? existingProd.processingPriceD
+        : null
+      : result.supplierPriceUSD && result.supplierPriceUSD > 0
+      ? computeEffectiveDealerCostUSD(
+          result.supplierPriceUSD,
+          effectiveDiscount,
+          result.supplierSalePriceUSD
+        )
+      : null;
 
-    // Optionally save to product (and auto-sync processingPriceD with dealerDiscountPercent applied when supplierPriceUSD is found)
+    // Optionally save to product (for EVP manual-price products, save stock availability ONLY and preserve staff's manual P_price_D)
     if ((save || Boolean(saveToProductId)) && targetProductId && existingProd) {
       const updateData: any = {
         supplierUrl: result.url,
@@ -145,10 +167,10 @@ export async function POST(request: Request) {
         supplierStockCheckedAt: new Date(),
         supplierLeadDaysMin: result.leadDaysMin || 7,
         supplierLeadDaysMax: result.leadDaysMax || 21,
-        ...(effectiveDiscount > 0 ? { dealerDiscountPercent: effectiveDiscount } : {}),
+        ...(!manualPriceRequired && effectiveDiscount > 0 ? { dealerDiscountPercent: effectiveDiscount } : {}),
         updatedAt: new Date(),
       };
-      if (result.supplierPriceUSD && result.supplierPriceUSD > 0) {
+      if (!manualPriceRequired && result.supplierPriceUSD && result.supplierPriceUSD > 0) {
         updateData.supplierLastPriceUSD = result.supplierPriceUSD;
         if (effectivePPriceD && effectivePPriceD > 0) {
           updateData.processingPriceD = effectivePPriceD;
@@ -172,8 +194,12 @@ export async function POST(request: Request) {
 
       return NextResponse.json({
         success: true,
-        message: "Disponibilidad verificada y guardada en el catálogo",
+        message: manualPriceRequired
+          ? "Disponibilidad verificada en EVP. El precio P_price_D se mantiene manual sin sobreescribir."
+          : "Disponibilidad verificada y guardada en el catálogo",
         result,
+        manualPriceRequired,
+        retailReferencePriceUSD: result.supplierPriceUSD || null,
         effectiveDealerDiscount: effectiveDiscount,
         effectivePPriceD,
         product: updated,
@@ -183,6 +209,8 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       result,
+      manualPriceRequired,
+      retailReferencePriceUSD: result.supplierPriceUSD || null,
       effectiveDealerDiscount: effectiveDiscount,
       effectivePPriceD,
     });

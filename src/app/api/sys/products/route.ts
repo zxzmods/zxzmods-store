@@ -3,7 +3,7 @@ import { requireStealthSession } from "@/lib/stealthAuth";
 import { prisma } from "@/lib/prisma";
 import { recordAuditLog } from "@/lib/audit";
 import { fetchLiveSupplierAvailability } from "@/lib/supplierAvailability";
-import { ensureDealerBrandRegistered } from "@/lib/dealerBrands";
+import { ensureDealerBrandRegistered, isManualPriceSupplier } from "@/lib/dealerBrands";
 import { normalizeAudioUrl, normalizeVideoUrl, cleanDescriptionText } from "@/lib/products";
 import { sanitizeExtraParts } from "@/lib/catalogExtraParts";
 
@@ -93,6 +93,11 @@ export async function POST(request: Request) {
     let supplierLeadDaysMax = Number(body.supplierLeadDaysMax) || 21;
     let supplierLastPriceUSD = body.supplierLastPriceUSD !== undefined && body.supplierLastPriceUSD !== null ? Number(body.supplierLastPriceUSD) : null;
 
+    const isManualPriceEvp = isManualPriceSupplier({
+      supplierUrl: body.supplierUrl,
+      brandName: body.brandName || (Array.isArray(body.brand) ? body.brand[0] : body.brand),
+    });
+
     if (body.supplierUrl && !supplierStockCheckedAt) {
       try {
         const live = await fetchLiveSupplierAvailability(body.supplierUrl);
@@ -105,7 +110,9 @@ export async function POST(request: Request) {
           supplierStockCheckedAt = new Date();
           supplierLeadDaysMin = live.leadDaysMin;
           supplierLeadDaysMax = live.leadDaysMax;
-          if (live.supplierPriceUSD) supplierLastPriceUSD = live.supplierPriceUSD;
+          if (!isManualPriceEvp && live.supplierPriceUSD) {
+            supplierLastPriceUSD = live.supplierPriceUSD;
+          }
         }
       } catch (checkErr) {
         console.error("[AUTO_SUPPLIER_CHECK_ON_CREATE_ERROR]:", checkErr);
@@ -119,7 +126,7 @@ export async function POST(request: Request) {
     const effectivePD =
       Number(pD) > 0
         ? Number(pD)
-        : supplierLastPriceUSD && supplierLastPriceUSD > 0
+        : !isManualPriceEvp && supplierLastPriceUSD && supplierLastPriceUSD > 0
         ? Number((supplierLastPriceUSD * (1 - dealerDiscount / 100)).toFixed(2))
         : 0;
 

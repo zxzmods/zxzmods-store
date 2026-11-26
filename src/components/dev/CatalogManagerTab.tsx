@@ -87,7 +87,7 @@ import {
 } from "@/lib/products";
 import { CustomSelect } from "@/components/ui/CustomSelect";
 import { uploadMediaDirect } from "@/lib/clientDirectUpload";
-import { isVehicleBrand, computeAutoProductSku } from "@/lib/dealerBrands";
+import { isVehicleBrand, computeAutoProductSku, isManualPriceSupplier } from "@/lib/dealerBrands";
 import {
   SXS_BRANDS,
   sortVehicleBrands,
@@ -4873,7 +4873,10 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
       const numSup = parseFloat(String(rawSup)) || 0;
       const hasSupplierUSD = numSup > 0;
 
-      const effectivePPriceD = hasSupplierUSD
+      const isManualEvp = isManualPriceSupplier({ supplierUrl: prev.supplierUrl, brandName: clean });
+      const effectivePPriceD = isManualEvp
+        ? prev.P_price_D
+        : hasSupplierUSD
         ? Number((numSup * (1 - disc / 100)).toFixed(2))
         : (disc > 0 && Number(prev.P_price_D) > 0 ? Number((Number(prev.P_price_D) * (1 - disc / 100)).toFixed(2)) : prev.P_price_D);
 
@@ -5143,36 +5146,79 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
         ]);
         const data = await res.json();
         if (data.success && data.result) {
-          const resolvedServerDiscount = Math.max(
-            0,
-            Math.min(
-              100,
-              Number(data.effectiveDealerDiscount) ||
-                Number(productForm.dealerDiscountPercent) ||
-                getDealerBrandDiscount(productForm.brandName) ||
-                0
-            )
+          const isManualEvp = Boolean(
+            data.manualPriceRequired ||
+              data.result?.manualPriceRequired ||
+              isManualPriceSupplier({
+                supplierUrl: trimmed,
+                brandName: productForm.brandName,
+              })
           );
           const fetchedPriceUSD = Number(data.result.supplierPriceUSD);
           const fetchedSalePriceUSD = Number(data.result.supplierSalePriceUSD);
-          const resolvedEffectivePPriceD =
-            Number(data.effectivePPriceD) > 0
-              ? Number(Number(data.effectivePPriceD).toFixed(2))
-              : Number.isFinite(fetchedPriceUSD) && fetchedPriceUSD > 0
-              ? (() => {
-                  const discCost = Number((fetchedPriceUSD * (1 - resolvedServerDiscount / 100)).toFixed(2));
-                  return Number.isFinite(fetchedSalePriceUSD) && fetchedSalePriceUSD > 0 && fetchedSalePriceUSD < discCost
-                    ? Number(fetchedSalePriceUSD.toFixed(2))
-                    : discCost;
-                })()
-              : 0;
+          const resolvedServerDiscount = isManualEvp
+            ? 0
+            : Math.max(
+                0,
+                Math.min(
+                  100,
+                  Number(data.effectiveDealerDiscount) ||
+                    Number(productForm.dealerDiscountPercent) ||
+                    getDealerBrandDiscount(productForm.brandName) ||
+                    0
+                )
+              );
+          const resolvedEffectivePPriceD = isManualEvp
+            ? 0
+            : Number(data.effectivePPriceD) > 0
+            ? Number(Number(data.effectivePPriceD).toFixed(2))
+            : Number.isFinite(fetchedPriceUSD) && fetchedPriceUSD > 0
+            ? (() => {
+                const discCost = Number((fetchedPriceUSD * (1 - resolvedServerDiscount / 100)).toFixed(2));
+                return Number.isFinite(fetchedSalePriceUSD) && fetchedSalePriceUSD > 0 && fetchedSalePriceUSD < discCost
+                  ? Number(fetchedSalePriceUSD.toFixed(2))
+                  : discCost;
+              })()
+            : 0;
           setSupplierTestResult({
             ...data.result,
+            manualPriceRequired: isManualEvp,
+            retailReferencePriceUSD:
+              Number.isFinite(fetchedPriceUSD) && fetchedPriceUSD > 0 ? Number(fetchedPriceUSD.toFixed(2)) : null,
             effectiveDealerDiscount: resolvedServerDiscount,
-            effectivePPriceD: resolvedEffectivePPriceD > 0 ? resolvedEffectivePPriceD : data.result.supplierPriceUSD,
+            effectivePPriceD: isManualEvp
+              ? null
+              : resolvedEffectivePPriceD > 0
+              ? resolvedEffectivePPriceD
+              : data.result.supplierPriceUSD,
           });
           const activeRate = currentRate > 300 ? currentRate : (liveExchangeRate || 455.21);
           setProductForm((prev) => {
+            // Auto-fill title if form title is empty and scraper extracted a title
+            const autoTitle = data.result.title?.trim();
+            const shouldFillTitle = Boolean(autoTitle && !prev.p_title.trim() && !prev.nameEs.trim());
+
+            if (isManualEvp) {
+              // EVP uses manual staff pricing: update stock availability ONLY, never overwrite P_price_D / T_price
+              return {
+                ...prev,
+                supplierUrl: trimmed,
+                supplierPlatform: data.result.platform || prev.supplierPlatform,
+                supplierStockStatus: data.result.status || prev.supplierStockStatus || "IN_STOCK",
+                supplierStockCount: data.result.stockCount ?? prev.supplierStockCount,
+                supplierLeadDaysMin: data.result.leadDaysMin || prev.supplierLeadDaysMin || 7,
+                supplierLeadDaysMax: data.result.leadDaysMax || prev.supplierLeadDaysMax || 21,
+                supplierStockCheckedAt: data.result.checkedAt || new Date().toISOString(),
+                ...(shouldFillTitle
+                  ? {
+                      p_title: autoTitle,
+                      nameEs: autoTitle,
+                      nameEn: prev.nameEn.trim() || autoTitle,
+                    }
+                  : {}),
+              };
+            }
+
             const hasValidUSD = Number.isFinite(fetchedPriceUSD) && fetchedPriceUSD > 0;
             const dealerDiscount = Math.max(
               0,
@@ -5196,10 +5242,6 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
             const ivaRate = prev.ivaPercent ?? 13;
             const nextIva = calculateIvaAmount(nextPPriceCRC, nextSPriceCRC, prev.profit, prev.I_price, prev.I_price_includes, prev.discountPercent, ivaRate);
             const nextTotal = recalculateTPrice(nextPPriceCRC, nextSPriceCRC, prev.profit, prev.I_price, prev.I_price_includes, prev.discountPercent, ivaRate);
-
-            // Auto-fill title if form title is empty and scraper extracted a title
-            const autoTitle = data.result.title?.trim();
-            const shouldFillTitle = Boolean(autoTitle && !prev.p_title.trim() && !prev.nameEs.trim());
 
             return {
               ...prev,
@@ -5228,26 +5270,33 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
             };
           });
           if (!silent) {
-            const shownUSD = resolvedEffectivePPriceD > 0 ? resolvedEffectivePPriceD : fetchedPriceUSD;
-            const promoSuffix = data.result.automaticDiscountTitle && Number.isFinite(fetchedSalePriceUSD) && fetchedSalePriceUSD > 0
-              ? ` · Promo web: ${data.result.automaticDiscountTitle} (${fetchedSalePriceUSD.toFixed(2)})`
-              : "";
-            const dealerSuffix = resolvedServerDiscount > 0 && Number.isFinite(fetchedPriceUSD) && fetchedPriceUSD > shownUSD
-              ? ` (Retail ${fetchedPriceUSD.toFixed(2)} -${resolvedServerDiscount}%)`
-              : "";
-            const priceLabel =
-              Number.isFinite(shownUSD) && shownUSD > 0
-                ? ` — P_price_D actualizado a ${shownUSD.toFixed(2)} USD${dealerSuffix}${promoSuffix} (₡${Math.round(shownUSD * activeRate).toLocaleString()} @ ₡${activeRate.toFixed(2)})`
+            if (isManualEvp) {
+              setFeedback({
+                type: "success",
+                msg: `${t.devEvpManualPriceToast} [${data.result.status} · ${data.result.platform}]`,
+              });
+            } else {
+              const shownUSD = resolvedEffectivePPriceD > 0 ? resolvedEffectivePPriceD : fetchedPriceUSD;
+              const promoSuffix = data.result.automaticDiscountTitle && Number.isFinite(fetchedSalePriceUSD) && fetchedSalePriceUSD > 0
+                ? ` · Promo web: ${data.result.automaticDiscountTitle} (${fetchedSalePriceUSD.toFixed(2)})`
                 : "";
-            const customMsg = lang === "es" ? data.result.messageEs : data.result.messageEn;
-            setFeedback({
-              type: "success",
-              msg:
-                customMsg ||
-                (lang === "es"
-                  ? `Enlace verificado con éxito: Estado [${data.result.status}] - Plataforma [${data.result.platform}]${priceLabel}.`
-                  : `Supplier link verified: Status [${data.result.status}] - Platform [${data.result.platform}]${priceLabel}.`),
-            });
+              const dealerSuffix = resolvedServerDiscount > 0 && Number.isFinite(fetchedPriceUSD) && fetchedPriceUSD > shownUSD
+                ? ` (Retail ${fetchedPriceUSD.toFixed(2)} -${resolvedServerDiscount}%)`
+                : "";
+              const priceLabel =
+                Number.isFinite(shownUSD) && shownUSD > 0
+                  ? ` — P_price_D actualizado a ${shownUSD.toFixed(2)} USD${dealerSuffix}${promoSuffix} (₡${Math.round(shownUSD * activeRate).toLocaleString()} @ ₡${activeRate.toFixed(2)})`
+                  : "";
+              const customMsg = lang === "es" ? data.result.messageEs : data.result.messageEn;
+              setFeedback({
+                type: "success",
+                msg:
+                  customMsg ||
+                  (lang === "es"
+                    ? `Enlace verificado con éxito: Estado [${data.result.status}] - Plataforma [${data.result.platform}]${priceLabel}.`
+                    : `Supplier link verified: Status [${data.result.status}] - Platform [${data.result.platform}]${priceLabel}.`),
+              });
+            }
           }
         } else if (!silent) {
           setFeedback({
@@ -10318,18 +10367,33 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                         <span className="text-slate-500 block text-[10px]">
                           {lang === "es" ? "Precio USD (P_price_D):" : "USD Price (P_price_D):"}
                         </span>
-                        <span className="font-bold font-mono text-emerald-700 block">
-                          {supplierTestResult.effectivePPriceD || supplierTestResult.supplierPriceUSD
-                            ? `${Number(supplierTestResult.effectivePPriceD || supplierTestResult.supplierPriceUSD).toFixed(2)}`
-                            : "N/D"}
-                        </span>
-                        {supplierTestResult.supplierPriceUSD &&
-                          supplierTestResult.effectivePPriceD &&
-                          Number(supplierTestResult.effectivePPriceD) < Number(supplierTestResult.supplierPriceUSD) && (
-                            <span className="text-[9px] font-mono text-slate-400 line-through block">
-                              ${Number(supplierTestResult.supplierPriceUSD).toFixed(2)}
+                        {supplierTestResult.manualPriceRequired ? (
+                          <>
+                            <span className="font-bold font-mono text-amber-700 block">
+                              {t.devEvpManualPriceCardValue}
                             </span>
-                          )}
+                            {supplierTestResult.retailReferencePriceUSD && (
+                              <span className="text-[9px] font-mono text-slate-400 block">
+                                {t.devEvpManualPriceRetailRef} ${Number(supplierTestResult.retailReferencePriceUSD).toFixed(2)}
+                              </span>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            <span className="font-bold font-mono text-emerald-700 block">
+                              {supplierTestResult.effectivePPriceD || supplierTestResult.supplierPriceUSD
+                                ? `${Number(supplierTestResult.effectivePPriceD || supplierTestResult.supplierPriceUSD).toFixed(2)}`
+                                : "N/D"}
+                            </span>
+                            {supplierTestResult.supplierPriceUSD &&
+                              supplierTestResult.effectivePPriceD &&
+                              Number(supplierTestResult.effectivePPriceD) < Number(supplierTestResult.supplierPriceUSD) && (
+                                <span className="text-[9px] font-mono text-slate-400 line-through block">
+                                  ${Number(supplierTestResult.supplierPriceUSD).toFixed(2)}
+                                </span>
+                              )}
+                          </>
+                        )}
                       </div>
                       <div className="bg-white p-2 rounded-xl border border-slate-200">
                         <span className="text-slate-500 block text-[10px]">
@@ -10348,6 +10412,17 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                         </span>
                       </div>
                     </div>
+                    {supplierTestResult.manualPriceRequired && (
+                      <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 space-y-0.5">
+                        <p className="text-[11px] font-extrabold flex items-center gap-1.5">
+                          <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                          <span>{t.devEvpManualPriceBannerTitle}</span>
+                        </p>
+                        <p className="text-[10px] text-amber-800 leading-relaxed">
+                          {t.devEvpManualPriceBannerDesc}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -10680,9 +10755,17 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {/* P_price_D (Acquisition in USD -> translates to P_price in CRC) */}
                   <div className="p-3.5 bg-slate-50 rounded-2xl border border-red-200/80 space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <label className="text-[11px] font-bold text-slate-800 flex items-center gap-1">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <label className="text-[11px] font-bold text-slate-800 flex items-center gap-1.5 flex-wrap">
                         <span>{lang === "es" ? "Precio del Producto en Dólares (P_price_D)" : "Product Price in USD (P_price_D)"}</span>
+                        {isManualPriceSupplier({
+                          supplierUrl: productForm.supplierUrl,
+                          brandName: productForm.brandName,
+                        }) && (
+                          <span className="text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300">
+                            {t.devEvpManualPriceBadge}
+                          </span>
+                        )}
                       </label>
                       <span className="text-xs font-extrabold font-mono text-[#C02030] bg-red-50 px-2 py-0.5 rounded-lg border border-red-200">
                         ${Number(productForm.P_price_D || 0).toFixed(2)} USD → {formatCRC(productForm.P_price)}
@@ -10721,7 +10804,12 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                       <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold font-mono text-slate-400">USD</span>
                     </div>
                     <p className="text-[9px] text-slate-500">
-                      {lang === "es"
+                      {isManualPriceSupplier({
+                        supplierUrl: productForm.supplierUrl,
+                        brandName: productForm.brandName,
+                      })
+                        ? t.devEvpManualPriceFieldNote
+                        : lang === "es"
                         ? `En $ USD · Se traduce automáticamente a P_price (${formatCRC(productForm.P_price)}) a ₡${liveExchangeRate.toFixed(2)}/$1`
                         : `In $ USD · Auto-translates to P_price (${formatCRC(productForm.P_price)}) at ₡${liveExchangeRate.toFixed(2)}/$1`}
                     </p>

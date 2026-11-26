@@ -4,6 +4,7 @@ import { computeProductLivePricing } from "@/lib/productPricing";
 import {
   resolveEffectiveDealerDiscount,
   computeEffectiveDealerCostUSD,
+  isManualPriceSupplier,
 } from "@/lib/dealerBrands";
 import { getBccrSellRate } from "@/lib/exchangeRate";
 import { recordAuditLog, AuditActorRole } from "@/lib/audit";
@@ -473,7 +474,7 @@ export async function runDailySupplierPriceCheck(options?: {
   try {
     await ensureSupplierPriceDecreaseTable();
 
-    const [activeRate, products, dealerBrands] = await Promise.all([
+    const [activeRate, products, dealerBrands, vehicleBrands] = await Promise.all([
       getBccrSellRate(),
       prisma.product.findMany({
         where: {
@@ -482,7 +483,6 @@ export async function runDailySupplierPriceCheck(options?: {
         },
       }),
       prisma.dealerBrand.findMany({
-        where: { isActive: true },
         select: {
           name: true,
           slug: true,
@@ -491,7 +491,16 @@ export async function runDailySupplierPriceCheck(options?: {
           dealerDiscountPercent: true,
         },
       }),
+      prisma.brand.findMany({
+        select: {
+          name: true,
+          slug: true,
+          dealerDiscountPercent: true,
+        },
+      }),
     ]);
+
+    const combinedBrandRefs = [...dealerBrands, ...vehicleBrands];
 
     const autoIncreasedProducts: DailyPriceCheckSummary["autoIncreasedProducts"] = [];
     const queuedDecreases: DailyPriceCheckSummary["queuedDecreases"] = [];
@@ -509,6 +518,13 @@ export async function runDailySupplierPriceCheck(options?: {
           const url = (prod.supplierUrl || "").trim();
           if (!url) return;
 
+          // EVP products use manual staff pricing (dealers.evopowersports.com has login-gated B2B pricing)
+          // Never auto-overwrite P_price_D / T_price or queue false retail price changes for EVP
+          if (isManualPriceSupplier({ supplierUrl: url, brandName: prod.brandName })) {
+            unchangedCount++;
+            return;
+          }
+
           totalChecked++;
           try {
             const live = await fetchLiveSupplierAvailability(url);
@@ -524,7 +540,7 @@ export async function runDailySupplierPriceCheck(options?: {
               return;
             }
 
-            const effectiveDealerDiscount = resolveEffectiveDealerDiscount(dealerBrands, {
+            const effectiveDealerDiscount = resolveEffectiveDealerDiscount(combinedBrandRefs, {
               productDealerDiscount: prod.dealerDiscountPercent,
               brandName: prod.brandName,
               supplierUrl: url,

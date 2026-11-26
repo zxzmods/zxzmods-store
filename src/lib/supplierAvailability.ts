@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { isManualPriceSupplier } from "@/lib/dealerBrands";
 
 export type SupplierStockStatus =
   | "IN_STOCK"
@@ -29,6 +30,7 @@ export interface SupplierAvailabilityResult {
   supplierSalePriceUSD?: number | null;
   automaticDiscountTitle?: string | null;
   automaticDiscountAmountUSD?: number | null;
+  manualPriceRequired?: boolean;
   title?: string;
   messageEs: string;
   messageEn: string;
@@ -1226,6 +1228,7 @@ export async function fetchLiveSupplierAvailability(
             supplierSalePriceUSD: autoSalePrice,
             automaticDiscountTitle: autoDiscountTitle,
             automaticDiscountAmountUSD: autoDiscountAmt,
+            manualPriceRequired: isManualPriceSupplier({ supplierUrl: url }),
             title,
             messageEs: msgEs,
             messageEn: msgEn,
@@ -1921,7 +1924,14 @@ export async function syncProductAvailability(
 
       // Preserve existing processingPriceD & supplierLastPriceUSD during stock-only checks
       // so the daily 3:00 AM price sync engine can properly auto-apply increases and queue decreases for staff approval.
+      // For manual-price suppliers (e.g. EVP), NEVER overwrite or seed processingPriceD / supplierLastPriceUSD.
+      const isManualPrice = isManualPriceSupplier({
+        supplierUrl: product.supplierUrl,
+        brandName: product.brandName,
+      });
+
       const shouldSeedMissingPrice =
+        !isManualPrice &&
         (!product.processingPriceD || product.processingPriceD <= 0) &&
         baseLive.supplierPriceUSD &&
         baseLive.supplierPriceUSD > 0;
@@ -1953,16 +1963,16 @@ export async function syncProductAvailability(
           supplierStockCheckedAt: new Date(),
           supplierLeadDaysMin: baseLive.leadDaysMin,
           supplierLeadDaysMax: baseLive.leadDaysMax,
-          ...(!product.supplierLastPriceUSD && baseLive.supplierPriceUSD
+          ...(!isManualPrice && !product.supplierLastPriceUSD && baseLive.supplierPriceUSD
             ? { supplierLastPriceUSD: baseLive.supplierPriceUSD }
             : {}),
           ...(parametersModified
             ? { parametersJson: JSON.stringify(parsedParameters) }
             : {}),
-          ...(effectiveDiscount > 0
+          ...(!isManualPrice && effectiveDiscount > 0
             ? { dealerDiscountPercent: effectiveDiscount }
             : {}),
-          ...(nextProcessingPriceD && nextProcessingPriceD > 0
+          ...(!isManualPrice && nextProcessingPriceD && nextProcessingPriceD > 0
             ? { processingPriceD: nextProcessingPriceD }
             : {}),
           updatedAt: new Date(),
@@ -2066,6 +2076,10 @@ export async function syncAllCatalogAvailability(forceAll = false): Promise<{
       if (forceAll || isStale) {
         const live = await fetchLiveSupplierAvailability(prod.supplierUrl);
         if (live.success) {
+          const isManualPrice = isManualPriceSupplier({
+            supplierUrl: prod.supplierUrl,
+            brandName: prod.brandName,
+          });
           const prodDisc = Math.max(0, Math.min(100, Number(prod.dealerDiscountPercent) || 0));
           const brandDisc = prod.brandName
             ? brandDiscountMap[prod.brandName.trim().toLowerCase()] || 0
@@ -2073,6 +2087,7 @@ export async function syncAllCatalogAvailability(forceAll = false): Promise<{
           const effectiveDiscount = prodDisc > 0 ? prodDisc : brandDisc;
 
           const shouldSeedMissingPrice =
+            !isManualPrice &&
             (!prod.processingPriceD || prod.processingPriceD <= 0) &&
             live.supplierPriceUSD &&
             live.supplierPriceUSD > 0;
@@ -2096,11 +2111,11 @@ export async function syncAllCatalogAvailability(forceAll = false): Promise<{
               supplierStockCheckedAt: new Date(),
               supplierLeadDaysMin: live.leadDaysMin,
               supplierLeadDaysMax: live.leadDaysMax,
-              ...(!prod.supplierLastPriceUSD && live.supplierPriceUSD
+              ...(!isManualPrice && !prod.supplierLastPriceUSD && live.supplierPriceUSD
                 ? { supplierLastPriceUSD: live.supplierPriceUSD }
                 : {}),
-              ...(effectiveDiscount > 0 ? { dealerDiscountPercent: effectiveDiscount } : {}),
-              ...(nextProcessingPriceD && nextProcessingPriceD > 0
+              ...(!isManualPrice && effectiveDiscount > 0 ? { dealerDiscountPercent: effectiveDiscount } : {}),
+              ...(!isManualPrice && nextProcessingPriceD && nextProcessingPriceD > 0
                 ? { processingPriceD: nextProcessingPriceD }
                 : {}),
             },

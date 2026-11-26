@@ -2,7 +2,11 @@ import { NextResponse } from "next/server";
 import { requireStealthSession } from "@/lib/stealthAuth";
 import { prisma } from "@/lib/prisma";
 import { recordAuditLog, AuditAction } from "@/lib/audit";
-import { ensureDealerBrandRegistered } from "@/lib/dealerBrands";
+import {
+  ensureDealerBrandRegistered,
+  isManualPriceSupplier,
+  resolveEffectiveDealerDiscount,
+} from "@/lib/dealerBrands";
 import { normalizeAudioUrl, normalizeVideoUrl, cleanDescriptionText } from "@/lib/products";
 import { cleanupRemovedMediaUrls } from "@/lib/storage";
 import { fetchLiveSupplierAvailability } from "@/lib/supplierAvailability";
@@ -164,20 +168,31 @@ export async function PATCH(
       if (body.recalculateLockedPrice === true) {
         let effPD = updateData.processingPriceD ?? existingProduct.processingPriceD ?? 0;
         const supUSD = existingProduct.supplierLastPriceUSD ?? 0;
-        let effDisc = Math.max(0, Math.min(100, Number(existingProduct.dealerDiscountPercent) || 0));
-        if (effDisc === 0 && existingProduct.brandName) {
-          const dbDealer = await prisma.dealerBrand.findFirst({
-            where: { name: { equals: existingProduct.brandName.trim() }, isActive: true },
-            select: { dealerDiscountPercent: true },
-          });
-          if (dbDealer && Number(dbDealer.dealerDiscountPercent) > 0) {
-            effDisc = Math.max(0, Math.min(100, Number(dbDealer.dealerDiscountPercent)));
+        const isManualEvp = isManualPriceSupplier({
+          supplierUrl: body.supplierUrl ?? existingProduct.supplierUrl,
+          brandName: body.brandName ?? existingProduct.brandName,
+        });
+        if (!isManualEvp) {
+          let effDisc = Math.max(0, Math.min(100, Number(existingProduct.dealerDiscountPercent) || 0));
+          if (effDisc === 0 && (existingProduct.brandName || existingProduct.supplierUrl)) {
+            const [allDealerBrands, allBrands] = await Promise.all([
+              prisma.dealerBrand.findMany({
+                select: { name: true, slug: true, code: true, redirectUrl: true, dealerDiscountPercent: true },
+              }),
+              prisma.brand.findMany({
+                select: { name: true, slug: true, dealerDiscountPercent: true },
+              }),
+            ]);
+            effDisc = resolveEffectiveDealerDiscount([...allDealerBrands, ...allBrands], {
+              brandName: existingProduct.brandName,
+              supplierUrl: existingProduct.supplierUrl,
+            });
           }
-        }
-        if (effDisc > 0 && supUSD > 0 && Math.abs(effPD - supUSD) < 0.05) {
-          effPD = Number((supUSD * (1 - effDisc / 100)).toFixed(2));
-          updateData.processingPriceD = effPD;
-          updateData.dealerDiscountPercent = effDisc;
+          if (effDisc > 0 && supUSD > 0 && Math.abs(effPD - supUSD) < 0.05) {
+            effPD = Number((supUSD * (1 - effDisc / 100)).toFixed(2));
+            updateData.processingPriceD = effPD;
+            updateData.dealerDiscountPercent = effDisc;
+          }
         }
         const effSD = updateData.shippingPriceD ?? (existingProduct as any).shippingPriceD ?? 0;
         if (effPD > 0) updateData.processingPriceCRC = Math.round(effPD * activeRate);
@@ -292,6 +307,10 @@ export async function PATCH(
     if (body.supplierStockCheckedAt !== undefined) updateData.supplierStockCheckedAt = body.supplierStockCheckedAt ? new Date(body.supplierStockCheckedAt) : null;
 
     // Auto-fetch supplier price & availability if supplierUrl changed and wasn't just checked
+    const isManualPriceEvp = isManualPriceSupplier({
+      supplierUrl: body.supplierUrl ?? existingProduct.supplierUrl,
+      brandName: updateData.brandName ?? existingProduct.brandName,
+    });
     if (
       body.supplierUrl &&
       body.supplierUrl !== existingProduct.supplierUrl &&
@@ -308,7 +327,8 @@ export async function PATCH(
           updateData.supplierStockCheckedAt = new Date();
           updateData.supplierLeadDaysMin = live.leadDaysMin;
           updateData.supplierLeadDaysMax = live.leadDaysMax;
-          if (live.supplierPriceUSD && live.supplierPriceUSD > 0) {
+          // For EVP manual-price products, never overwrite staff's manual P_price_D from scraped retail price
+          if (!isManualPriceEvp && live.supplierPriceUSD && live.supplierPriceUSD > 0) {
             updateData.supplierLastPriceUSD = live.supplierPriceUSD;
             const effectiveDiscount = updateData.dealerDiscountPercent ?? existingProduct.dealerDiscountPercent ?? 0;
             updateData.processingPriceD = Number((live.supplierPriceUSD * (1 - effectiveDiscount / 100)).toFixed(2));
@@ -319,6 +339,7 @@ export async function PATCH(
         console.warn("[AUTO_SUPPLIER_CHECK_ON_PATCH_WARN]:", checkErr);
       }
     } else if (
+      !isManualPriceEvp &&
       updateData.supplierLastPriceUSD &&
       updateData.supplierLastPriceUSD > 0 &&
       (!updateData.processingPriceD || updateData.processingPriceD <= 0)

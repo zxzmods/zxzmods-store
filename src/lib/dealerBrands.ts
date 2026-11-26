@@ -97,6 +97,31 @@ function extractRootDomain(rawUrl?: string | null): string | null {
   }
 }
 
+/**
+ * Identifies suppliers whose B2B dealer portal pricing must be entered manually by staff
+ * (e.g. EVP / Evolution Powersports, whose dealers.evopowersports.com portal uses private
+ * account-tier pricing and variable per-product discounts behind login authentication).
+ * Stock availability is still checked automatically, while P_price_D / T_price are never overwritten.
+ */
+export function isManualPriceSupplier(opts: {
+  supplierUrl?: string | null;
+  brandName?: string | null;
+}): boolean {
+  const urlDomain = extractRootDomain(opts.supplierUrl);
+  if (urlDomain === "evopowersports.com") {
+    return true;
+  }
+  const cleanBrand = (opts.brandName || "").trim().toLowerCase();
+  if (
+    cleanBrand === "evp" ||
+    cleanBrand.includes("evolution powersports") ||
+    /\bevp\b/i.test(cleanBrand)
+  ) {
+    return true;
+  }
+  return false;
+}
+
 export interface DealerBrandDiscountRef {
   name?: string | null;
   slug?: string | null;
