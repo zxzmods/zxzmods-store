@@ -11,6 +11,11 @@ export const metadata: Metadata = {
     "Official Terms and Conditions of service, parts purchase, and platform use for ZxZ Mods Costa Rica S.A. Corporate Tax ID 3-101-436132.",
   alternates: {
     canonical: "https://www.zxzmods.com/terms",
+    languages: {
+      "es-CR": "https://www.zxzmods.com/terminos",
+      en: "https://www.zxzmods.com/terms",
+      "x-default": "https://www.zxzmods.com/terminos",
+    },
   },
 };
 

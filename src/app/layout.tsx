@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { getSiteUrl } from "@/lib/seo";
 import { ThemeProvider } from "@/context/ThemeContext";
 import { LanguageProvider } from "@/context/LanguageContext";
 import { GarageProvider } from "@/context/GarageContext";
@@ -21,9 +22,22 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "ZxZ Mods | UTV & ATV Performance, Modificaciones e Importación en Costa Rica",
+  metadataBase: new URL(getSiteUrl()),
+  title: {
+    default: "ZxZ Mods | UTV & ATV Performance, Modificaciones e Importación en Costa Rica",
+    template: "%s | ZxZ Mods Costa Rica",
+  },
   description:
     "Especialistas en importación, potenciación e instalación de piezas para Can-Am, Polaris, Yamaha, Honda, Segway y CFMOTO en Costa Rica. Garantía en mano de obra.",
+  robots: {
+    index: true,
+    follow: true,
+  },
+  openGraph: {
+    siteName: "ZxZ Mods",
+    locale: "es_CR",
+    type: "website",
+  },
   icons: {
     icon: "/images/logo.png",
   },

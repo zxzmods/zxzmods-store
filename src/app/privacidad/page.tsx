@@ -11,6 +11,11 @@ export const metadata: Metadata = {
     "Política de Privacidad oficial y tratamiento de datos personales de ZxZ Mods Costa Rica S.A. Cumplimiento estricto con la Ley N° 8968 y la Google API Services User Data Policy.",
   alternates: {
     canonical: "https://www.zxzmods.com/privacidad",
+    languages: {
+      "es-CR": "https://www.zxzmods.com/privacidad",
+      en: "https://www.zxzmods.com/privacy",
+      "x-default": "https://www.zxzmods.com/privacidad",
+    },
   },
 };
 

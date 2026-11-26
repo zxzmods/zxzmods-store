@@ -11,6 +11,11 @@ export const metadata: Metadata = {
     "Official Privacy Policy and Google OAuth 2.0 User Data handling for ZxZ Mods Costa Rica S.A. Fully compliant with Google API Services User Data Policy and Costa Rican Law No. 8968.",
   alternates: {
     canonical: "https://www.zxzmods.com/privacy",
+    languages: {
+      "es-CR": "https://www.zxzmods.com/privacidad",
+      en: "https://www.zxzmods.com/privacy",
+      "x-default": "https://www.zxzmods.com/privacidad",
+    },
   },
 };
 

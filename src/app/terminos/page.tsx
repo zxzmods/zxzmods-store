@@ -11,6 +11,11 @@ export const metadata: Metadata = {
     "Términos y Condiciones oficiales de compra, despacho, garantía y uso de plataforma de ZxZ Mods Costa Rica S.A. Cédula Jurídica 3-101-436132.",
   alternates: {
     canonical: "https://www.zxzmods.com/terminos",
+    languages: {
+      "es-CR": "https://www.zxzmods.com/terminos",
+      en: "https://www.zxzmods.com/terms",
+      "x-default": "https://www.zxzmods.com/terminos",
+    },
   },
 };
 

@@ -147,6 +147,26 @@ const nextConfig = {
         destination: "/terminos",
         permanent: true,
       },
+      {
+        source: "/taller",
+        destination: "/ubicacion",
+        permanent: true,
+      },
+      {
+        source: "/cart",
+        destination: "/carrito",
+        permanent: true,
+      },
+      {
+        source: "/orders",
+        destination: "/pedidos",
+        permanent: true,
+      },
+      {
+        source: "/orders/:path*",
+        destination: "/pedidos/:path*",
+        permanent: true,
+      },
     ];
   },
 

@@ -60,6 +60,15 @@ export function middleware(request: NextRequest) {
 
   const response = NextResponse.next();
 
+  // Prevent search engines from indexing internal APIs or admin/backdoor endpoints
+  if (
+    pathname.startsWith("/api/") ||
+    pathname.startsWith("/sys-control") ||
+    pathname.startsWith("/admin")
+  ) {
+    response.headers.set("X-Robots-Tag", "noindex, nofollow");
+  }
+
   if (origin && allowedOrigins.includes(origin)) {
     response.headers.set("Access-Control-Allow-Origin", origin);
     response.headers.set("Access-Control-Allow-Credentials", "true");
@@ -82,6 +91,6 @@ export const config = {
      * - favicon.ico (favicon file)
      * - public assets (/images/, /uploads/, etc.)
      */
-    "/((?!_next/static|_next/image|images/|uploads/|favicon.ico).*)",
+    "/((?!_next/static|_next/image|images/|uploads/|favicon.ico|robots.txt|sitemap.xml).*)",
   ],
 };
