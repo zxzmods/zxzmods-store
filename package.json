@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate && next build",
-    "vercel-build": "prisma generate --schema=prisma/schema.postgresql.prisma && prisma db push --schema=prisma/schema.postgresql.prisma --accept-data-loss && node prisma/seed-legal-documents.js && next build",
+    "vercel-build": "prisma generate --schema=prisma/schema.postgresql.prisma && prisma db push --schema=prisma/schema.postgresql.prisma --accept-data-loss && node scripts/enable-rls-postgres.js && node prisma/seed-legal-documents.js && next build",
     "start": "next start",
     "lint": "next lint",
     "prisma:seed": "node prisma/seed.js",

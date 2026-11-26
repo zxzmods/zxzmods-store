@@ -98,6 +98,22 @@ export async function ensureSupplierPriceDecreaseTable(): Promise<void> {
         CREATE INDEX IF NOT EXISTS "SupplierPriceDecrease_status_detectedAt_idx"
         ON "SupplierPriceDecrease"("status", "detectedAt");
       `);
+      // Enforce Row Level Security (RLS) in Supabase/PostgreSQL so PostgREST anon/authenticated roles cannot access internal pricing tables
+      await prisma.$executeRawUnsafe(`
+        ALTER TABLE "public"."SupplierPriceDecrease" ENABLE ROW LEVEL SECURITY;
+      `);
+      await prisma.$executeRawUnsafe(`
+        DO $$
+        BEGIN
+          IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+            EXECUTE 'REVOKE ALL ON TABLE "public"."SupplierPriceDecrease" FROM anon';
+          END IF;
+          IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+            EXECUTE 'REVOKE ALL ON TABLE "public"."SupplierPriceDecrease" FROM authenticated';
+          END IF;
+        END
+        $$;
+      `);
     } else {
       await prisma.$executeRawUnsafe(`
         CREATE TABLE IF NOT EXISTS "SupplierPriceDecrease" (
