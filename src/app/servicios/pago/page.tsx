@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useLanguage } from "@/context/LanguageContext";
 import { useAuth, UserOrder } from "@/context/AuthContext";
+import { uploadPaymentProof } from "@/lib/clientPaymentUpload";
 import {
   UploadCloud,
   CheckCircle2,
@@ -510,14 +511,7 @@ function ServicePaymentContent() {
 
       // Step 1: Upload proof image if provided
       if (file) {
-        const formData = new FormData();
-        formData.append("file", file);
-
-        const uploadRes = await fetch("/api/upload/payment", {
-          method: "POST",
-          body: formData,
-        });
-        const uploadData = await uploadRes.json();
+        const uploadData = await uploadPaymentProof(file, lang);
 
         if (!uploadData.success || !uploadData.url) {
           throw new Error(

@@ -13,6 +13,7 @@ import {
   parseOrderDocs,
 } from "@/lib/splitPayment";
 import { PaymentPlanSelector } from "@/components/cart/PaymentPlanSelector";
+import { uploadPaymentProof } from "@/lib/clientPaymentUpload";
 import {
   AlertCircle,
   Building2,
@@ -247,14 +248,8 @@ export function OrderPaymentModal({
 
     try {
       // Step 1: Upload proof file
-      const formData = new FormData();
-      formData.append("file", file);
-      const upRes = await fetch("/api/upload/payment", {
-        method: "POST",
-        body: formData,
-      });
-      const upData = await upRes.json();
-      if (!upRes.ok || !upData.success || !upData.url) {
+      const upData = await uploadPaymentProof(file, isEs ? "es" : "en");
+      if (!upData.success || !upData.url) {
         throw new Error(
           upData.error ||
             (isEs

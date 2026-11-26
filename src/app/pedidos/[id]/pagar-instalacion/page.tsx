@@ -10,6 +10,7 @@ import { GarageModal } from "@/components/garage/GarageModal";
 import { CartDrawer } from "@/components/cart/CartDrawer";
 import { FloatingConcierge } from "@/components/home/FloatingConcierge";
 import { Footer } from "@/components/layout/Footer";
+import { uploadPaymentProof } from "@/lib/clientPaymentUpload";
 import { useLanguage } from "@/context/LanguageContext";
 import { useAuth } from "@/context/AuthContext";
 import { useCart } from "@/context/CartContext";
@@ -286,17 +287,9 @@ export default function InstallationCheckoutPage() {
     setError(null);
 
     try {
-      // 1. Upload receipt file
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("folder", "payments");
-
-      const uploadRes = await fetch("/api/upload/payment", {
-        method: "POST",
-        body: formData,
-      });
-      const uploadData = await uploadRes.json();
-      if (!uploadRes.ok || !uploadData.url) {
+      // 1. Upload receipt file (auto-compresses large photos & bypasses 4.5MB limit)
+      const uploadData = await uploadPaymentProof(file, lang);
+      if (!uploadData.success || !uploadData.url) {
         throw new Error(uploadData.error || "Error al subir la imagen del comprobante");
       }
 

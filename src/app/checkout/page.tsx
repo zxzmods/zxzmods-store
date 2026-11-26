@@ -8,6 +8,7 @@ import { useCart } from "@/context/CartContext";
 import { useLanguage } from "@/context/LanguageContext";
 import { useAuth } from "@/context/AuthContext";
 import { Footer } from "@/components/layout/Footer";
+import { uploadPaymentProof } from "@/lib/clientPaymentUpload";
 import {
   UploadCloud,
   CheckCircle2,
@@ -387,15 +388,8 @@ export default function CheckoutPage() {
     setSubmissionStep(1);
 
     try {
-      // Step 1: Upload proof image
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const uploadRes = await fetch("/api/upload/payment", {
-        method: "POST",
-        body: formData,
-      });
-      const uploadData = await uploadRes.json();
+      // Step 1: Upload proof image (auto-compresses large photos & bypasses 4.5MB limit via signed URL)
+      const uploadData = await uploadPaymentProof(file, lang);
 
       if (!uploadData.success || !uploadData.url) {
         throw new Error(
@@ -458,14 +452,20 @@ export default function CheckoutPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(orderBody),
       });
-      const orderData = await orderRes.json();
+      const orderRaw = await orderRes.text().catch(() => "");
+      let orderData: any = {};
+      try {
+        orderData = orderRaw ? JSON.parse(orderRaw) : {};
+      } catch {
+        orderData = {};
+      }
 
-      if (!orderData.success || !orderData.order) {
+      if (!orderRes.ok || !orderData.success || !orderData.order) {
         throw new Error(
           orderData.error ||
             (lang === "es"
-              ? "Error al registrar el pedido"
-              : "Failed to register order")
+              ? "Error al registrar el pedido. Por favor intenta nuevamente."
+              : "Failed to register order. Please try again.")
         );
       }
 

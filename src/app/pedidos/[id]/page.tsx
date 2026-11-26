@@ -13,6 +13,7 @@ import { CartDrawer } from "@/components/cart/CartDrawer";
 import { FloatingConcierge } from "@/components/home/FloatingConcierge";
 import { ProfileDrawer } from "@/components/profile/ProfileDrawer";
 import { Footer } from "@/components/layout/Footer";
+import { uploadPaymentProof } from "@/lib/clientPaymentUpload";
 import { CustomerZxzCertModal } from "@/components/orders/CustomerZxzCertModal";
 import { useAuth } from "@/context/AuthContext";
 import { useCart } from "@/context/CartContext";
@@ -278,14 +279,8 @@ export default function OrderDetailPage() {
 
     setSubmittingPayment(true);
     try {
-      const formData = new FormData();
-      formData.append("file", payReceiptFile);
-      const upRes = await fetch("/api/upload/payment", {
-        method: "POST",
-        body: formData,
-      });
-      const upData = await upRes.json();
-      if (!upRes.ok || !upData.success || !upData.url) {
+      const upData = await uploadPaymentProof(payReceiptFile, lang);
+      if (!upData.success || !upData.url) {
         throw new Error(upData.error || (lang === "es" ? "Error al subir comprobante" : "Upload failed"));
       }
 
@@ -332,14 +327,8 @@ export default function OrderDetailPage() {
 
     setUploadingDirectProof(true);
     try {
-      const formData = new FormData();
-      formData.append("file", directProofFile);
-      const upRes = await fetch("/api/upload/payment", {
-        method: "POST",
-        body: formData,
-      });
-      const upData = await upRes.json();
-      if (!upRes.ok || !upData.success || !upData.url) {
+      const upData = await uploadPaymentProof(directProofFile, lang);
+      if (!upData.success || !upData.url) {
         throw new Error(upData.error || (lang === "es" ? "Error al subir comprobante" : "Upload failed"));
       }
 
@@ -396,16 +385,11 @@ export default function OrderDetailPage() {
     try {
       let uploadedProofUrl = order.paymentProofUrl || null;
       if (payReceiptFile) {
-        const formData = new FormData();
-        formData.append("file", payReceiptFile);
-        const upRes = await fetch("/api/upload/payment", {
-          method: "POST",
-          body: formData,
-        });
-        const upData = await upRes.json();
-        if (upData.success && upData.url) {
-          uploadedProofUrl = upData.url;
+        const upData = await uploadPaymentProof(payReceiptFile, lang);
+        if (!upData.success || !upData.url) {
+          throw new Error(upData.error || (lang === "es" ? "Error al subir comprobante" : "Upload failed"));
         }
+        uploadedProofUrl = upData.url;
       }
 
       const res = await fetch(`/api/orders/${order.id}/pay`, {

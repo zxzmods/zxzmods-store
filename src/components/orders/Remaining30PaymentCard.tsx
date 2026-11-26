@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useLanguage } from "@/context/LanguageContext";
 import { formatCRC, formatUSD, convertCRCToUSD } from "@/lib/i18n";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { uploadPaymentProof } from "@/lib/clientPaymentUpload";
 import {
   SplitPaymentData,
   canPayRemaining30,
@@ -190,14 +191,8 @@ export function Remaining30PaymentCard({
 
     try {
       // 1. Upload proof #2
-      const formData = new FormData();
-      formData.append("file", file);
-      const upRes = await fetch("/api/upload/payment", {
-        method: "POST",
-        body: formData,
-      });
-      const upData = await upRes.json();
-      if (!upRes.ok || !upData.success || !upData.url) {
+      const upData = await uploadPaymentProof(file, isEs ? "es" : "en");
+      if (!upData.success || !upData.url) {
         throw new Error(
           upData.error ||
             (isEs ? "Error al subir el comprobante del 30%" : "Failed to upload 30% proof")
