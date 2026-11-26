@@ -69,6 +69,131 @@ export function resolveDefaultDealerBrandCode(name: string): string {
   return name.replace(/[^A-Za-z0-9]/g, "").slice(0, 3).toUpperCase();
 }
 
+const SUPPLIER_DOMAIN_TO_BRAND_CODE: Record<string, string> = {
+  "evopowersports.com": "EVP",
+  "rpmsxs.com": "RPM",
+  "bikemanperformance.com": "BMP",
+  "drtmotorsports.com": "DRT",
+  "teammscdealers.com": "MSC",
+  "ggbexhaust.com": "GGB",
+  "shocktherapyst.com": "SHK",
+  "rngperformance.net": "RNG",
+  "elektricoffroad.com": "EOD",
+  "dynojet.com": "DJT",
+  "trinityracing.com": "TRN",
+};
+
+function extractRootDomain(rawUrl?: string | null): string | null {
+  if (!rawUrl || typeof rawUrl !== "string") return null;
+  try {
+    const parsed = new URL(rawUrl.trim().startsWith("http") ? rawUrl.trim() : `https://${rawUrl.trim()}`);
+    const parts = parsed.hostname.toLowerCase().replace(/^www\./, "").split(".").filter(Boolean);
+    if (parts.length >= 2) {
+      return parts.slice(-2).join(".");
+    }
+    return parsed.hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+export interface DealerBrandDiscountRef {
+  name?: string | null;
+  slug?: string | null;
+  code?: string | null;
+  redirectUrl?: string | null;
+  dealerDiscountPercent?: number | null;
+}
+
+/**
+ * Resolves the effective dealer discount (%) for a product using:
+ * 1. Explicit product-level dealerDiscountPercent (> 0)
+ * 2. Case-insensitive / alias / code match against DealerBrand (e.g. "Evolution Powersports" <-> "EVP")
+ * 3. Supplier URL domain match (e.g. dealers.evopowersports.com -> EVP even if product brandName is "TAPP" or "STM")
+ */
+export function resolveEffectiveDealerDiscount(
+  dealerBrands: DealerBrandDiscountRef[],
+  opts: {
+    productDealerDiscount?: number | null;
+    brandName?: string | null;
+    supplierUrl?: string | null;
+  }
+): number {
+  const explicit = Math.max(0, Math.min(100, Number(opts.productDealerDiscount) || 0));
+  if (explicit > 0) return explicit;
+
+  const activeBrands = (dealerBrands || []).filter(
+    (b) => b && Number(b.dealerDiscountPercent) > 0
+  );
+  if (activeBrands.length === 0) return 0;
+
+  const cleanBrand = (opts.brandName || "").trim().toLowerCase();
+  const targetBrandCode = cleanBrand ? resolveDefaultDealerBrandCode(cleanBrand) : "";
+
+  // 1. Direct case-insensitive name / slug / code match
+  if (cleanBrand) {
+    const directMatch = activeBrands.find((b) => {
+      const bName = (b.name || "").trim().toLowerCase();
+      const bSlug = (b.slug || "").trim().toLowerCase();
+      const bCode = (b.code || "").trim().toUpperCase() || resolveDefaultDealerBrandCode(bName);
+      return (
+        bName === cleanBrand ||
+        bSlug === cleanBrand ||
+        (targetBrandCode && bCode === targetBrandCode)
+      );
+    });
+    if (directMatch && Number(directMatch.dealerDiscountPercent) > 0) {
+      return Math.max(0, Math.min(100, Number(directMatch.dealerDiscountPercent)));
+    }
+  }
+
+  // 2. Supplier URL root domain match (e.g. dealers.evopowersports.com -> evopowersports.com -> EVP)
+  const urlDomain = extractRootDomain(opts.supplierUrl);
+  if (urlDomain) {
+    const mappedCode = SUPPLIER_DOMAIN_TO_BRAND_CODE[urlDomain] || "";
+    const domainMatch = activeBrands.find((b) => {
+      const bName = (b.name || "").trim().toLowerCase();
+      const bCode = (b.code || "").trim().toUpperCase() || resolveDefaultDealerBrandCode(bName);
+      const bRedirectDomain = extractRootDomain(b.redirectUrl);
+      return (
+        (bRedirectDomain && bRedirectDomain === urlDomain) ||
+        (mappedCode && bCode === mappedCode) ||
+        (mappedCode === "EVP" && (bName.includes("evp") || bName.includes("evolution powersports")))
+      );
+    });
+    if (domainMatch && Number(domainMatch.dealerDiscountPercent) > 0) {
+      return Math.max(0, Math.min(100, Number(domainMatch.dealerDiscountPercent)));
+    }
+  }
+
+  return 0;
+}
+
+/**
+ * Computes the effective USD acquisition cost (`P_price_D`) given retail MSRP,
+ * dealer discount %, and optional active retail automatic sale price (e.g. Black Friday):
+ * takes the lower of `MSRP * (1 - dealerDiscount/100)` vs `saleRetailUSD`
+ * so dealer discounts are applied accurately without double-stacking non-stackable retail coupons,
+ * while still capturing retail flash sales that beat dealer cost or apply to 0%-discount brands.
+ */
+export function computeEffectiveDealerCostUSD(
+  baseRetailUSD: number,
+  dealerDiscountPercent: number = 0,
+  saleRetailUSD?: number | null
+): number {
+  const retail = Number(baseRetailUSD) || 0;
+  if (retail <= 0) return 0;
+  const disc = Math.max(0, Math.min(100, Number(dealerDiscountPercent) || 0));
+  const dealerCost = disc > 0 ? Number((retail * (1 - disc / 100)).toFixed(2)) : Number(retail.toFixed(2));
+  const sale = typeof saleRetailUSD === "number" && Number.isFinite(saleRetailUSD) && saleRetailUSD > 0
+    ? Number(saleRetailUSD.toFixed(2))
+    : null;
+  if (sale !== null && sale < dealerCost) {
+    return sale;
+  }
+  return dealerCost;
+}
+
 /**
  * Automatically calculates a product SKU following the official pattern:
  * 'the dealer brand sku' + '-' + 'compatible vehicle sku (all compatable vehicles, just separate them by '-')' + '-' + 'number of that dealer brand product (if brands has 3 products then it will be '04')'

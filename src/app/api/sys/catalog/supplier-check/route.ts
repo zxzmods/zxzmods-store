@@ -5,6 +5,10 @@ import {
 } from "@/lib/supplierAvailability";
 import { prisma } from "@/lib/prisma";
 import { requireStealthSession } from "@/lib/stealthAuth";
+import {
+  resolveEffectiveDealerDiscount,
+  computeEffectiveDealerCostUSD,
+} from "@/lib/dealerBrands";
 
 export const dynamic = "force-dynamic";
 
@@ -85,36 +89,52 @@ export async function POST(request: Request) {
     // Inspect live availability from US website
     const result = await fetchLiveSupplierAvailability(url);
 
-    // Optionally save to product (and auto-sync processingPriceD with dealerDiscountPercent applied when supplierPriceUSD is found)
-    if ((save || Boolean(saveToProductId)) && targetProductId) {
-      const existingProd = await prisma.product.findUnique({
-        where: { id: targetProductId },
-        select: {
-          dealerDiscountPercent: true,
-          brandName: true,
-          supplierLastPriceUSD: true,
-          processingPriceD: true,
-        },
-      });
+    // Resolve dealer discount cleanly across product override, brand alias/case-insensitive match, and supplierUrl domain (e.g. dealers.evopowersports.com -> EVP)
+    const activeDealerBrands = await prisma.dealerBrand.findMany({
+      where: { isActive: true },
+      select: {
+        name: true,
+        slug: true,
+        code: true,
+        redirectUrl: true,
+        dealerDiscountPercent: true,
+      },
+    });
 
-      let effectiveDiscount =
-        body.dealerDiscountPercent !== undefined && body.dealerDiscountPercent !== null
-          ? Math.max(0, Math.min(100, Number(body.dealerDiscountPercent) || 0))
-          : Math.max(0, Math.min(100, Number(existingProd?.dealerDiscountPercent) || 0));
-
-      if (effectiveDiscount === 0 && existingProd?.brandName) {
-        const dbDealer = await prisma.dealerBrand.findFirst({
-          where: {
-            name: { equals: existingProd.brandName.trim() },
-            isActive: true,
+    const existingProd = targetProductId
+      ? await prisma.product.findUnique({
+          where: { id: targetProductId },
+          select: {
+            dealerDiscountPercent: true,
+            brandName: true,
+            supplierLastPriceUSD: true,
+            processingPriceD: true,
           },
-          select: { dealerDiscountPercent: true },
-        });
-        if (dbDealer && Number(dbDealer.dealerDiscountPercent) > 0) {
-          effectiveDiscount = Math.max(0, Math.min(100, Number(dbDealer.dealerDiscountPercent)));
-        }
-      }
+        })
+      : null;
 
+    const requestedDisc =
+      body.dealerDiscountPercent !== undefined && body.dealerDiscountPercent !== null
+        ? Number(body.dealerDiscountPercent)
+        : 0;
+
+    const effectiveDiscount = resolveEffectiveDealerDiscount(activeDealerBrands, {
+      productDealerDiscount: requestedDisc > 0 ? requestedDisc : existingProd?.dealerDiscountPercent,
+      brandName: body.brandName || existingProd?.brandName,
+      supplierUrl: url,
+    });
+
+    const effectivePPriceD =
+      result.supplierPriceUSD && result.supplierPriceUSD > 0
+        ? computeEffectiveDealerCostUSD(
+            result.supplierPriceUSD,
+            effectiveDiscount,
+            result.supplierSalePriceUSD
+          )
+        : null;
+
+    // Optionally save to product (and auto-sync processingPriceD with dealerDiscountPercent applied when supplierPriceUSD is found)
+    if ((save || Boolean(saveToProductId)) && targetProductId && existingProd) {
       const updateData: any = {
         supplierUrl: result.url,
         supplierPlatform: result.platform,
@@ -130,12 +150,10 @@ export async function POST(request: Request) {
       };
       if (result.supplierPriceUSD && result.supplierPriceUSD > 0) {
         updateData.supplierLastPriceUSD = result.supplierPriceUSD;
-        if (effectiveDiscount > 0) {
-          updateData.processingPriceD = Number(
-            (result.supplierPriceUSD * (1 - effectiveDiscount / 100)).toFixed(2)
-          );
+        if (effectivePPriceD && effectivePPriceD > 0) {
+          updateData.processingPriceD = effectivePPriceD;
         } else if (
-          existingProd?.supplierLastPriceUSD &&
+          existingProd.supplierLastPriceUSD &&
           Math.abs(result.supplierPriceUSD - existingProd.supplierLastPriceUSD) < 0.05 &&
           existingProd.processingPriceD &&
           existingProd.processingPriceD > 0 &&
@@ -156,6 +174,8 @@ export async function POST(request: Request) {
         success: true,
         message: "Disponibilidad verificada y guardada en el catálogo",
         result,
+        effectiveDealerDiscount: effectiveDiscount,
+        effectivePPriceD,
         product: updated,
       });
     }
@@ -163,6 +183,8 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       result,
+      effectiveDealerDiscount: effectiveDiscount,
+      effectivePPriceD,
     });
   } catch (error: any) {
     console.error("Error in POST /api/sys/catalog/supplier-check:", error);

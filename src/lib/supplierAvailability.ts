@@ -26,6 +26,9 @@ export interface SupplierAvailabilityResult {
   available: boolean;
   stockCount: number | null;
   supplierPriceUSD: number | null;
+  supplierSalePriceUSD?: number | null;
+  automaticDiscountTitle?: string | null;
+  automaticDiscountAmountUSD?: number | null;
   title?: string;
   messageEs: string;
   messageEn: string;
@@ -236,6 +239,81 @@ function buildShopifySearchQueries(handle: string): string[] {
   return Array.from(new Set(queries.filter(Boolean)));
 }
 
+/**
+ * Probes Shopify Storefront GraphQL `cartCreate` for an active automatic discount
+ * (e.g. Black Friday / Cyber Monday / Seasonal automatic sale) on a specific variant.
+ * Completely read-only/anonymous cart quote; never submits an order.
+ */
+async function fetchShopifyAutomaticDiscountPrice(
+  targetHost: string,
+  token: string,
+  variantNumericId: number | string
+): Promise<{
+  salePriceUSD: number;
+  discountAmountUSD: number;
+  discountTitle: string | null;
+} | null> {
+  if (!targetHost || !token || !variantNumericId) return null;
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 4500);
+    const res = await fetch(`https://${targetHost}/api/2024-07/graphql.json`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Shopify-Storefront-Access-Token": token,
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+      },
+      body: JSON.stringify({
+        query: `mutation($id: ID!) {
+          cartCreate(input: { lines: [{ merchandiseId: $id, quantity: 1 }] }) {
+            cart {
+              cost { totalAmount { amount } }
+              lines(first: 2) {
+                nodes {
+                  cost {
+                    amountPerQuantity { amount }
+                    totalAmount { amount }
+                  }
+                  discountAllocations {
+                    discountedAmount { amount }
+                    ... on CartAutomaticDiscountAllocation { title }
+                  }
+                }
+              }
+            }
+          }
+        }`,
+        variables: { id: `gid://shopify/ProductVariant/${variantNumericId}` },
+      }),
+      signal: controller.signal,
+      cache: "no-store",
+    });
+    clearTimeout(timeoutId);
+
+    if (!res.ok) return null;
+    const d = await res.json().catch(() => null);
+    const line = d?.data?.cartCreate?.cart?.lines?.nodes?.[0];
+    if (!line) return null;
+
+    const baseAmt = parseFloat(line.cost?.amountPerQuantity?.amount || "0");
+    const totalAmt = parseFloat(
+      line.cost?.totalAmount?.amount || d?.data?.cartCreate?.cart?.cost?.totalAmount?.amount || "0"
+    );
+    const alloc = Array.isArray(line.discountAllocations) ? line.discountAllocations[0] : null;
+    const discAmt = parseFloat(alloc?.discountedAmount?.amount || "0");
+
+    if (baseAmt > 0 && totalAmt > 0 && totalAmt < baseAmt - 0.05) {
+      return {
+        salePriceUSD: Number(totalAmt.toFixed(2)),
+        discountAmountUSD: Number((discAmt > 0 ? discAmt : baseAmt - totalAmt).toFixed(2)),
+        discountTitle: alloc?.title ? String(alloc.title).trim() : null,
+      };
+    }
+  } catch {}
+  return null;
+}
+
 async function fetchShopifyStorefrontGraphQL(
   hostname: string,
   handle: string,
@@ -244,23 +322,45 @@ async function fetchShopifyStorefrontGraphQL(
   const { targetHost, token } = resolveShopifyHostAndToken(hostname);
   if (!token) return null;
 
-  const formatGqlProduct = (p: any) => {
+  const gqlHeaders = {
+    "Content-Type": "application/json",
+    "X-Shopify-Storefront-Access-Token": token,
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+  };
+
+  const attachAutoDiscount = async (prodData: any, targetVariantId?: number | string | null) => {
+    const variants: any[] = Array.isArray(prodData?.variants) ? prodData.variants : [];
+    const matched = targetVariantId
+      ? variants.find((v) => String(v?.id) === String(targetVariantId))
+      : null;
+    const primary = matched || variants[0];
+    if (primary?.id) {
+      const autoDisc = await fetchShopifyAutomaticDiscountPrice(targetHost, token, primary.id);
+      if (autoDisc) {
+        prodData.automaticSalePriceUSD = autoDisc.salePriceUSD;
+        prodData.automaticDiscountAmountUSD = autoDisc.discountAmountUSD;
+        prodData.automaticDiscountTitle = autoDisc.discountTitle;
+      }
+    }
+    return { prodData };
+  };
+
+  const formatGqlProduct = async (p: any) => {
     const variantsList = (p.variants?.nodes || []).map((vn: any) => ({
       id: parseInt(vn.id.replace("gid://shopify/ProductVariant/", ""), 10),
       title: vn.title,
       available: vn.availableForSale,
       price: parseFloat(vn.price?.amount || "0"),
     }));
-    return {
-      prodData: {
-        title: p.title,
-        handle: p.handle,
-        available: p.availableForSale,
-        tags: p.tags || [],
-        price: variantsList[0]?.price || null,
-        variants: variantsList,
-      },
+    const prodData: any = {
+      title: p.title,
+      handle: p.handle,
+      available: p.availableForSale,
+      tags: p.tags || [],
+      price: variantsList[0]?.price || null,
+      variants: variantsList,
     };
+    return attachAutoDiscount(prodData, variantId);
   };
 
   try {
@@ -289,14 +389,12 @@ async function fetchShopifyStorefrontGraphQL(
       `;
       const res = await fetch(`https://${targetHost}/api/2024-07/graphql.json`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Shopify-Storefront-Access-Token": token,
-        },
+        headers: gqlHeaders,
         body: JSON.stringify({
           query: q,
           variables: { id: `gid://shopify/ProductVariant/${variantId}` },
         }),
+        cache: "no-store",
       });
       if (res.ok) {
         const d = await res.json();
@@ -313,26 +411,25 @@ async function fetchShopifyStorefrontGraphQL(
             available: vn.availableForSale,
             price: parseFloat(vn.price?.amount || "0"),
           }));
-          return {
-            prodData: {
-              title: p?.title || vNode.title,
-              handle: p?.handle || handle,
-              available: vNode.availableForSale,
-              tags: p?.tags || [],
-              price: parseFloat(vNode.price?.amount || "0"),
-              variants:
-                variantsList.length > 0
-                  ? variantsList
-                  : [
-                      {
-                        id: matchedNumericId,
-                        title: vNode.title,
-                        available: vNode.availableForSale,
-                        price: parseFloat(vNode.price?.amount || "0"),
-                      },
-                    ],
-            },
+          const prodData: any = {
+            title: p?.title || vNode.title,
+            handle: p?.handle || handle,
+            available: vNode.availableForSale,
+            tags: p?.tags || [],
+            price: parseFloat(vNode.price?.amount || "0"),
+            variants:
+              variantsList.length > 0
+                ? variantsList
+                : [
+                    {
+                      id: matchedNumericId,
+                      title: vNode.title,
+                      available: vNode.availableForSale,
+                      price: parseFloat(vNode.price?.amount || "0"),
+                    },
+                  ],
           };
+          return await attachAutoDiscount(prodData, matchedNumericId);
         }
       }
     }
@@ -355,11 +452,9 @@ async function fetchShopifyStorefrontGraphQL(
       if (!h) return null;
       const resH = await fetch(`https://${targetHost}/api/2024-07/graphql.json`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Shopify-Storefront-Access-Token": token,
-        },
+        headers: gqlHeaders,
         body: JSON.stringify({ query: qHandle, variables: { handle: h } }),
+        cache: "no-store",
       });
       if (resH.ok) {
         const d = await resH.json();
@@ -386,7 +481,7 @@ async function fetchShopifyStorefrontGraphQL(
     }
 
     if (p) {
-      return formatGqlProduct(p);
+      return await formatGqlProduct(p);
     }
 
     // 3. Smart ranked search fallback (handles dealer portal URLs like dealers.evopowersports.com
@@ -417,11 +512,9 @@ async function fetchShopifyStorefrontGraphQL(
         const [gqlRes, suggestRes] = await Promise.all([
           fetch(`https://${targetHost}/api/2024-07/graphql.json`, {
             method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-Shopify-Storefront-Access-Token": token,
-            },
+            headers: gqlHeaders,
             body: JSON.stringify({ query: qSearch, variables: { query: qTerm } }),
+            cache: "no-store",
           }).catch(() => null),
           fetch(
             `https://${targetHost}/search/suggest.json?q=${encodeURIComponent(qTerm)}&resources[type]=product&resources[limit]=10`,
@@ -430,6 +523,7 @@ async function fetchShopifyStorefrontGraphQL(
                 Accept: "application/json",
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
               },
+              cache: "no-store",
             }
           ).catch(() => null),
         ]);
@@ -493,7 +587,7 @@ async function fetchShopifyStorefrontGraphQL(
         const matchedNode =
           gqlCandidatesMap.get(bestHandle) || (await fetchProductByHandle(bestHandle));
         if (matchedNode) {
-          return formatGqlProduct(matchedNode);
+          return await formatGqlProduct(matchedNode);
         }
       }
     }
@@ -1106,6 +1200,21 @@ export async function fetchLiveSupplierAvailability(
         }
 
         if (price !== null || variants.length > 0) {
+          const autoSalePrice =
+            typeof prodData.automaticSalePriceUSD === "number" &&
+            prodData.automaticSalePriceUSD > 0 &&
+            (price === null || prodData.automaticSalePriceUSD < price)
+              ? Number(prodData.automaticSalePriceUSD.toFixed(2))
+              : null;
+          const autoDiscountAmt =
+            autoSalePrice !== null && typeof prodData.automaticDiscountAmountUSD === "number"
+              ? Number(prodData.automaticDiscountAmountUSD.toFixed(2))
+              : null;
+          const autoDiscountTitle =
+            autoSalePrice !== null && prodData.automaticDiscountTitle
+              ? String(prodData.automaticDiscountTitle)
+              : null;
+
           return {
             success: true,
             url,
@@ -1114,6 +1223,9 @@ export async function fetchLiveSupplierAvailability(
             available: anyAvailable,
             stockCount: totalStock > 0 ? totalStock : null,
             supplierPriceUSD: price,
+            supplierSalePriceUSD: autoSalePrice,
+            automaticDiscountTitle: autoDiscountTitle,
+            automaticDiscountAmountUSD: autoDiscountAmt,
             title,
             messageEs: msgEs,
             messageEn: msgEn,

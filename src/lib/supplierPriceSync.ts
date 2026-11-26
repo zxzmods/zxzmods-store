@@ -1,6 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import { fetchLiveSupplierAvailability } from "@/lib/supplierAvailability";
 import { computeProductLivePricing } from "@/lib/productPricing";
+import {
+  resolveEffectiveDealerDiscount,
+  computeEffectiveDealerCostUSD,
+} from "@/lib/dealerBrands";
 import { getBccrSellRate } from "@/lib/exchangeRate";
 import { recordAuditLog, AuditActorRole } from "@/lib/audit";
 
@@ -192,7 +196,8 @@ export function calculateDealerPriceUpdate(
   product: DealerPriceCalcProductInput,
   newSupplierPriceUSD: number,
   effectiveDealerDiscountPercent: number,
-  fallbackExchangeRate: number
+  fallbackExchangeRate: number,
+  newSupplierSalePriceUSD?: number | null
 ): DealerPriceCalcResult {
   const safeFallbackRate =
     Number.isFinite(fallbackExchangeRate) && fallbackExchangeRate > 300
@@ -222,10 +227,11 @@ export function calculateDealerPriceUpdate(
       ? Number((oldPPriceD / (1 - dealerDisc / 100)).toFixed(2))
       : oldPPriceD;
 
-  const newPPriceD =
-    dealerDisc > 0
-      ? Number((cleanNewSupplierUSD * (1 - dealerDisc / 100)).toFixed(2))
-      : cleanNewSupplierUSD;
+  const newPPriceD = computeEffectiveDealerCostUSD(
+    cleanNewSupplierUSD,
+    dealerDisc,
+    newSupplierSalePriceUSD
+  );
 
   const rateToUse =
     Number(product.lockedExchangeRate) > 300
@@ -477,19 +483,15 @@ export async function runDailySupplierPriceCheck(options?: {
       }),
       prisma.dealerBrand.findMany({
         where: { isActive: true },
-        select: { name: true, dealerDiscountPercent: true },
+        select: {
+          name: true,
+          slug: true,
+          code: true,
+          redirectUrl: true,
+          dealerDiscountPercent: true,
+        },
       }),
     ]);
-
-    const brandDiscountMap: Record<string, number> = {};
-    for (const db of dealerBrands) {
-      if (db.name && Number(db.dealerDiscountPercent) > 0) {
-        brandDiscountMap[db.name.trim().toLowerCase()] = Math.max(
-          0,
-          Math.min(100, Number(db.dealerDiscountPercent))
-        );
-      }
-    }
 
     const autoIncreasedProducts: DailyPriceCheckSummary["autoIncreasedProducts"] = [];
     const queuedDecreases: DailyPriceCheckSummary["queuedDecreases"] = [];
@@ -522,17 +524,18 @@ export async function runDailySupplierPriceCheck(options?: {
               return;
             }
 
-            const prodDisc = Math.max(0, Math.min(100, Number(prod.dealerDiscountPercent) || 0));
-            const brandDisc = prod.brandName
-              ? brandDiscountMap[prod.brandName.trim().toLowerCase()] || 0
-              : 0;
-            const effectiveDealerDiscount = prodDisc > 0 ? prodDisc : brandDisc;
+            const effectiveDealerDiscount = resolveEffectiveDealerDiscount(dealerBrands, {
+              productDealerDiscount: prod.dealerDiscountPercent,
+              brandName: prod.brandName,
+              supplierUrl: url,
+            });
 
             const calc = calculateDealerPriceUpdate(
               prod,
               live.supplierPriceUSD,
               effectiveDealerDiscount,
-              activeRate
+              activeRate,
+              live.supplierSalePriceUSD
             );
 
             if (calc.direction === "INCREASE") {

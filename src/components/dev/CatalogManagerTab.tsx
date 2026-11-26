@@ -5131,6 +5131,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               url: trimmed,
+              brandName: productForm.brandName,
               saveToProductId: editingProduct?.id,
               dealerDiscountPercent:
                 Number(productForm.dealerDiscountPercent) ||
@@ -5142,15 +5143,50 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
         ]);
         const data = await res.json();
         if (data.success && data.result) {
-          setSupplierTestResult(data.result);
+          const resolvedServerDiscount = Math.max(
+            0,
+            Math.min(
+              100,
+              Number(data.effectiveDealerDiscount) ||
+                Number(productForm.dealerDiscountPercent) ||
+                getDealerBrandDiscount(productForm.brandName) ||
+                0
+            )
+          );
           const fetchedPriceUSD = Number(data.result.supplierPriceUSD);
+          const fetchedSalePriceUSD = Number(data.result.supplierSalePriceUSD);
+          const resolvedEffectivePPriceD =
+            Number(data.effectivePPriceD) > 0
+              ? Number(Number(data.effectivePPriceD).toFixed(2))
+              : Number.isFinite(fetchedPriceUSD) && fetchedPriceUSD > 0
+              ? (() => {
+                  const discCost = Number((fetchedPriceUSD * (1 - resolvedServerDiscount / 100)).toFixed(2));
+                  return Number.isFinite(fetchedSalePriceUSD) && fetchedSalePriceUSD > 0 && fetchedSalePriceUSD < discCost
+                    ? Number(fetchedSalePriceUSD.toFixed(2))
+                    : discCost;
+                })()
+              : 0;
+          setSupplierTestResult({
+            ...data.result,
+            effectiveDealerDiscount: resolvedServerDiscount,
+            effectivePPriceD: resolvedEffectivePPriceD > 0 ? resolvedEffectivePPriceD : data.result.supplierPriceUSD,
+          });
           const activeRate = currentRate > 300 ? currentRate : (liveExchangeRate || 455.21);
           setProductForm((prev) => {
             const hasValidUSD = Number.isFinite(fetchedPriceUSD) && fetchedPriceUSD > 0;
-            const dealerDiscount = Math.max(0, Math.min(100, Number(prev.dealerDiscountPercent) || 0));
-            const nextPPriceD = hasValidUSD
-              ? Number((fetchedPriceUSD * (1 - dealerDiscount / 100)).toFixed(2))
-              : prev.P_price_D;
+            const dealerDiscount = Math.max(
+              0,
+              Math.min(
+                100,
+                resolvedServerDiscount || Number(prev.dealerDiscountPercent) || getDealerBrandDiscount(prev.brandName) || 0
+              )
+            );
+            const nextPPriceD =
+              hasValidUSD && resolvedEffectivePPriceD > 0
+                ? resolvedEffectivePPriceD
+                : hasValidUSD
+                ? Number((fetchedPriceUSD * (1 - dealerDiscount / 100)).toFixed(2))
+                : prev.P_price_D;
             const nextPPriceCRC = hasValidUSD
               ? Math.round(nextPPriceD * activeRate)
               : prev.P_price;
@@ -5174,6 +5210,7 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
               supplierLeadDaysMin: data.result.leadDaysMin || prev.supplierLeadDaysMin || 7,
               supplierLeadDaysMax: data.result.leadDaysMax || prev.supplierLeadDaysMax || 21,
               supplierLastPriceUSD: hasValidUSD ? Number(fetchedPriceUSD.toFixed(2)) : (data.result.supplierPriceUSD ?? prev.supplierLastPriceUSD),
+              ...(dealerDiscount > 0 ? { dealerDiscountPercent: dealerDiscount } : {}),
               P_price_D: nextPPriceD,
               P_price: nextPPriceCRC,
               S_price: nextSPriceCRC,
@@ -5191,9 +5228,16 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
             };
           });
           if (!silent) {
+            const shownUSD = resolvedEffectivePPriceD > 0 ? resolvedEffectivePPriceD : fetchedPriceUSD;
+            const promoSuffix = data.result.automaticDiscountTitle && Number.isFinite(fetchedSalePriceUSD) && fetchedSalePriceUSD > 0
+              ? ` · Promo web: ${data.result.automaticDiscountTitle} (${fetchedSalePriceUSD.toFixed(2)})`
+              : "";
+            const dealerSuffix = resolvedServerDiscount > 0 && Number.isFinite(fetchedPriceUSD) && fetchedPriceUSD > shownUSD
+              ? ` (Retail ${fetchedPriceUSD.toFixed(2)} -${resolvedServerDiscount}%)`
+              : "";
             const priceLabel =
-              Number.isFinite(fetchedPriceUSD) && fetchedPriceUSD > 0
-                ? ` — P_price_D actualizado a $${fetchedPriceUSD.toFixed(2)} USD (₡${Math.round(fetchedPriceUSD * activeRate).toLocaleString()} @ ₡${activeRate.toFixed(2)})`
+              Number.isFinite(shownUSD) && shownUSD > 0
+                ? ` — P_price_D actualizado a ${shownUSD.toFixed(2)} USD${dealerSuffix}${promoSuffix} (₡${Math.round(shownUSD * activeRate).toLocaleString()} @ ₡${activeRate.toFixed(2)})`
                 : "";
             const customMsg = lang === "es" ? data.result.messageEs : data.result.messageEn;
             setFeedback({
@@ -10274,9 +10318,18 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
                         <span className="text-slate-500 block text-[10px]">
                           {lang === "es" ? "Precio USD (P_price_D):" : "USD Price (P_price_D):"}
                         </span>
-                        <span className="font-bold font-mono text-emerald-700">
-                          {supplierTestResult.supplierPriceUSD ? `$${supplierTestResult.supplierPriceUSD}` : "N/D"}
+                        <span className="font-bold font-mono text-emerald-700 block">
+                          {supplierTestResult.effectivePPriceD || supplierTestResult.supplierPriceUSD
+                            ? `${Number(supplierTestResult.effectivePPriceD || supplierTestResult.supplierPriceUSD).toFixed(2)}`
+                            : "N/D"}
                         </span>
+                        {supplierTestResult.supplierPriceUSD &&
+                          supplierTestResult.effectivePPriceD &&
+                          Number(supplierTestResult.effectivePPriceD) < Number(supplierTestResult.supplierPriceUSD) && (
+                            <span className="text-[9px] font-mono text-slate-400 line-through block">
+                              ${Number(supplierTestResult.supplierPriceUSD).toFixed(2)}
+                            </span>
+                          )}
                       </div>
                       <div className="bg-white p-2 rounded-xl border border-slate-200">
                         <span className="text-slate-500 block text-[10px]">
