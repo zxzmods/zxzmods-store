@@ -1560,23 +1560,19 @@ export async function syncProductAvailability(
         }
       }
 
+      // Preserve existing processingPriceD & supplierLastPriceUSD during stock-only checks
+      // so the daily 3:00 AM price sync engine can properly auto-apply increases and queue decreases for staff approval.
+      const shouldSeedMissingPrice =
+        (!product.processingPriceD || product.processingPriceD <= 0) &&
+        baseLive.supplierPriceUSD &&
+        baseLive.supplierPriceUSD > 0;
+
       let nextProcessingPriceD: number | undefined = undefined;
-      if (baseLive.supplierPriceUSD && baseLive.supplierPriceUSD > 0) {
-        if (effectiveDiscount > 0) {
-          nextProcessingPriceD = Number(
-            (baseLive.supplierPriceUSD * (1 - effectiveDiscount / 100)).toFixed(2)
-          );
-        } else if (
-          product.supplierLastPriceUSD &&
-          Math.abs(baseLive.supplierPriceUSD - product.supplierLastPriceUSD) < 0.05 &&
-          product.processingPriceD &&
-          product.processingPriceD > 0 &&
-          product.processingPriceD < baseLive.supplierPriceUSD * 0.98
-        ) {
-          nextProcessingPriceD = product.processingPriceD;
-        } else {
-          nextProcessingPriceD = baseLive.supplierPriceUSD;
-        }
+      if (shouldSeedMissingPrice && baseLive.supplierPriceUSD) {
+        nextProcessingPriceD =
+          effectiveDiscount > 0
+            ? Number((baseLive.supplierPriceUSD * (1 - effectiveDiscount / 100)).toFixed(2))
+            : baseLive.supplierPriceUSD;
       }
 
       updatedProduct = await prisma.product.update({
@@ -1598,8 +1594,9 @@ export async function syncProductAvailability(
           supplierStockCheckedAt: new Date(),
           supplierLeadDaysMin: baseLive.leadDaysMin,
           supplierLeadDaysMax: baseLive.leadDaysMax,
-          supplierLastPriceUSD:
-            baseLive.supplierPriceUSD || product.supplierLastPriceUSD,
+          ...(!product.supplierLastPriceUSD && baseLive.supplierPriceUSD
+            ? { supplierLastPriceUSD: baseLive.supplierPriceUSD }
+            : {}),
           ...(parametersModified
             ? { parametersJson: JSON.stringify(parsedParameters) }
             : {}),
@@ -1716,23 +1713,17 @@ export async function syncAllCatalogAvailability(forceAll = false): Promise<{
             : 0;
           const effectiveDiscount = prodDisc > 0 ? prodDisc : brandDisc;
 
+          const shouldSeedMissingPrice =
+            (!prod.processingPriceD || prod.processingPriceD <= 0) &&
+            live.supplierPriceUSD &&
+            live.supplierPriceUSD > 0;
+
           let nextProcessingPriceD: number | undefined = undefined;
-          if (live.supplierPriceUSD && live.supplierPriceUSD > 0) {
-            if (effectiveDiscount > 0) {
-              nextProcessingPriceD = Number(
-                (live.supplierPriceUSD * (1 - effectiveDiscount / 100)).toFixed(2)
-              );
-            } else if (
-              prod.supplierLastPriceUSD &&
-              Math.abs(live.supplierPriceUSD - prod.supplierLastPriceUSD) < 0.05 &&
-              prod.processingPriceD &&
-              prod.processingPriceD > 0 &&
-              prod.processingPriceD < live.supplierPriceUSD * 0.98
-            ) {
-              nextProcessingPriceD = prod.processingPriceD;
-            } else {
-              nextProcessingPriceD = live.supplierPriceUSD;
-            }
+          if (shouldSeedMissingPrice && live.supplierPriceUSD) {
+            nextProcessingPriceD =
+              effectiveDiscount > 0
+                ? Number((live.supplierPriceUSD * (1 - effectiveDiscount / 100)).toFixed(2))
+                : live.supplierPriceUSD;
           }
 
           await prisma.product.update({
@@ -1746,7 +1737,9 @@ export async function syncAllCatalogAvailability(forceAll = false): Promise<{
               supplierStockCheckedAt: new Date(),
               supplierLeadDaysMin: live.leadDaysMin,
               supplierLeadDaysMax: live.leadDaysMax,
-              supplierLastPriceUSD: live.supplierPriceUSD || prod.supplierLastPriceUSD,
+              ...(!prod.supplierLastPriceUSD && live.supplierPriceUSD
+                ? { supplierLastPriceUSD: live.supplierPriceUSD }
+                : {}),
               ...(effectiveDiscount > 0 ? { dealerDiscountPercent: effectiveDiscount } : {}),
               ...(nextProcessingPriceD && nextProcessingPriceD > 0
                 ? { processingPriceD: nextProcessingPriceD }

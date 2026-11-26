@@ -2140,6 +2140,38 @@ export interface Translations {
   comboChoiceSelectedOutOfStockNotice: string;
   comboChoiceProductLabel: string;
   comboInheritedProductParamBadge: string;
+  // Daily 3 AM Supplier Price Sync & Price Decreases Approval
+  priceDropsTabLabel: string;
+  priceDropsTitle: string;
+  priceDropsSubtitle: string;
+  priceDropsRunNowBtn: string;
+  priceDropsRunningBtn: string;
+  priceDropsScheduleBadge: string;
+  priceDropsLastRunLabel: string;
+  priceDropsNeverRunLabel: string;
+  priceDropsPendingSubtab: string;
+  priceDropsHistorySubtab: string;
+  priceDropsAutoIncreasesSubtab: string;
+  priceDropsEmptyPendingTitle: string;
+  priceDropsEmptyPendingDesc: string;
+  priceDropsDealerPriceLabel: string;
+  priceDropsPPriceLabel: string;
+  priceDropsTPriceLabel: string;
+  priceDropsShippingProfitLockedNote: string;
+  priceDropsApproveDiscountBtn: string;
+  priceDropsApproveRegularBtn: string;
+  priceDropsDismissBtn: string;
+  priceDropsStatusDiscount: string;
+  priceDropsStatusRegular: string;
+  priceDropsStatusDismissed: string;
+  priceDropsStatusSuperseded: string;
+  // Manual Order Payment Plan
+  manualOrderPaymentPlanTitle: string;
+  manualOrderPaymentPlanSubtitle: string;
+  manualOrderPaymentPlanFullLabel: string;
+  manualOrderPaymentPlanFullDesc: string;
+  manualOrderPaymentPlanSplitLabel: string;
+  manualOrderPaymentPlanSplitDesc: string;
   // Split Payment 70% / 30%
   paymentPlanSectionTitle: string;
   paymentPlanFullTitle: string;
@@ -4296,6 +4328,38 @@ export const translations: Record<Language, Translations> = {
     comboChoiceSelectedOutOfStockNotice: "El producto seleccionado en esta opción del combo se encuentra agotado actualmente. Selecciona otra opción disponible o solicita una cotización por WhatsApp.",
     comboChoiceProductLabel: "Opción elegida",
     comboInheritedProductParamBadge: "Parámetro del producto",
+    // Daily 3 AM Supplier Price Sync & Price Decreases Approval
+    priceDropsTabLabel: "Bajas de Precio",
+    priceDropsTitle: "Aprobación de Bajas de Precio del Proveedor",
+    priceDropsSubtitle: "El sistema revisa diariamente a las 3:00 AM (CR) el precio en todos los proveedores. Los aumentos se actualizan automáticamente en P_price_D y T_price; las bajas se listan aquí para que apruebes si se muestran como descuento (T_price vs nuevo T_price) o como una baja regular de precio.",
+    priceDropsRunNowBtn: "Verificar Precios Ahora",
+    priceDropsRunningBtn: "Verificando Catálogo...",
+    priceDropsScheduleBadge: "Automático Diario • 3:00 AM CR",
+    priceDropsLastRunLabel: "Última revisión",
+    priceDropsNeverRunLabel: "Aún no se ha ejecutado una revisión",
+    priceDropsPendingSubtab: "Pendientes de Aprobación",
+    priceDropsHistorySubtab: "Historial Resuelto",
+    priceDropsAutoIncreasesSubtab: "Aumentos Automáticos",
+    priceDropsEmptyPendingTitle: "No hay bajas de precio pendientes",
+    priceDropsEmptyPendingDesc: "Cuando un proveedor baje el precio de un producto en la revisión de las 3:00 AM (o al verificar manualmente), aparecerá aquí para tu aprobación.",
+    priceDropsDealerPriceLabel: "Precio Proveedor (USD)",
+    priceDropsPPriceLabel: "P_price_D (Costo USD)",
+    priceDropsTPriceLabel: "T_price Cliente (IVA incl.)",
+    priceDropsShippingProfitLockedNote: "Envío (S_price) y Ganancia (profit) intactos",
+    priceDropsApproveDiscountBtn: "Aprobar como Descuento",
+    priceDropsApproveRegularBtn: "Solo Bajar Precio",
+    priceDropsDismissBtn: "Descartar",
+    priceDropsStatusDiscount: "Aplicado como Descuento",
+    priceDropsStatusRegular: "Baja de Precio Regular",
+    priceDropsStatusDismissed: "Descartado",
+    priceDropsStatusSuperseded: "Superado por Aumento",
+    // Manual Order Payment Plan
+    manualOrderPaymentPlanTitle: "4. Modalidad de Pago para el Cliente",
+    manualOrderPaymentPlanSubtitle: "Elige si esta cotización se paga al 100% en una sola transferencia o con la opción fraccionada 70% adelanto / 30% contra Certificado de Revisión.",
+    manualOrderPaymentPlanFullLabel: "Pago Completo (100%)",
+    manualOrderPaymentPlanFullDesc: "El cliente cancela el total completo al confirmar el pedido.",
+    manualOrderPaymentPlanSplitLabel: "Pago Fraccionado (70% / 30%)",
+    manualOrderPaymentPlanSplitDesc: "70% de adelanto para ordenar y 30% restante antes de entrega o instalación.",
     // Split Payment 70% / 30%
     paymentPlanSectionTitle: "Modalidad de Pago de Piezas",
     paymentPlanFullTitle: "Pago Completo (100%)",
@@ -6450,6 +6514,38 @@ export const translations: Record<Language, Translations> = {
     comboChoiceSelectedOutOfStockNotice: "The selected product option in this combo is currently out of stock. Please select another available option or request a quote via WhatsApp.",
     comboChoiceProductLabel: "Selected option",
     comboInheritedProductParamBadge: "Product option",
+    // Daily 3 AM Supplier Price Sync & Price Decreases Approval
+    priceDropsTabLabel: "Price Decreases",
+    priceDropsTitle: "Supplier Price Decrease Approvals",
+    priceDropsSubtitle: "The system automatically checks all supplier prices daily at 3:00 AM (CR). Dealer price increases update P_price_D and T_price automatically; price decreases appear here for staff to approve as a product discount (T_price vs updated T_price) or a regular price decrease.",
+    priceDropsRunNowBtn: "Check Prices Now",
+    priceDropsRunningBtn: "Checking Catalog...",
+    priceDropsScheduleBadge: "Auto Daily • 3:00 AM CR",
+    priceDropsLastRunLabel: "Last check",
+    priceDropsNeverRunLabel: "No price check has run yet",
+    priceDropsPendingSubtab: "Pending Approval",
+    priceDropsHistorySubtab: "Resolved History",
+    priceDropsAutoIncreasesSubtab: "Auto Increases",
+    priceDropsEmptyPendingTitle: "No pending price decreases",
+    priceDropsEmptyPendingDesc: "Whenever a dealer lowers a product's price during the 3:00 AM check (or a manual check), it will appear here for your approval.",
+    priceDropsDealerPriceLabel: "Dealer Retail (USD)",
+    priceDropsPPriceLabel: "P_price_D (Cost USD)",
+    priceDropsTPriceLabel: "Customer T_price (VAT incl.)",
+    priceDropsShippingProfitLockedNote: "Shipping (S_price) & Profit unchanged",
+    priceDropsApproveDiscountBtn: "Approve as Discount",
+    priceDropsApproveRegularBtn: "Price Decrease Only",
+    priceDropsDismissBtn: "Dismiss",
+    priceDropsStatusDiscount: "Applied as Discount",
+    priceDropsStatusRegular: "Regular Price Decrease",
+    priceDropsStatusDismissed: "Dismissed",
+    priceDropsStatusSuperseded: "Superseded by Increase",
+    // Manual Order Payment Plan
+    manualOrderPaymentPlanTitle: "4. Client Payment Option",
+    manualOrderPaymentPlanSubtitle: "Select whether this quotation requires 100% upfront payment or uses the 70% upfront / 30% upon Inspection Certificate split payment plan.",
+    manualOrderPaymentPlanFullLabel: "Full Payment (100%)",
+    manualOrderPaymentPlanFullDesc: "Client pays the entire order total upfront when confirming.",
+    manualOrderPaymentPlanSplitLabel: "Split Payment (70% / 30%)",
+    manualOrderPaymentPlanSplitDesc: "70% upfront deposit to order and 30% balance prior to delivery or installation.",
     // Split Payment 70% / 30%
     paymentPlanSectionTitle: "Parts Payment Option",
     paymentPlanFullTitle: "Full Payment (100%)",

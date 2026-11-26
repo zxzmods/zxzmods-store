@@ -6,6 +6,7 @@ const nextConfig = {
     unoptimized: true,
   },
   experimental: {
+    instrumentationHook: true,
     serverActions: {
       bodySizeLimit: "100mb",
     },

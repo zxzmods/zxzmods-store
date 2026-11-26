@@ -9,6 +9,10 @@ import {
   buildDealerBrandSearchRefs,
 } from "@/lib/search";
 import {
+  PaymentPlanType,
+  computeSplitPaymentAmounts,
+} from "@/lib/splitPayment";
+import {
   UserCheck,
   Search,
   Plus,
@@ -25,6 +29,7 @@ import {
   Truck,
   Sparkles,
   ExternalLink,
+  CreditCard,
 } from "lucide-react";
 
 interface UserResult {
@@ -128,6 +133,9 @@ export function CreateOrderTab({
   const [discountValue, setDiscountValue] = useState("0");
   const [discountReason, setDiscountReason] = useState("");
 
+  // Payment Plan (100% Full vs 70% Upfront / 30% Balance)
+  const [paymentPlan, setPaymentPlan] = useState<PaymentPlanType>("FULL_100");
+
   // Submitting & Claim Link Modal
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; msg: string } | null>(null);
@@ -135,6 +143,7 @@ export function CreateOrderTab({
     orderNumber: string;
     totalCRC: number;
     claimUrl: string;
+    paymentPlan: PaymentPlanType;
   } | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
 
@@ -359,6 +368,7 @@ export function CreateOrderTab({
     discountCRC = Math.round(numDiscountVal);
   }
   const netTotalCRC = Math.max(0, grossSubtotal - discountCRC);
+  const splitAmounts = computeSplitPaymentAmounts(netTotalCRC);
 
   const handleSubmitOrder = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -394,6 +404,7 @@ export function CreateOrderTab({
       discountType,
       discountValue: numDiscountVal,
       discountReason: discountReason || null,
+      paymentPlan,
     };
 
     try {
@@ -409,6 +420,7 @@ export function CreateOrderTab({
           orderNumber: data.order.orderNumber,
           totalCRC: data.order.totalCRC,
           claimUrl: data.claimUrl,
+          paymentPlan,
         });
 
         // Reset form
@@ -423,6 +435,7 @@ export function CreateOrderTab({
         setDiscountType("NONE");
         setDiscountValue("0");
         setDiscountReason("");
+        setPaymentPlan("FULL_100");
 
         if (onOrderCreated) onOrderCreated();
       } else {
@@ -457,8 +470,17 @@ export function CreateOrderTab({
                 <h3 className="text-base font-bold text-slate-900">
                   ¡Pedido #{createdOrderResult.orderNumber} Creado!
                 </h3>
-                <span className="text-xs text-slate-500 font-mono">
+                <span className="text-xs text-slate-500 font-mono block">
                   Total cotizado: {formatCRC(createdOrderResult.totalCRC)}
+                </span>
+                <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                  {createdOrderResult.paymentPlan === "SPLIT_70_30"
+                    ? lang === "es"
+                      ? `Plan 70% / 30% · Adelanto: ${formatCRC(computeSplitPaymentAmounts(createdOrderResult.totalCRC).initial70AmountCRC)} · Saldo: ${formatCRC(computeSplitPaymentAmounts(createdOrderResult.totalCRC).remaining30AmountCRC)}`
+                      : `70% / 30% Plan · Deposit: ${formatCRC(computeSplitPaymentAmounts(createdOrderResult.totalCRC).initial70AmountCRC)} · Balance: ${formatCRC(computeSplitPaymentAmounts(createdOrderResult.totalCRC).remaining30AmountCRC)}`
+                    : lang === "es"
+                    ? "Plan de pago: 100% Completo"
+                    : "Payment plan: 100% Full Payment"}
                 </span>
               </div>
             </div>
@@ -869,13 +891,92 @@ export function CreateOrderTab({
           </div>
         </div>
 
+        {/* 4. Modalidad de Pago (100% vs 70% / 30%) */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-sm space-y-3">
+          <div className="border-b border-slate-100 pb-2.5">
+            <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+              <CreditCard className="w-4 h-4 text-slate-700" />
+              <span>{t.manualOrderPaymentPlanTitle}</span>
+            </span>
+            <p className="text-[11px] text-slate-500 mt-0.5">
+              {t.manualOrderPaymentPlanSubtitle}
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => setPaymentPlan("FULL_100")}
+              className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer space-y-1.5 ${
+                paymentPlan === "FULL_100"
+                  ? "border-slate-900 bg-slate-900 text-white shadow-sm ring-2 ring-slate-900/15"
+                  : "border-slate-200 bg-slate-50 text-slate-800 hover:border-slate-400 hover:bg-white"
+              }`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-extrabold">{t.manualOrderPaymentPlanFullLabel}</span>
+                <span
+                  className={`text-xs font-mono font-black ${
+                    paymentPlan === "FULL_100" ? "text-emerald-300" : "text-slate-900"
+                  }`}
+                >
+                  {formatCRC(netTotalCRC)}
+                </span>
+              </div>
+              <p
+                className={`text-[11px] leading-snug ${
+                  paymentPlan === "FULL_100" ? "text-slate-300" : "text-slate-500"
+                }`}
+              >
+                {t.manualOrderPaymentPlanFullDesc}
+              </p>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setPaymentPlan("SPLIT_70_30")}
+              className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer space-y-1.5 ${
+                paymentPlan === "SPLIT_70_30"
+                  ? "border-[#C02030] bg-rose-50/70 text-slate-900 shadow-sm ring-2 ring-[#C02030]/20"
+                  : "border-slate-200 bg-slate-50 text-slate-800 hover:border-slate-400 hover:bg-white"
+              }`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
+                  <span>{t.manualOrderPaymentPlanSplitLabel}</span>
+                </span>
+                <span className="text-[10px] font-mono font-black px-2 py-0.5 rounded-full bg-[#C02030] text-white">
+                  70% / 30%
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-600 leading-snug">
+                {t.manualOrderPaymentPlanSplitDesc}
+              </p>
+              <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-slate-200/80 text-[11px] font-mono">
+                <span className="text-slate-700 font-bold">
+                  70%: <strong className="text-[#C02030]">{formatCRC(splitAmounts.initial70AmountCRC)}</strong>
+                </span>
+                <span className="text-slate-600">
+                  30%: <strong>{formatCRC(splitAmounts.remaining30AmountCRC)}</strong>
+                </span>
+              </div>
+            </button>
+          </div>
+        </div>
+
         {/* 5. Total & Confirmación */}
         <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div>
+          <div className="space-y-1">
             <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">
-              Total a Facturar
+              {paymentPlan === "SPLIT_70_30"
+                ? lang === "es"
+                  ? "Total Cotizado (Plan 70% / 30%)"
+                  : "Quoted Total (70% / 30% Plan)"
+                : lang === "es"
+                ? "Total a Facturar (100%)"
+                : "Total to Invoice (100%)"}
             </span>
-            <div className="flex items-baseline gap-2">
+            <div className="flex items-baseline gap-2 flex-wrap">
               <span className="text-2xl font-black text-slate-900 font-mono">
                 {formatCRC(netTotalCRC)}
               </span>
@@ -885,6 +986,19 @@ export function CreateOrderTab({
                 </span>
               )}
             </div>
+            {paymentPlan === "SPLIT_70_30" && netTotalCRC > 0 && (
+              <div className="flex items-center gap-3 text-[11px] font-mono text-slate-600">
+                <span>
+                  {lang === "es" ? "Adelanto 70%:" : "70% Deposit:"}{" "}
+                  <strong className="text-[#C02030]">{formatCRC(splitAmounts.initial70AmountCRC)}</strong>
+                </span>
+                <span>•</span>
+                <span>
+                  {lang === "es" ? "Saldo 30%:" : "30% Balance:"}{" "}
+                  <strong className="text-slate-900">{formatCRC(splitAmounts.remaining30AmountCRC)}</strong>
+                </span>
+              </div>
+            )}
           </div>
 
           <button

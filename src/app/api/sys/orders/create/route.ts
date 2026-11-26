@@ -3,6 +3,7 @@ import { requireStealthSession } from "@/lib/stealthAuth";
 import { prisma } from "@/lib/prisma";
 import { recordAuditLog } from "@/lib/audit";
 import { generateSecureClaimToken, generateOrderNumber } from "@/lib/orders";
+import { createInitialSplitPaymentData, PaymentPlanType } from "@/lib/splitPayment";
 
 export async function POST(request: Request) {
   const auth = await requireStealthSession();
@@ -28,6 +29,7 @@ export async function POST(request: Request) {
       notes = null,
       staffNotes = null,
       paidCurrency = null,
+      paymentPlan = "FULL_100",
     } = body;
 
     if (!Array.isArray(items) || items.length === 0) {
@@ -271,6 +273,17 @@ export async function POST(request: Request) {
       };
     });
 
+    const normalizedPaymentPlan: PaymentPlanType =
+      String(paymentPlan || "").toUpperCase() === "SPLIT_70_30" ? "SPLIT_70_30" : "FULL_100";
+
+    const initialServiceDocs: Record<string, any> = {
+      paymentPlan: normalizedPaymentPlan,
+      staffSelectedPaymentPlan: true,
+      ...(normalizedPaymentPlan === "SPLIT_70_30"
+        ? { splitPayment: createInitialSplitPaymentData(finalTotalCRC) }
+        : {}),
+    };
+
     const newOrder = await prisma.order.create({
       data: {
         orderNumber,
@@ -296,6 +309,7 @@ export async function POST(request: Request) {
         discountAppliedBy: auth.session.email,
         assignedStaffId: auth.session.userId,
         itemsJson: JSON.stringify(enrichedItems),
+        serviceDocumentsJson: JSON.stringify(initialServiceDocs),
         notes: finalNotes,
         staffNotes: staffNotes || null,
         claimToken,
@@ -330,6 +344,7 @@ export async function POST(request: Request) {
         shippingCostCRC: newOrder.shippingCostCRC,
         discountType: newOrder.discountType,
         discountValue: newOrder.discountValue,
+        paymentPlan: normalizedPaymentPlan,
       },
       details: `Custom order #${newOrder.orderNumber} created by ${auth.session.role} ${auth.session.email}`,
     });

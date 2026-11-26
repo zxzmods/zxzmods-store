@@ -10,6 +10,7 @@ import {
   computeSplitPaymentAmounts,
   extractSplitPayment,
   isEligibleForSplitPayment,
+  parseOrderDocs,
 } from "@/lib/splitPayment";
 import { PaymentPlanSelector } from "@/components/cart/PaymentPlanSelector";
 import {
@@ -78,12 +79,16 @@ export function OrderPaymentModal({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
+  const orderDocs = useMemo(() => parseOrderDocs(order), [order]);
+  const isStaffLockedFull100 = Boolean(
+    orderDocs?.staffSelectedPaymentPlan && orderDocs?.paymentPlan === "FULL_100"
+  );
   const existingSplit = useMemo(() => extractSplitPayment(order), [order]);
   const fullOrderTotalCRC = Math.max(0, Number(order?.totalCRC) || 0);
   const isSplitEligible = isEligibleForSplitPayment(fullOrderTotalCRC);
   const effectivePlan: PaymentPlanType = existingSplit
     ? "SPLIT_70_30"
-    : paymentPlan === "SPLIT_70_30" && isSplitEligible
+    : !isStaffLockedFull100 && paymentPlan === "SPLIT_70_30" && isSplitEligible
     ? "SPLIT_70_30"
     : "FULL_100";
 
@@ -460,8 +465,8 @@ export function OrderPaymentModal({
                 </div>
               )}
 
-              {/* Optional 70/30 Split Payment Option on Unpaid Quotations */}
-              {!isRejected && !existingSplit && (
+              {/* Optional 70/30 Split Payment Option on Unpaid Quotations (unless staff locked plan to 100%) */}
+              {!isRejected && !existingSplit && !isStaffLockedFull100 && (
                 <PaymentPlanSelector
                   totalCRC={fullOrderTotalCRC}
                   paymentPlan={paymentPlan}

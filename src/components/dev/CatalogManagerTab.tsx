@@ -61,7 +61,9 @@ import {
   Scale,
   Box,
   Truck,
+  TrendingDown,
 } from "lucide-react";
+import { PriceDecreasesSection } from "@/components/dev/PriceDecreasesSection";
 import {
   ConfigurableParameter,
   ParameterOption,
@@ -4431,8 +4433,20 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
   const { lang, t } = useLanguage();
   const isMaster = userRole === "MASTER";
 
-  const [activeCatalogType, setActiveCatalogType] = useState<"products" | "combos">("products");
+  const [activeCatalogType, setActiveCatalogType] = useState<"products" | "combos" | "price_decreases">("products");
+  const [pendingPriceDropsCount, setPendingPriceDropsCount] = useState<number>(0);
   const [products, setProducts] = useState<Product[]>([]);
+
+  useEffect(() => {
+    fetch("/api/sys/catalog/price-decreases", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d?.success && typeof d.pendingCount === "number") {
+          setPendingPriceDropsCount(d.pendingCount);
+        }
+      })
+      .catch(() => {});
+  }, []);
   const [combos, setCombos] = useState<Combo[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -14171,8 +14185,34 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
             <Layers className="w-3.5 h-3.5" />
             <span>Combos ({combos.length})</span>
           </button>
+          <button
+            type="button"
+            onClick={() => setActiveCatalogType("price_decreases")}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition ${
+              activeCatalogType === "price_decreases"
+                ? "bg-emerald-700 text-white shadow-sm"
+                : pendingPriceDropsCount > 0
+                ? "bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100"
+                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+            }`}
+          >
+            <TrendingDown className="w-3.5 h-3.5" />
+            <span>{t.priceDropsTabLabel || (lang === "es" ? "Bajas de Precio" : "Price Decreases")}</span>
+            {pendingPriceDropsCount > 0 && (
+              <span
+                className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono font-black leading-none ${
+                  activeCatalogType === "price_decreases"
+                    ? "bg-white text-emerald-800"
+                    : "bg-emerald-600 text-white"
+                }`}
+              >
+                {pendingPriceDropsCount}
+              </span>
+            )}
+          </button>
         </div>
 
+        {activeCatalogType !== "price_decreases" && (
         <div className="flex items-center gap-3">
           <div className="relative">
             <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
@@ -14356,9 +14396,11 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
             )}
           </div>
         </div>
+        )}
       </div>
 
       {/* Separated Catalog Parameters Filter Bar (Category, Vehicle Brand, Distributor Brand, In Stock, Discounted) */}
+      {activeCatalogType !== "price_decreases" && (
       <div className="bg-white p-3.5 sm:p-4 rounded-xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2.5">
           {/* Category Parameter Dropdown (Zero Mock Data: strictly present categories only) */}
@@ -14468,9 +14510,10 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
           </button>
         )}
       </div>
+      )}
 
       {/* Active Filter Pills Bar */}
-      {hasActiveBackdoorFilters && (
+      {activeCatalogType !== "price_decreases" && hasActiveBackdoorFilters && (
         <div className="flex flex-wrap items-center gap-2 pt-1 text-xs">
           <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
             {lang === "es" ? "Filtros activos:" : "Active filters:"}
@@ -15109,6 +15152,13 @@ export function CatalogManagerTab({ userRole }: { userRole: "MASTER" | "STAFF" }
             </table>
           </div>
         </div>
+      )}
+
+      {activeCatalogType === "price_decreases" && (
+        <PriceDecreasesSection
+          onPendingCountChange={setPendingPriceDropsCount}
+          onCatalogMutated={fetchCatalog}
+        />
       )}
 
       {renderGlobalModals()}

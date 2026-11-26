@@ -221,7 +221,10 @@ export async function POST(
       updatePayload.paymentProofUrl =
         paymentProofUrl !== undefined ? (paymentProofUrl ? String(paymentProofUrl) : null) : order.paymentProofUrl;
 
-      if (body.paymentPlan === "SPLIT_70_30" && !extractSplitPayment(order)) {
+      const isStaffLockedFull = Boolean(
+        serviceDocs?.staffSelectedPaymentPlan && serviceDocs?.paymentPlan === "FULL_100"
+      );
+      if (body.paymentPlan === "SPLIT_70_30" && !extractSplitPayment(order) && !isStaffLockedFull) {
         const splitBaseCRC = Math.max(
           0,
           (order.partsSubtotalCRC || order.totalCRC || 0) - (order.discountCRC || 0)

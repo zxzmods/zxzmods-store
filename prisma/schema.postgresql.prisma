@@ -567,3 +567,35 @@ model MonthlyFinancialClosure {
   createdAt                DateTime @default(now())
   updatedAt                DateTime @updatedAt
 }
+
+model SupplierPriceDecrease {
+  id                      String    @id @default(cuid())
+  productId               String
+  productSku              String
+  productNameEs           String
+  productNameEn           String    @default("")
+  productImageUrl         String    @default("")
+  brandName               String?
+  supplierUrl             String?
+  status                  String    @default("PENDING") // PENDING | APPROVED_DISCOUNT | APPROVED_PRICE_DECREASE | DISMISSED | SUPERSEDED
+  oldSupplierPriceUSD     Float
+  newSupplierPriceUSD     Float
+  dealerDiscountPercent   Float     @default(0)
+  oldPPriceD              Float
+  newPPriceD              Float
+  oldPPriceCRC            Int
+  newPPriceCRC            Int
+  oldTPriceCRC            Int
+  proposedTPriceCRC       Int
+  proposedIvaCRC          Int       @default(0)
+  computedDiscountPercent Int       @default(0) // Effective product discount of oldTPriceCRC vs proposedTPriceCRC (NOT dealer discount)
+  exchangeRateUsed        Float     @default(455.21)
+  resolutionType          String?   // DISCOUNT | PRICE_DECREASE | DISMISSED | SUPERSEDED
+  resolvedBy              String?
+  resolvedAt              DateTime?
+  detectedAt              DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  @@index([productId, status])
+  @@index([status, detectedAt])
+}
