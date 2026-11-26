@@ -12,7 +12,12 @@ import {
 } from "@/lib/orderStepEmails";
 import { COMPANY_CONFIG } from "@/config/company";
 import { generateSecureClaimToken } from "@/lib/orders";
-import { extractSplitPayment } from "@/lib/splitPayment";
+import {
+  extractSplitPayment,
+  computeSplitPaymentAmounts,
+  createInitialSplitPaymentData,
+  PaymentPlanType,
+} from "@/lib/splitPayment";
 
 export async function PATCH(
   request: Request,
@@ -304,6 +309,59 @@ export async function PATCH(
       updateData.serviceDocumentsJson = typeof body.serviceDocumentsJson === "string" 
         ? body.serviceDocumentsJson 
         : JSON.stringify(body.serviceDocumentsJson);
+    }
+
+    // Payment Plan Selection (FULL_100 vs SPLIT_70_30) & live 70%/30% recalculation when totalCRC changes
+    if (body.paymentPlan !== undefined || updateData.totalCRC !== undefined) {
+      let currentDocs: any = {};
+      try {
+        const baseDoc = updateData.serviceDocumentsJson || existingOrder.serviceDocumentsJson;
+        currentDocs = typeof baseDoc === "string" ? JSON.parse(baseDoc) : (baseDoc || {});
+      } catch {}
+
+      const effectiveTotalCRC =
+        updateData.totalCRC !== undefined ? Math.max(0, Math.round(Number(updateData.totalCRC) || 0)) : existingOrder.totalCRC;
+
+      if (body.paymentPlan !== undefined) {
+        const normalizedPlan: PaymentPlanType =
+          String(body.paymentPlan || "").toUpperCase() === "SPLIT_70_30"
+            ? "SPLIT_70_30"
+            : "FULL_100";
+        currentDocs.paymentPlan = normalizedPlan;
+        currentDocs.staffSelectedPaymentPlan = true;
+
+        if (normalizedPlan === "SPLIT_70_30") {
+          const freshSplit = computeSplitPaymentAmounts(effectiveTotalCRC);
+          const existingSp = extractSplitPayment({ ...existingOrder, serviceDocumentsJson: JSON.stringify(currentDocs) });
+          currentDocs.splitPayment = {
+            ...createInitialSplitPaymentData(effectiveTotalCRC),
+            ...(existingSp || {}),
+            enabled: true,
+            plan: "SPLIT_70_30",
+            depositPercent: 70,
+            remainingPercent: 30,
+            totalOrderCRC: freshSplit.totalOrderCRC,
+            initial70AmountCRC: freshSplit.initial70AmountCRC,
+            remaining30AmountCRC: freshSplit.remaining30AmountCRC,
+          };
+        } else {
+          delete currentDocs.splitPayment;
+        }
+        updateData.serviceDocumentsJson = JSON.stringify(currentDocs);
+      } else if (updateData.totalCRC !== undefined) {
+        const existingSp = extractSplitPayment({ ...existingOrder, serviceDocumentsJson: JSON.stringify(currentDocs) });
+        if (existingSp) {
+          const freshSplit = computeSplitPaymentAmounts(effectiveTotalCRC);
+          currentDocs.paymentPlan = "SPLIT_70_30";
+          currentDocs.splitPayment = {
+            ...existingSp,
+            totalOrderCRC: freshSplit.totalOrderCRC,
+            initial70AmountCRC: freshSplit.initial70AmountCRC,
+            remaining30AmountCRC: freshSplit.remaining30AmountCRC,
+          };
+          updateData.serviceDocumentsJson = JSON.stringify(currentDocs);
+        }
+      }
     }
     if (body.confirmServicePayment === true) {
       let currentDocs: any = {};

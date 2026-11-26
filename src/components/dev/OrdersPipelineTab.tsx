@@ -4,7 +4,12 @@ import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useLanguage } from "@/context/LanguageContext";
 import { formatCRC, formatUSD } from "@/lib/i18n";
 import { resolveOptionColorHex, resolveDualParameterConnection } from "@/lib/products";
-import { extractSplitPayment, isSplitPaymentOrder } from "@/lib/splitPayment";
+import {
+  extractSplitPayment,
+  isSplitPaymentOrder,
+  computeSplitPaymentAmounts,
+  PaymentPlanType,
+} from "@/lib/splitPayment";
 import {
   Search,
   RefreshCw,
@@ -340,6 +345,7 @@ export function OrdersPipelineTab({ onOrderDeleted, onOrderUpdated }: OrdersPipe
   const [quoteDiscountValue, setQuoteDiscountValue] = useState("0");
   const [quoteDiscountReason, setQuoteDiscountReason] = useState("");
   const [quoteMasterPassword, setQuoteMasterPassword] = useState("");
+  const [quotePaymentPlan, setQuotePaymentPlan] = useState<PaymentPlanType>("FULL_100");
 
   // Transport Service configuration modal (User Requirement: same as /servicios in a tab)
   const [isTransportModalOpen, setIsTransportModalOpen] = useState(false);
@@ -415,6 +421,7 @@ export function OrdersPipelineTab({ onOrderDeleted, onOrderUpdated }: OrdersPipe
     installationDurationMinutes?: number;
     orderPartsCostCRC: string;
     purchaseProofUrls: string[];
+    paymentPlan: PaymentPlanType;
   }>({
     status: "",
     serviceType: "",
@@ -427,6 +434,7 @@ export function OrdersPipelineTab({ onOrderDeleted, onOrderUpdated }: OrdersPipe
     installationDurationMinutes: 60,
     orderPartsCostCRC: "",
     purchaseProofUrls: [],
+    paymentPlan: "FULL_100",
   });
 
   // Payment proof preview lightbox & upload states
@@ -1574,6 +1582,7 @@ export function OrdersPipelineTab({ onOrderDeleted, onOrderUpdated }: OrdersPipe
     setQuoteDiscountValue(String(order.discountValue || 0));
     setQuoteDiscountReason(order.discountReason || "");
     setQuoteMasterPassword("");
+    setQuotePaymentPlan(isSplitPaymentOrder(order) ? "SPLIT_70_30" : "FULL_100");
     setQuoteItemSearch("");
     setIsQuoteSearchOpen(false);
 
@@ -1676,6 +1685,7 @@ export function OrdersPipelineTab({ onOrderDeleted, onOrderUpdated }: OrdersPipe
           masterPassword: quoteMasterPassword || undefined,
           notes: quoteForm.notes.trim() || null,
           staffNotes: quoteForm.staffNotes.trim() || null,
+          paymentPlan: quotePaymentPlan,
         }),
       });
 
@@ -1699,6 +1709,7 @@ export function OrdersPipelineTab({ onOrderDeleted, onOrderUpdated }: OrdersPipe
                   discountReason: quoteDiscountReason || null,
                   notes: quoteForm.notes.trim() || null,
                   staffNotes: quoteForm.staffNotes.trim() || null,
+                  serviceDocumentsJson: data.order?.serviceDocumentsJson ?? o.serviceDocumentsJson,
                   updatedAt: new Date().toISOString(),
                 }
               : o
@@ -1770,6 +1781,7 @@ export function OrdersPipelineTab({ onOrderDeleted, onOrderUpdated }: OrdersPipe
       installationDurationMinutes: initialDurationMinutes,
       orderPartsCostCRC: initialPartsCost,
       purchaseProofUrls: initialPurchaseProofs,
+      paymentPlan: isSplitPaymentOrder(order) ? "SPLIT_70_30" : "FULL_100",
     });
     setFeedback(null);
   };
@@ -1931,11 +1943,22 @@ export function OrdersPipelineTab({ onOrderDeleted, onOrderUpdated }: OrdersPipe
           installationDurationMinutes: manageForm.installationDurationMinutes || 60,
           orderPartsCostCRC: manageForm.orderPartsCostCRC !== "" ? Math.max(0, Math.round(Number(manageForm.orderPartsCostCRC) || 0)) : undefined,
           purchaseProofUrls: manageForm.purchaseProofUrls,
+          paymentPlan: manageForm.paymentPlan,
         }),
       });
 
       const data = await res.json();
       if (res.ok && data.success) {
+        const nextDocsJson =
+          data.order?.serviceDocumentsJson ??
+          JSON.stringify({
+            ...(typeof managingOrder.serviceDocumentsJson === "string"
+              ? JSON.parse(managingOrder.serviceDocumentsJson || "{}")
+              : (managingOrder.serviceDocumentsJson || {})),
+            ...(manageForm.orderPartsCostCRC !== "" ? { orderPartsCostCRC: Number(manageForm.orderPartsCostCRC) } : {}),
+            purchaseProofUrls: manageForm.purchaseProofUrls,
+            paymentPlan: manageForm.paymentPlan,
+          });
         setOrders((prev) =>
           prev.map((o) =>
             o.id === managingOrder.id
@@ -1950,11 +1973,7 @@ export function OrdersPipelineTab({ onOrderDeleted, onOrderUpdated }: OrdersPipe
                   servicePaymentProofUrl: manageForm.servicePaymentProofUrl.trim() || null,
                   installationPaymentProofUrl: manageForm.installationPaymentProofUrl.trim() || null,
                   purchaseProofUrls: manageForm.purchaseProofUrls,
-                  serviceDocumentsJson: JSON.stringify({
-                    ...(typeof o.serviceDocumentsJson === "string" ? JSON.parse(o.serviceDocumentsJson || "{}") : (o.serviceDocumentsJson || {})),
-                    ...(manageForm.orderPartsCostCRC !== "" ? { orderPartsCostCRC: Number(manageForm.orderPartsCostCRC) } : {}),
-                    purchaseProofUrls: manageForm.purchaseProofUrls,
-                  }),
+                  serviceDocumentsJson: nextDocsJson,
                   updatedAt: new Date().toISOString(),
                 }
               : o
@@ -2807,28 +2826,151 @@ export function OrdersPipelineTab({ onOrderDeleted, onOrderUpdated }: OrdersPipe
                 )}
               </div>
 
-              {/* Summary Card with Subtotal, Discount & Net Total */}
-              <div className="p-4 bg-slate-900 text-white rounded-2xl space-y-2">
-                <div className="flex items-center justify-between text-xs text-slate-400">
-                  <span>Subtotal Piezas:</span>
-                  <span className="font-mono font-semibold text-slate-200">{formatCRC(grossTotal)}</span>
-                </div>
-                {discountCRC > 0 && (
-                  <div className="flex items-center justify-between text-xs text-purple-400">
-                    <span>Descuento Aplicado:</span>
-                    <span className="font-mono font-semibold">-{formatCRC(discountCRC)}</span>
+              {/* Payment Plan Selection (100% vs 70% / 30%) */}
+              {(() => {
+                const quoteSplit = computeSplitPaymentAmounts(currentTotal);
+                return (
+                  <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <span className="text-[11px] font-bold text-slate-800 flex items-center gap-1.5">
+                        <CreditCard className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>{t.orderPaymentPlanCardTitle}</span>
+                      </span>
+                      <span
+                        className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border ${
+                          quotePaymentPlan === "SPLIT_70_30"
+                            ? "bg-amber-100 text-amber-900 border-amber-300"
+                            : "bg-emerald-50 text-emerald-800 border-emerald-200"
+                        }`}
+                      >
+                        {quotePaymentPlan === "SPLIT_70_30"
+                          ? t.manualOrderPaymentPlanSplitLabel
+                          : t.manualOrderPaymentPlanFullLabel}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setQuotePaymentPlan("FULL_100")}
+                        className={`p-3 rounded-xl border text-left transition cursor-pointer ${
+                          quotePaymentPlan === "FULL_100"
+                            ? "bg-slate-900 text-white border-slate-900 shadow-xs"
+                            : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
+                        }`}
+                      >
+                        <div className="text-xs font-extrabold">{t.manualOrderPaymentPlanFullLabel}</div>
+                        <div
+                          className={`text-[10px] mt-0.5 ${
+                            quotePaymentPlan === "FULL_100" ? "text-slate-300" : "text-slate-500"
+                          }`}
+                        >
+                          {t.manualOrderPaymentPlanFullDesc}
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setQuotePaymentPlan("SPLIT_70_30")}
+                        className={`p-3 rounded-xl border text-left transition cursor-pointer ${
+                          quotePaymentPlan === "SPLIT_70_30"
+                            ? "bg-amber-600 text-white border-amber-600 shadow-xs"
+                            : "bg-white text-slate-700 border-slate-200 hover:bg-amber-50/50"
+                        }`}
+                      >
+                        <div className="text-xs font-extrabold">{t.manualOrderPaymentPlanSplitLabel}</div>
+                        <div
+                          className={`text-[10px] mt-0.5 ${
+                            quotePaymentPlan === "SPLIT_70_30" ? "text-amber-100" : "text-slate-500"
+                          }`}
+                        >
+                          {t.manualOrderPaymentPlanSplitDesc}
+                        </div>
+                      </button>
+                    </div>
+
+                    {quotePaymentPlan === "SPLIT_70_30" ? (
+                      <div className="grid grid-cols-2 gap-2 pt-1">
+                        <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200">
+                          <span className="text-[10px] font-bold uppercase text-emerald-700 block">
+                            {t.orderPaymentPlan70AmountLabel}
+                          </span>
+                          <span className="text-sm font-mono font-black text-emerald-900">
+                            {formatCRC(quoteSplit.initial70AmountCRC)}
+                          </span>
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200">
+                          <span className="text-[10px] font-bold uppercase text-amber-700 block">
+                            {t.orderPaymentPlan30AmountLabel}
+                          </span>
+                          <span className="text-sm font-mono font-black text-amber-900">
+                            {formatCRC(quoteSplit.remaining30AmountCRC)}
+                          </span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="p-2.5 rounded-xl bg-white border border-slate-200 flex items-center justify-between text-xs">
+                        <span className="font-bold text-slate-600">{t.orderPaymentPlanAmountDue100Label}:</span>
+                        <span className="font-mono font-black text-slate-900">{formatCRC(currentTotal)}</span>
+                      </div>
+                    )}
                   </div>
-                )}
-                <div className="pt-2 border-t border-slate-800 flex items-center justify-between">
-                  <div>
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Total Cotización</span>
-                    <span className="text-[10px] text-slate-400">Recalculado con descuento</span>
+                );
+              })()}
+
+              {/* Summary Card with Subtotal, Discount, Payment Plan & Net Total */}
+              {(() => {
+                const quoteSplit = computeSplitPaymentAmounts(currentTotal);
+                return (
+                  <div className="p-4 bg-slate-900 text-white rounded-2xl space-y-2">
+                    <div className="flex items-center justify-between text-xs text-slate-400">
+                      <span>Subtotal Piezas:</span>
+                      <span className="font-mono font-semibold text-slate-200">{formatCRC(grossTotal)}</span>
+                    </div>
+                    {discountCRC > 0 && (
+                      <div className="flex items-center justify-between text-xs text-purple-400">
+                        <span>Descuento Aplicado:</span>
+                        <span className="font-mono font-semibold">-{formatCRC(discountCRC)}</span>
+                      </div>
+                    )}
+                    <div className="pt-2 border-t border-slate-800 flex items-center justify-between">
+                      <div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                          Total Cotización (100%)
+                        </span>
+                        <span className="text-[10px] text-slate-400">
+                          {quotePaymentPlan === "SPLIT_70_30"
+                            ? t.manualOrderPaymentPlanSplitLabel
+                            : t.manualOrderPaymentPlanFullLabel}
+                        </span>
+                      </div>
+                      <span className="text-xl font-black font-mono text-emerald-400">
+                        {formatCRC(currentTotal)}
+                      </span>
+                    </div>
+                    {quotePaymentPlan === "SPLIT_70_30" && (
+                      <div className="pt-2 border-t border-slate-800 grid grid-cols-2 gap-2 text-xs">
+                        <div className="bg-emerald-950/60 border border-emerald-700/50 rounded-xl p-2">
+                          <span className="text-[10px] text-emerald-300 font-bold block">
+                            {t.paymentPlanPayTodayLabel}
+                          </span>
+                          <span className="font-mono font-black text-emerald-300 text-sm">
+                            {formatCRC(quoteSplit.initial70AmountCRC)}
+                          </span>
+                        </div>
+                        <div className="bg-amber-950/60 border border-amber-700/50 rounded-xl p-2">
+                          <span className="text-[10px] text-amber-300 font-bold block">
+                            {t.paymentPlanRemaining30Label}
+                          </span>
+                          <span className="font-mono font-black text-amber-300 text-sm">
+                            {formatCRC(quoteSplit.remaining30AmountCRC)}
+                          </span>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <span className="text-xl font-black font-mono text-emerald-400">
-                    {formatCRC(currentTotal)}
-                  </span>
-                </div>
-              </div>
+                );
+              })()}
             </div>
           </div>
         </div>
@@ -4369,13 +4511,51 @@ export function OrdersPipelineTab({ onOrderDeleted, onOrderUpdated }: OrdersPipe
                 </div>
 
                 <div className="flex items-center justify-between pt-1">
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                    {lang === "es" ? "Total Orden (Cliente)" : "Order Total (Client)"}
-                  </span>
+                  <div>
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-400 block">
+                      {lang === "es" ? "Total Orden (Cliente)" : "Order Total (Client)"}
+                    </span>
+                    <span
+                      className={`inline-block mt-1 text-[10px] font-extrabold px-2 py-0.5 rounded-full ${
+                        manageForm.paymentPlan === "SPLIT_70_30"
+                          ? "bg-amber-500/20 text-amber-300 border border-amber-400/40"
+                          : "bg-emerald-500/20 text-emerald-300 border border-emerald-400/40"
+                      }`}
+                    >
+                      {manageForm.paymentPlan === "SPLIT_70_30"
+                        ? t.manualOrderPaymentPlanSplitLabel
+                        : t.manualOrderPaymentPlanFullLabel}
+                    </span>
+                  </div>
                   <span className="text-xl font-black font-mono text-emerald-400">
                     {formatCRC(managingOrder.totalCRC)}
                   </span>
                 </div>
+
+                {manageForm.paymentPlan === "SPLIT_70_30" && (() => {
+                  const sp = extractSplitPayment(managingOrder);
+                  const splitCalc = sp || computeSplitPaymentAmounts(managingOrder.totalCRC);
+                  return (
+                    <div className="pt-2 border-t border-slate-800 grid grid-cols-2 gap-2 text-xs">
+                      <div className="bg-emerald-950/60 border border-emerald-700/50 rounded-xl p-2.5">
+                        <span className="text-[10px] text-emerald-300 font-bold block">
+                          {t.orderPaymentPlan70AmountLabel}
+                        </span>
+                        <span className="font-mono font-black text-emerald-300 text-sm">
+                          {formatCRC(splitCalc.initial70AmountCRC)}
+                        </span>
+                      </div>
+                      <div className="bg-amber-950/60 border border-amber-700/50 rounded-xl p-2.5">
+                        <span className="text-[10px] text-amber-300 font-bold block">
+                          {t.orderPaymentPlan30AmountLabel}
+                        </span>
+                        <span className="font-mono font-black text-amber-300 text-sm">
+                          {formatCRC(splitCalc.remaining30AmountCRC)}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             </div>
 
@@ -4551,6 +4731,125 @@ export function OrdersPipelineTab({ onOrderDeleted, onOrderUpdated }: OrdersPipe
                 </div>
               </div>
             </div>
+
+            {/* Order Payment Plan Card (100% vs 70% / 30% Selection & Exact Amounts) */}
+            {(() => {
+              const sp = extractSplitPayment(managingOrder);
+              const splitAmounts = sp || computeSplitPaymentAmounts(managingOrder.totalCRC);
+              const isSplitSelected = manageForm.paymentPlan === "SPLIT_70_30";
+              return (
+                <div
+                  className={`p-5 bg-white rounded-3xl border shadow-xs space-y-3.5 ${
+                    isSplitSelected ? "border-amber-300" : "border-slate-200"
+                  }`}
+                >
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-2 gap-2 flex-wrap">
+                    <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-900 flex items-center gap-2">
+                      <CreditCard className={`w-4 h-4 ${isSplitSelected ? "text-amber-600" : "text-emerald-600"}`} />
+                      <span>{t.orderPaymentPlanCardTitle}</span>
+                    </h3>
+                    <span
+                      className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border ${
+                        isSplitSelected
+                          ? "bg-amber-100 text-amber-900 border-amber-300"
+                          : "bg-emerald-50 text-emerald-800 border-emerald-200"
+                      }`}
+                    >
+                      {isSplitSelected
+                        ? t.manualOrderPaymentPlanSplitLabel
+                        : t.manualOrderPaymentPlanFullLabel}
+                    </span>
+                  </div>
+
+                  {/* Selector to view or update 100% vs 70%/30% */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setManageForm((prev) => ({ ...prev, paymentPlan: "FULL_100" }))}
+                      className={`p-2.5 rounded-xl border text-left transition cursor-pointer ${
+                        !isSplitSelected
+                          ? "bg-slate-900 text-white border-slate-900 shadow-2xs"
+                          : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+                      }`}
+                    >
+                      <div className="text-xs font-extrabold">{t.manualOrderPaymentPlanFullLabel}</div>
+                      <div className={`text-[10px] mt-0.5 ${!isSplitSelected ? "text-slate-300" : "text-slate-500"}`}>
+                        {formatCRC(managingOrder.totalCRC)}
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setManageForm((prev) => ({ ...prev, paymentPlan: "SPLIT_70_30" }))}
+                      className={`p-2.5 rounded-xl border text-left transition cursor-pointer ${
+                        isSplitSelected
+                          ? "bg-amber-600 text-white border-amber-600 shadow-2xs"
+                          : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-amber-50/50"
+                      }`}
+                    >
+                      <div className="text-xs font-extrabold">{t.manualOrderPaymentPlanSplitLabel}</div>
+                      <div className={`text-[10px] mt-0.5 ${isSplitSelected ? "text-amber-100" : "text-slate-500"}`}>
+                        70% / 30%
+                      </div>
+                    </button>
+                  </div>
+
+                  {isSplitSelected ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                      <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 text-center">
+                        <span className="text-[10px] font-bold uppercase text-slate-500 block">
+                          {lang === "es" ? "Total 100%" : "Full 100%"}
+                        </span>
+                        <span className="text-sm font-mono font-black text-slate-900 block mt-0.5">
+                          {formatCRC(splitAmounts.totalOrderCRC)}
+                        </span>
+                      </div>
+
+                      <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-center">
+                        <span className="text-[10px] font-bold uppercase text-emerald-700 block">
+                          {t.orderPaymentPlan70AmountLabel}
+                        </span>
+                        <span className="text-sm font-mono font-black text-emerald-900 block mt-0.5">
+                          {formatCRC(splitAmounts.initial70AmountCRC)}
+                        </span>
+                        <span className="text-[9px] font-bold text-emerald-700 block mt-0.5">
+                          {sp?.initial70Confirmed || !["COTIZACION", "PAYMENT_CONFIRMATION", "PAYMENT_REJECTED"].includes((managingOrder.status || "").toUpperCase())
+                            ? `✓ ${t.paymentPlanDeposit70PaidLabel}`
+                            : managingOrder.paymentProofUrl
+                            ? t.paymentPlanDeposit70PendingLabel
+                            : lang === "es"
+                            ? "Pendiente de pago"
+                            : "Payment pending"}
+                        </span>
+                      </div>
+
+                      <div className="p-3 rounded-2xl bg-amber-50 border border-amber-200 text-center">
+                        <span className="text-[10px] font-bold uppercase text-amber-700 block">
+                          {t.orderPaymentPlan30AmountLabel}
+                        </span>
+                        <span className="text-sm font-mono font-black text-amber-900 block mt-0.5">
+                          {formatCRC(splitAmounts.remaining30AmountCRC)}
+                        </span>
+                        <span className="text-[9px] font-bold text-amber-800 block mt-0.5">
+                          {sp?.remaining30Confirmed
+                            ? `✓ ${t.paymentPlanBalance30PaidLabel}`
+                            : sp?.remaining30ProofUrl
+                            ? t.paymentPlanBalance30InReviewLabel
+                            : t.paymentPlanBalance30PendingLabel}
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-3 rounded-2xl bg-emerald-50/70 border border-emerald-200 flex items-center justify-between text-xs">
+                      <span className="font-bold text-emerald-900">{t.orderPaymentPlanAmountDue100Label}:</span>
+                      <span className="text-sm font-mono font-black text-emerald-900">
+                        {formatCRC(managingOrder.totalCRC)}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* Client Payment Proof Card */}
             <div className="p-5 bg-white rounded-3xl border border-slate-200 shadow-xs space-y-4">

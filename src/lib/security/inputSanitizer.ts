@@ -117,7 +117,7 @@ export function isValidStorageUrl(url: unknown): boolean {
     return true;
   }
 
-  // Trusted Google Cloud Storage URLs
+  // Trusted Google Cloud Storage & Firebase Storage URLs
   if (
     trimmed.startsWith("https://storage.googleapis.com/") ||
     trimmed.startsWith("https://firebasestorage.googleapis.com/")
@@ -130,13 +130,44 @@ export function isValidStorageUrl(url: unknown): boolean {
     return true;
   }
 
-  // Check canonical domain if configured
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://zxzmods.com";
+  // Trusted HTTPS Supabase Storage URLs & canonical site /uploads/ or /images/ paths
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL || "https://www.zxzmods.com";
   try {
     const parsed = new URL(trimmed);
-    const parsedApp = new URL(appUrl);
-    if (parsed.hostname === parsedApp.hostname && (parsed.pathname.startsWith("/uploads/") || parsed.pathname.startsWith("/images/"))) {
-      return true;
+    if (parsed.protocol === "https:" && !parsed.pathname.includes("..")) {
+      const host = parsed.hostname.toLowerCase();
+      const configuredSupabaseHost = (() => {
+        const rawSb = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || "";
+        if (rawSb) {
+          try {
+            return new URL(rawSb).hostname.toLowerCase();
+          } catch {}
+        }
+        const ref = process.env.SUPABASE_PROJECT_REF?.trim();
+        return ref ? `${ref.toLowerCase()}.supabase.co` : "";
+      })();
+
+      if (
+        (host.endsWith(".supabase.co") || (configuredSupabaseHost && host === configuredSupabaseHost)) &&
+        parsed.pathname.startsWith("/storage/v1/object/")
+      ) {
+        return true;
+      }
+
+      if (
+        (host === "zxzmods.com" || host === "www.zxzmods.com") &&
+        (parsed.pathname.startsWith("/uploads/") || parsed.pathname.startsWith("/images/"))
+      ) {
+        return true;
+      }
+
+      const parsedApp = new URL(appUrl.startsWith("http") ? appUrl : `https://${appUrl}`);
+      if (
+        host === parsedApp.hostname.toLowerCase() &&
+        (parsed.pathname.startsWith("/uploads/") || parsed.pathname.startsWith("/images/"))
+      ) {
+        return true;
+      }
     }
   } catch {}
 

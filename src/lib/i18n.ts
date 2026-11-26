@@ -2195,6 +2195,10 @@ export interface Translations {
   manualOrderPaymentPlanFullDesc: string;
   manualOrderPaymentPlanSplitLabel: string;
   manualOrderPaymentPlanSplitDesc: string;
+  orderPaymentPlanCardTitle: string;
+  orderPaymentPlanAmountDue100Label: string;
+  orderPaymentPlan70AmountLabel: string;
+  orderPaymentPlan30AmountLabel: string;
   // Split Payment 70% / 30%
   paymentPlanSectionTitle: string;
   paymentPlanFullTitle: string;
@@ -4406,6 +4410,10 @@ export const translations: Record<Language, Translations> = {
     manualOrderPaymentPlanFullDesc: "El cliente cancela el total completo al confirmar el pedido.",
     manualOrderPaymentPlanSplitLabel: "Pago Fraccionado (70% / 30%)",
     manualOrderPaymentPlanSplitDesc: "70% de adelanto para ordenar y 30% restante antes de entrega o instalación.",
+    orderPaymentPlanCardTitle: "Modalidad de Pago del Pedido",
+    orderPaymentPlanAmountDue100Label: "Monto total a pagar (100%)",
+    orderPaymentPlan70AmountLabel: "Monto a pagar 70% (Adelanto)",
+    orderPaymentPlan30AmountLabel: "Monto a pagar 30% (Saldo)",
     // Split Payment 70% / 30%
     paymentPlanSectionTitle: "Modalidad de Pago de Piezas",
     paymentPlanFullTitle: "Pago Completo (100%)",
@@ -6615,6 +6623,10 @@ export const translations: Record<Language, Translations> = {
     manualOrderPaymentPlanFullDesc: "Client pays the entire order total upfront when confirming.",
     manualOrderPaymentPlanSplitLabel: "Split Payment (70% / 30%)",
     manualOrderPaymentPlanSplitDesc: "70% upfront deposit to order and 30% balance prior to delivery or installation.",
+    orderPaymentPlanCardTitle: "Order Payment Plan",
+    orderPaymentPlanAmountDue100Label: "Total amount to pay (100%)",
+    orderPaymentPlan70AmountLabel: "70% amount to pay (Deposit)",
+    orderPaymentPlan30AmountLabel: "30% amount to pay (Balance)",
     // Split Payment 70% / 30%
     paymentPlanSectionTitle: "Parts Payment Option",
     paymentPlanFullTitle: "Full Payment (100%)",
