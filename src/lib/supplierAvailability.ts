@@ -93,6 +93,149 @@ export function resolveShopifyHostAndToken(hostname: string): { targetHost: stri
   return { targetHost, token };
 }
 
+const SHOPIFY_HANDLE_STOPWORDS = new Set([
+  "for",
+  "with",
+  "and",
+  "the",
+  "of",
+  "to",
+  "in",
+  "on",
+  "by",
+  "a",
+  "an",
+  "w",
+  "copy",
+  "kit",
+  "system",
+  "systems",
+]);
+
+function tokenizeShopifyText(raw: string): string[] {
+  return (raw || "")
+    .toLowerCase()
+    .replace(/['’"`]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+/**
+ * Scores how closely a candidate Shopify product (handle + title) matches a requested product handle.
+ * Used when resolving dealer portal URLs (e.g. dealers.evopowersports.com -> evopowersports.com)
+ * whose handles differ slightly in word order or prefixes.
+ */
+export function scoreShopifyCandidateMatch(
+  sourceHandle: string,
+  candidate: { handle?: string | null; title?: string | null }
+): number {
+  const srcClean = (sourceHandle || "").toLowerCase().trim();
+  const candHandle = (candidate.handle || "").toLowerCase().trim();
+  if (!srcClean || (!candHandle && !candidate.title)) return 0;
+  if (candHandle && srcClean === candHandle) return 1.0;
+
+  const srcAllTokens = tokenizeShopifyText(srcClean);
+  const candHandleTokens = tokenizeShopifyText(candHandle);
+  const candTitleTokens = tokenizeShopifyText(candidate.title || "");
+
+  const srcCore = Array.from(
+    new Set(srcAllTokens.filter((t) => !SHOPIFY_HANDLE_STOPWORDS.has(t) && (t.length >= 2 || t === "r")))
+  );
+  const candHandleCore = Array.from(
+    new Set(candHandleTokens.filter((t) => !SHOPIFY_HANDLE_STOPWORDS.has(t) && (t.length >= 2 || t === "r")))
+  );
+  const candCombinedSet = new Set([
+    ...candHandleCore,
+    ...candTitleTokens.filter((t) => !SHOPIFY_HANDLE_STOPWORDS.has(t) && (t.length >= 2 || t === "r")),
+  ]);
+
+  if (srcCore.length === 0 || candCombinedSet.size === 0) return 0;
+
+  // Distinctive alphanumeric model/part codes (e.g. p47, p48, p43r, mg1, x3, z10, 400, 415)
+  const isCodeToken = (t: string) => /[a-z]/.test(t) && /\d/.test(t);
+  const srcCodes = srcCore.filter(isCodeToken);
+  const candCodes = Array.from(candCombinedSet).filter(isCodeToken);
+
+  let matchedSrc = 0;
+  for (const tok of srcCore) {
+    if (candCombinedSet.has(tok)) matchedSrc++;
+  }
+
+  let matchedCand = 0;
+  const srcSet = new Set(srcCore);
+  for (const tok of candHandleCore) {
+    if (srcSet.has(tok)) matchedCand++;
+  }
+
+  const recall = matchedSrc / srcCore.length;
+  const precision = candHandleCore.length > 0 ? matchedCand / candHandleCore.length : recall;
+  let score = recall * 0.65 + precision * 0.35;
+
+  // Strong boost when distinctive part/model codes (p47, mg1, x3, etc.) match,
+  // and strong penalty when a required distinctive code is missing or contradicted (e.g. p47 vs p48)
+  if (srcCodes.length > 0) {
+    const matchedCodes = srcCodes.filter((c) => candCombinedSet.has(c)).length;
+    const codeRatio = matchedCodes / srcCodes.length;
+    if (codeRatio === 1) {
+      score += 0.15;
+    } else if (matchedCodes === 0) {
+      score *= 0.35;
+    } else {
+      score *= 0.65 + 0.35 * codeRatio;
+    }
+  }
+
+  // Penalize if candidate introduces a conflicting turbo/model code not in source (e.g. p48 when source asks for p47)
+  const extraConflictingCodes = candCodes.filter((c) => !srcSet.has(c) && /^p\d+/i.test(c));
+  if (extraConflictingCodes.length > 0 && srcCodes.some((c) => /^p\d+/i.test(c))) {
+    score *= 0.4;
+  }
+
+  // Respect 2-door vs 4-door / MAX distinction when explicitly present
+  const srcHasMax = srcSet.has("max");
+  const candHasMax = candHandleCore.includes("max");
+  if (srcHasMax !== candHasMax && !candTitleTokens.includes("max")) {
+    score *= 0.85;
+  }
+
+  return Math.min(1, Math.max(0, Number(score.toFixed(4))));
+}
+
+function buildShopifySearchQueries(handle: string): string[] {
+  const allTokens = tokenizeShopifyText(handle);
+  const coreTokens = allTokens.filter(
+    (t) => !SHOPIFY_HANDLE_STOPWORDS.has(t) && (t.length >= 2 || t === "r")
+  );
+  const uniqueCore = Array.from(new Set(coreTokens));
+
+  const codeTokens = uniqueCore.filter((t) => /[a-z]/.test(t) && /\d/.test(t));
+  const queries: string[] = [];
+
+  // 1. Focused query prioritizing distinctive part codes (e.g. p47, mg1) + vehicle/part keywords
+  if (codeTokens.length > 0) {
+    const contextWords = uniqueCore
+      .filter((t) => !codeTokens.includes(t) && t !== "can" && t !== "am" && t !== "evp")
+      .slice(0, 4);
+    const focused = [...codeTokens.slice(0, 2), ...contextWords].join(" ").trim();
+    if (focused) queries.push(focused);
+  }
+
+  // 2. Broader phrase from handle core tokens (up to 6 distinctive words, excluding "can"/"am" noise)
+  const cleanWords = uniqueCore.filter((t) => t !== "can" && t !== "am");
+  if (cleanWords.length > 0) {
+    queries.push(cleanWords.slice(0, 6).join(" "));
+  }
+
+  // 3. Fallback with first 4 raw tokens if everything else was filtered
+  if (queries.length === 0 && allTokens.length > 0) {
+    queries.push(allTokens.slice(0, 5).join(" "));
+  }
+
+  return Array.from(new Set(queries.filter(Boolean)));
+}
+
 async function fetchShopifyStorefrontGraphQL(
   hostname: string,
   handle: string,
@@ -101,7 +244,27 @@ async function fetchShopifyStorefrontGraphQL(
   const { targetHost, token } = resolveShopifyHostAndToken(hostname);
   if (!token) return null;
 
+  const formatGqlProduct = (p: any) => {
+    const variantsList = (p.variants?.nodes || []).map((vn: any) => ({
+      id: parseInt(vn.id.replace("gid://shopify/ProductVariant/", ""), 10),
+      title: vn.title,
+      available: vn.availableForSale,
+      price: parseFloat(vn.price?.amount || "0"),
+    }));
+    return {
+      prodData: {
+        title: p.title,
+        handle: p.handle,
+        available: p.availableForSale,
+        tags: p.tags || [],
+        price: variantsList[0]?.price || null,
+        variants: variantsList,
+      },
+    };
+  };
+
   try {
+    // 1. Direct variant lookup (exact hit for retail store URLs with ?variant=...)
     if (variantId) {
       const q = `
         query getVariant($id: ID!) {
@@ -187,79 +350,152 @@ async function fetchShopifyStorefrontGraphQL(
         }
       }
     `;
-    const resH = await fetch(`https://${targetHost}/api/2024-07/graphql.json`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Shopify-Storefront-Access-Token": token,
-      },
-      body: JSON.stringify({ query: qHandle, variables: { handle } }),
-    });
 
-    let p: any = null;
-    if (resH.ok) {
-      const d = await resH.json();
-      p = d?.data?.product;
-    }
+    const fetchProductByHandle = async (h: string): Promise<any | null> => {
+      if (!h) return null;
+      const resH = await fetch(`https://${targetHost}/api/2024-07/graphql.json`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Shopify-Storefront-Access-Token": token,
+        },
+        body: JSON.stringify({ query: qHandle, variables: { handle: h } }),
+      });
+      if (resH.ok) {
+        const d = await resH.json();
+        return d?.data?.product || null;
+      }
+      return null;
+    };
 
-    // Fallback: If exact handle wasn't found, try storefront search query
+    // 2. Direct handle lookup (plus quick cleanups like stripping -copy or evp- prefix)
+    let p: any = await fetchProductByHandle(handle);
     if (!p && handle) {
-      const searchTerms = handle
-        .replace(/[-_]/g, " ")
-        .split(/\s+/)
-        .filter((w) => w.length > 2)
-        .slice(0, 5)
-        .join(" ");
+      const cleanedVariants = Array.from(
+        new Set([
+          handle.replace(/-copy(-\d+)?$/i, ""),
+          handle.replace(/^evp-/i, ""),
+          handle.startsWith("evp-") ? handle : `evp-${handle}`,
+        ])
+      ).filter((h) => h && h !== handle);
 
-      if (searchTerms) {
-        const qSearch = `
-          query searchProducts($query: String!) {
-            products(first: 5, query: $query) {
-              nodes {
-                title
-                handle
-                availableForSale
-                tags
-                variants(first: 50) {
-                  nodes { id title availableForSale price { amount } }
-                }
-              }
-            }
-          }
-        `;
-        const resSearch = await fetch(`https://${targetHost}/api/2024-07/graphql.json`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Shopify-Storefront-Access-Token": token,
-          },
-          body: JSON.stringify({ query: qSearch, variables: { query: searchTerms } }),
-        });
-        if (resSearch.ok) {
-          const sData = await resSearch.json();
-          const nodes = sData?.data?.products?.nodes || [];
-          p = nodes.find((n: any) => n.handle === handle) || nodes[0] || null;
-        }
+      for (const altHandle of cleanedVariants) {
+        p = await fetchProductByHandle(altHandle);
+        if (p) break;
       }
     }
 
     if (p) {
-      const variantsList = (p.variants?.nodes || []).map((vn: any) => ({
-        id: parseInt(vn.id.replace("gid://shopify/ProductVariant/", ""), 10),
-        title: vn.title,
-        available: vn.availableForSale,
-        price: parseFloat(vn.price?.amount || "0"),
-      }));
-      return {
-        prodData: {
-          title: p.title,
-          handle: p.handle,
-          available: p.availableForSale,
-          tags: p.tags || [],
-          price: variantsList[0]?.price || null,
-          variants: variantsList,
-        },
-      };
+      return formatGqlProduct(p);
+    }
+
+    // 3. Smart ranked search fallback (handles dealer portal URLs like dealers.evopowersports.com
+    // where word order or handle slugs differ slightly from retail evopowersports.com)
+    if (handle) {
+      const searchQueries = buildShopifySearchQueries(handle);
+      const gqlCandidatesMap = new Map<string, any>();
+      const suggestHandlesMap = new Map<string, { handle: string; title: string }>();
+
+      const qSearch = `
+        query searchProducts($query: String!) {
+          products(first: 15, query: $query) {
+            nodes {
+              title
+              handle
+              availableForSale
+              tags
+              variants(first: 50) {
+                nodes { id title availableForSale price { amount } }
+              }
+            }
+          }
+        }
+      `;
+
+      for (const qTerm of searchQueries) {
+        // Query Storefront GraphQL + Predictive Search in parallel
+        const [gqlRes, suggestRes] = await Promise.all([
+          fetch(`https://${targetHost}/api/2024-07/graphql.json`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Shopify-Storefront-Access-Token": token,
+            },
+            body: JSON.stringify({ query: qSearch, variables: { query: qTerm } }),
+          }).catch(() => null),
+          fetch(
+            `https://${targetHost}/search/suggest.json?q=${encodeURIComponent(qTerm)}&resources[type]=product&resources[limit]=10`,
+            {
+              headers: {
+                Accept: "application/json",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+              },
+            }
+          ).catch(() => null),
+        ]);
+
+        if (gqlRes && gqlRes.ok) {
+          const sData = await gqlRes.json().catch(() => null);
+          const nodes = sData?.data?.products?.nodes || [];
+          for (const n of nodes) {
+            if (n?.handle && !gqlCandidatesMap.has(n.handle)) {
+              gqlCandidatesMap.set(n.handle, n);
+            }
+          }
+        }
+
+        if (suggestRes && suggestRes.ok) {
+          const sugData = await suggestRes.json().catch(() => null);
+          const sugProds = sugData?.resources?.results?.products || [];
+          for (const sp of sugProds) {
+            if (sp?.handle && !suggestHandlesMap.has(sp.handle)) {
+              suggestHandlesMap.set(sp.handle, {
+                handle: String(sp.handle),
+                title: String(sp.title || ""),
+              });
+            }
+          }
+        }
+
+        // Early stop if we already found a very high-confidence match (>= 0.85)
+        let topScoreSoFar = 0;
+        gqlCandidatesMap.forEach((n) => {
+          topScoreSoFar = Math.max(topScoreSoFar, scoreShopifyCandidateMatch(handle, n));
+        });
+        suggestHandlesMap.forEach((s) => {
+          topScoreSoFar = Math.max(topScoreSoFar, scoreShopifyCandidateMatch(handle, s));
+        });
+        if (topScoreSoFar >= 0.85) break;
+      }
+
+      // Rank ALL discovered candidates from both GraphQL and Predictive Search
+      let bestHandle: string | null = null;
+      let bestScore = 0;
+
+      gqlCandidatesMap.forEach((node, h) => {
+        const sc = scoreShopifyCandidateMatch(handle, node);
+        if (sc > bestScore) {
+          bestScore = sc;
+          bestHandle = h;
+        }
+      });
+
+      suggestHandlesMap.forEach((sug, h) => {
+        const sc = scoreShopifyCandidateMatch(handle, sug);
+        if (sc > bestScore) {
+          bestScore = sc;
+          bestHandle = h;
+        }
+      });
+
+      // Only accept candidates that meaningfully match the requested product (never blindly return nodes[0]!)
+      if (bestHandle && bestScore >= 0.45) {
+        const matchedNode =
+          gqlCandidatesMap.get(bestHandle) || (await fetchProductByHandle(bestHandle));
+        if (matchedNode) {
+          return formatGqlProduct(matchedNode);
+        }
+      }
     }
   } catch {}
   return null;
@@ -715,9 +951,20 @@ export async function fetchLiveSupplierAvailability(
       }
 
       if (!cachedShopifyPayload) {
+        const { targetHost } = resolveShopifyHostAndToken(parsedShopifyUrl.hostname);
+        const altOrigin =
+          targetHost && targetHost !== parsedShopifyUrl.hostname.toLowerCase().replace(/^www\./, "")
+            ? `https://${targetHost}`
+            : null;
         const candidateUrls = [
           { endpointUrl: `${baseProductUrl}.js`, isDotJson: false },
           { endpointUrl: `${baseProductUrl}.json`, isDotJson: true },
+          ...(altOrigin
+            ? [
+                { endpointUrl: `${altOrigin}${cleanPathname}.js`, isDotJson: false },
+                { endpointUrl: `${altOrigin}${cleanPathname}.json`, isDotJson: true },
+              ]
+            : []),
         ];
 
         for (const cand of candidateUrls) {
