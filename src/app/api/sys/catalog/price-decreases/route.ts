@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import {
   ensureSupplierPriceDecreaseTable,
   resolvePriceDecreaseAlert,
+  resolvePriceAlertsBatch,
   runDailySupplierPriceCheck,
   PriceDecreaseResolutionAction,
 } from "@/lib/supplierPriceSync";
@@ -74,18 +75,33 @@ export async function GET() {
       };
     });
 
+    const normalizeAlert = (a: any) => {
+      const dir =
+        a.changeDirection === "INCREASE" || a.proposedTPriceCRC > a.oldTPriceCRC || a.newPPriceD > a.oldPPriceD
+          ? "INCREASE"
+          : "DECREASE";
+      return { ...a, changeDirection: dir };
+    };
+
+    const normalizedPending = pendingAlerts.map(normalizeAlert);
+    const normalizedResolved = resolvedAlerts.map(normalizeAlert);
+    const pendingIncreasesCount = normalizedPending.filter((a) => a.changeDirection === "INCREASE").length;
+    const pendingDecreasesCount = normalizedPending.filter((a) => a.changeDirection === "DECREASE").length;
+
     return NextResponse.json({
       success: true,
-      pending: pendingAlerts,
-      resolved: resolvedAlerts,
+      pending: normalizedPending,
+      resolved: normalizedResolved,
       autoIncreases,
       lastRun: lastRunSummary,
-      pendingCount: pendingAlerts.length,
+      pendingCount: normalizedPending.length,
+      pendingIncreasesCount,
+      pendingDecreasesCount,
     });
   } catch (error) {
     console.error("[SYS_PRICE_DECREASES_GET_ERROR]:", error);
     return NextResponse.json(
-      { success: false, error: "Error al cargar las bajas de precio pendientes." },
+      { success: false, error: "Error al cargar los cambios de precio pendientes." },
       { status: 500 }
     );
   }
@@ -97,7 +113,7 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json().catch(() => ({}));
-    const { action, alertId } = body;
+    const { action, alertId, alertIds } = body;
 
     if (action === "RUN_CHECK") {
       const summary = await runDailySupplierPriceCheck({
@@ -112,11 +128,46 @@ export async function POST(request: Request) {
     const validActions: PriceDecreaseResolutionAction[] = [
       "DISCOUNT",
       "PRICE_DECREASE",
+      "PRICE_INCREASE",
+      "APPROVE_AS_DISCOUNT",
+      "APPROVE_REGULAR",
       "DISMISSED",
     ];
-    if (!alertId || !validActions.includes(action)) {
+    if (!validActions.includes(action)) {
       return NextResponse.json(
-        { success: false, error: "Parámetros inválidos (alertId y action requeridos)." },
+        { success: false, error: "Acción inválida para resolver cambio de precio." },
+        { status: 400 }
+      );
+    }
+
+    // Batch multi-select resolution
+    if (Array.isArray(alertIds) && alertIds.length > 0) {
+      const batchRes = await resolvePriceAlertsBatch({
+        alertIds: alertIds.map((id: any) => String(id)),
+        action,
+        actorId: auth.session.userId,
+        actorEmail: auth.session.email,
+        actorRole: auth.session.role,
+      });
+      if (!batchRes.success && batchRes.processedCount === 0) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: batchRes.errors[0]?.error || "No se pudo procesar ninguno de los productos seleccionados.",
+            batch: batchRes,
+          },
+          { status: 400 }
+        );
+      }
+      return NextResponse.json({
+        success: true,
+        batch: batchRes,
+      });
+    }
+
+    if (!alertId) {
+      return NextResponse.json(
+        { success: false, error: "Parámetros inválidos (alertId o alertIds requeridos)." },
         { status: 400 }
       );
     }

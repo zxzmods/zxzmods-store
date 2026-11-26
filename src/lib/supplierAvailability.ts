@@ -256,47 +256,85 @@ async function fetchShopifyAutomaticDiscountPrice(
   discountTitle: string | null;
 } | null> {
   if (!targetHost || !token || !variantNumericId) return null;
-  try {
+  const runCartMutation = async (withUsContext: boolean) => {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 4500);
-    const res = await fetch(`https://${targetHost}/api/2024-07/graphql.json`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Shopify-Storefront-Access-Token": token,
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
-      },
-      body: JSON.stringify({
-        query: `mutation($id: ID!) {
-          cartCreate(input: { lines: [{ merchandiseId: $id, quantity: 1 }] }) {
-            cart {
-              cost { totalAmount { amount } }
-              lines(first: 2) {
-                nodes {
-                  cost {
-                    amountPerQuantity { amount }
-                    totalAmount { amount }
-                  }
-                  discountAllocations {
-                    discountedAmount { amount }
-                    ... on CartAutomaticDiscountAllocation { title }
+    try {
+      const mutation = withUsContext
+        ? `mutation($id: ID!) @inContext(country: US) {
+            cartCreate(input: { lines: [{ merchandiseId: $id, quantity: 1 }], buyerIdentity: { countryCode: US } }) {
+              cart {
+                cost { totalAmount { amount currencyCode } }
+                lines(first: 2) {
+                  nodes {
+                    cost {
+                      amountPerQuantity { amount currencyCode }
+                      totalAmount { amount currencyCode }
+                    }
+                    discountAllocations {
+                      discountedAmount { amount }
+                      ... on CartAutomaticDiscountAllocation { title }
+                    }
                   }
                 }
               }
             }
-          }
-        }`,
-        variables: { id: `gid://shopify/ProductVariant/${variantNumericId}` },
-      }),
-      signal: controller.signal,
-      cache: "no-store",
-    });
-    clearTimeout(timeoutId);
+          }`
+        : `mutation($id: ID!) {
+            cartCreate(input: { lines: [{ merchandiseId: $id, quantity: 1 }] }) {
+              cart {
+                cost { totalAmount { amount currencyCode } }
+                lines(first: 2) {
+                  nodes {
+                    cost {
+                      amountPerQuantity { amount currencyCode }
+                      totalAmount { amount currencyCode }
+                    }
+                    discountAllocations {
+                      discountedAmount { amount }
+                      ... on CartAutomaticDiscountAllocation { title }
+                    }
+                  }
+                }
+              }
+            }
+          }`;
+      const res = await fetch(`https://${targetHost}/api/2024-07/graphql.json`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Shopify-Storefront-Access-Token": token,
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+        },
+        body: JSON.stringify({
+          query: mutation,
+          variables: { id: `gid://shopify/ProductVariant/${variantNumericId}` },
+        }),
+        signal: controller.signal,
+        cache: "no-store",
+      });
+      if (!res.ok) return null;
+      return await res.json().catch(() => null);
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  };
 
-    if (!res.ok) return null;
-    const d = await res.json().catch(() => null);
+  try {
+    let d = await runCartMutation(true);
+    if (!d || (Array.isArray(d.errors) && d.errors.length > 0 && !d?.data?.cartCreate)) {
+      d = await runCartMutation(false);
+    }
     const line = d?.data?.cartCreate?.cart?.lines?.nodes?.[0];
     if (!line) return null;
+
+    const currencyCode =
+      line.cost?.totalAmount?.currencyCode ||
+      line.cost?.amountPerQuantity?.currencyCode ||
+      d?.data?.cartCreate?.cart?.cost?.totalAmount?.currencyCode;
+    if (currencyCode && String(currencyCode).toUpperCase() !== "USD") {
+      return null;
+    }
 
     const baseAmt = parseFloat(line.cost?.amountPerQuantity?.amount || "0");
     const totalAmt = parseFloat(
@@ -330,6 +368,32 @@ async function fetchShopifyStorefrontGraphQL(
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
   };
 
+  const executeGqlWithUsContext = async (
+    queryBody: string,
+    variables: Record<string, any>
+  ): Promise<any | null> => {
+    const queryWithUs = queryBody.replace(
+      /(query\s+\w+\s*\([^)]*\))\s*\{/,
+      "$1 @inContext(country: US) {"
+    );
+    const run = async (qStr: string) => {
+      const r = await fetch(`https://${targetHost}/api/2024-07/graphql.json`, {
+        method: "POST",
+        headers: gqlHeaders,
+        body: JSON.stringify({ query: qStr, variables }),
+        cache: "no-store",
+      }).catch(() => null);
+      if (!r || !r.ok) return null;
+      return await r.json().catch(() => null);
+    };
+
+    const resUs = await run(queryWithUs);
+    if (resUs && !(Array.isArray(resUs.errors) && resUs.errors.length > 0 && !resUs.data)) {
+      return resUs;
+    }
+    return await run(queryBody);
+  };
+
   const attachAutoDiscount = async (prodData: any, targetVariantId?: number | string | null) => {
     const variants: any[] = Array.isArray(prodData?.variants) ? prodData.variants : [];
     const matched = targetVariantId
@@ -348,7 +412,13 @@ async function fetchShopifyStorefrontGraphQL(
   };
 
   const formatGqlProduct = async (p: any) => {
-    const variantsList = (p.variants?.nodes || []).map((vn: any) => ({
+    const rawNodes: any[] = p.variants?.nodes || [];
+    const firstCurrency = rawNodes.find((vn: any) => vn?.price?.currencyCode)?.price?.currencyCode;
+    // Never treat non-USD currencies (e.g. CAD on Canadian stores if US context wasn't applied) as USD
+    if (firstCurrency && String(firstCurrency).toUpperCase() !== "USD") {
+      return null;
+    }
+    const variantsList = rawNodes.map((vn: any) => ({
       id: parseInt(vn.id.replace("gid://shopify/ProductVariant/", ""), 10),
       title: vn.title,
       available: vn.availableForSale,
@@ -375,33 +445,27 @@ async function fetchShopifyStorefrontGraphQL(
               id
               title
               availableForSale
-              price { amount }
+              price { amount currencyCode }
               product {
                 title
                 handle
                 availableForSale
                 tags
                 variants(first: 50) {
-                  nodes { id title availableForSale price { amount } }
+                  nodes { id title availableForSale price { amount currencyCode } }
                 }
               }
             }
           }
         }
       `;
-      const res = await fetch(`https://${targetHost}/api/2024-07/graphql.json`, {
-        method: "POST",
-        headers: gqlHeaders,
-        body: JSON.stringify({
-          query: q,
-          variables: { id: `gid://shopify/ProductVariant/${variantId}` },
-        }),
-        cache: "no-store",
+      const d = await executeGqlWithUsContext(q, {
+        id: `gid://shopify/ProductVariant/${variantId}`,
       });
-      if (res.ok) {
-        const d = await res.json();
-        const vNode = d?.data?.node;
-        if (vNode) {
+      const vNode = d?.data?.node;
+      if (vNode) {
+        const vCurrency = vNode.price?.currencyCode;
+        if (!vCurrency || String(vCurrency).toUpperCase() === "USD") {
           const matchedNumericId = parseInt(
             vNode.id.replace("gid://shopify/ProductVariant/", ""),
             10
@@ -444,7 +508,7 @@ async function fetchShopifyStorefrontGraphQL(
           availableForSale
           tags
           variants(first: 50) {
-            nodes { id title availableForSale price { amount } }
+            nodes { id title availableForSale price { amount currencyCode } }
           }
         }
       }
@@ -452,17 +516,8 @@ async function fetchShopifyStorefrontGraphQL(
 
     const fetchProductByHandle = async (h: string): Promise<any | null> => {
       if (!h) return null;
-      const resH = await fetch(`https://${targetHost}/api/2024-07/graphql.json`, {
-        method: "POST",
-        headers: gqlHeaders,
-        body: JSON.stringify({ query: qHandle, variables: { handle: h } }),
-        cache: "no-store",
-      });
-      if (resH.ok) {
-        const d = await resH.json();
-        return d?.data?.product || null;
-      }
-      return null;
+      const d = await executeGqlWithUsContext(qHandle, { handle: h });
+      return d?.data?.product || null;
     };
 
     // 2. Direct handle lookup (plus quick cleanups like stripping -copy or evp- prefix)
@@ -502,7 +557,7 @@ async function fetchShopifyStorefrontGraphQL(
               availableForSale
               tags
               variants(first: 50) {
-                nodes { id title availableForSale price { amount } }
+                nodes { id title availableForSale price { amount currencyCode } }
               }
             }
           }
@@ -511,13 +566,8 @@ async function fetchShopifyStorefrontGraphQL(
 
       for (const qTerm of searchQueries) {
         // Query Storefront GraphQL + Predictive Search in parallel
-        const [gqlRes, suggestRes] = await Promise.all([
-          fetch(`https://${targetHost}/api/2024-07/graphql.json`, {
-            method: "POST",
-            headers: gqlHeaders,
-            body: JSON.stringify({ query: qSearch, variables: { query: qTerm } }),
-            cache: "no-store",
-          }).catch(() => null),
+        const [sData, suggestRes] = await Promise.all([
+          executeGqlWithUsContext(qSearch, { query: qTerm }),
           fetch(
             `https://${targetHost}/search/suggest.json?q=${encodeURIComponent(qTerm)}&resources[type]=product&resources[limit]=10`,
             {
@@ -530,8 +580,7 @@ async function fetchShopifyStorefrontGraphQL(
           ).catch(() => null),
         ]);
 
-        if (gqlRes && gqlRes.ok) {
-          const sData = await gqlRes.json().catch(() => null);
+        if (sData) {
           const nodes = sData?.data?.products?.nodes || [];
           for (const n of nodes) {
             if (n?.handle && !gqlCandidatesMap.has(n.handle)) {
@@ -1052,13 +1101,21 @@ export async function fetchLiveSupplierAvailability(
           targetHost && targetHost !== parsedShopifyUrl.hostname.toLowerCase().replace(/^www\./, "")
             ? `https://${targetHost}`
             : null;
+        const localeStrippedPathname = cleanPathname.replace(/^\/[a-z]{2}(?:-[a-z]{2})?(?=\/products\/)/i, "");
+        const hasLocalePrefix = localeStrippedPathname !== cleanPathname;
         const candidateUrls = [
           { endpointUrl: `${baseProductUrl}.js`, isDotJson: false },
           { endpointUrl: `${baseProductUrl}.json`, isDotJson: true },
+          ...(hasLocalePrefix
+            ? [
+                { endpointUrl: `${parsedShopifyUrl.origin}${localeStrippedPathname}.js`, isDotJson: false },
+                { endpointUrl: `${parsedShopifyUrl.origin}${localeStrippedPathname}.json`, isDotJson: true },
+              ]
+            : []),
           ...(altOrigin
             ? [
-                { endpointUrl: `${altOrigin}${cleanPathname}.js`, isDotJson: false },
-                { endpointUrl: `${altOrigin}${cleanPathname}.json`, isDotJson: true },
+                { endpointUrl: `${altOrigin}${localeStrippedPathname}.js`, isDotJson: false },
+                { endpointUrl: `${altOrigin}${localeStrippedPathname}.json`, isDotJson: true },
               ]
             : []),
         ];

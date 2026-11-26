@@ -577,7 +577,8 @@ model SupplierPriceDecrease {
   productImageUrl         String    @default("")
   brandName               String?
   supplierUrl             String?
-  status                  String    @default("PENDING") // PENDING | APPROVED_DISCOUNT | APPROVED_PRICE_DECREASE | DISMISSED | SUPERSEDED
+  changeDirection         String    @default("DECREASE") // DECREASE | INCREASE
+  status                  String    @default("PENDING") // PENDING | APPROVED_DISCOUNT | APPROVED_PRICE_DECREASE | APPROVED_PRICE_INCREASE | DISMISSED | SUPERSEDED
   oldSupplierPriceUSD     Float
   newSupplierPriceUSD     Float
   dealerDiscountPercent   Float     @default(0)

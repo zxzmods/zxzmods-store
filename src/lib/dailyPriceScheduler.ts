@@ -40,7 +40,7 @@ export function startDailyPriceScheduler(): void {
               triggeredBy: "CRON_3AM_CR",
             });
             console.log(
-              `[CRON_3AM_CR] Completed (${dateKey}): checked=${summary.totalChecked}, autoIncreased=${summary.autoIncreasedCount}, decreaseQueued=${summary.decreaseQueuedCount}, failed=${summary.failedCount}`
+              `[CRON_3AM_CR] Completed (${dateKey}): checked=${summary.totalChecked}, increaseQueued=${summary.increaseQueuedCount}, decreaseQueued=${summary.decreaseQueuedCount}, failed=${summary.failedCount}`
             );
           } finally {
             globalState.__zxzDailyPriceSchedulerInFlight = false;

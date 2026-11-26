@@ -7,10 +7,16 @@ import {
   isManualPriceSupplier,
 } from "@/lib/dealerBrands";
 import { getBccrSellRate } from "@/lib/exchangeRate";
-import { recordAuditLog, AuditActorRole } from "@/lib/audit";
+import { recordAuditLog, AuditActorRole, AuditAction } from "@/lib/audit";
 
 export type PriceChangeDirection = "INCREASE" | "DECREASE" | "UNCHANGED";
-export type PriceDecreaseResolutionAction = "DISCOUNT" | "PRICE_DECREASE" | "DISMISSED";
+export type PriceDecreaseResolutionAction =
+  | "DISCOUNT"
+  | "PRICE_DECREASE"
+  | "PRICE_INCREASE"
+  | "APPROVE_AS_DISCOUNT"
+  | "APPROVE_REGULAR"
+  | "DISMISSED";
 
 export interface DealerPriceCalcProductInput {
   id: string;
@@ -74,6 +80,7 @@ export async function ensureSupplierPriceDecreaseTable(): Promise<void> {
           "productImageUrl" TEXT NOT NULL DEFAULT '',
           "brandName" TEXT,
           "supplierUrl" TEXT,
+          "changeDirection" TEXT NOT NULL DEFAULT 'DECREASE',
           "status" TEXT NOT NULL DEFAULT 'PENDING',
           "oldSupplierPriceUSD" DOUBLE PRECISION NOT NULL,
           "newSupplierPriceUSD" DOUBLE PRECISION NOT NULL,
@@ -94,6 +101,10 @@ export async function ensureSupplierPriceDecreaseTable(): Promise<void> {
           "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
           CONSTRAINT "SupplierPriceDecrease_pkey" PRIMARY KEY ("id")
         );
+      `);
+      await prisma.$executeRawUnsafe(`
+        ALTER TABLE "SupplierPriceDecrease"
+        ADD COLUMN IF NOT EXISTS "changeDirection" TEXT NOT NULL DEFAULT 'DECREASE';
       `);
       await prisma.$executeRawUnsafe(`
         CREATE INDEX IF NOT EXISTS "SupplierPriceDecrease_productId_status_idx"
@@ -130,6 +141,7 @@ export async function ensureSupplierPriceDecreaseTable(): Promise<void> {
           "productImageUrl" TEXT NOT NULL DEFAULT '',
           "brandName" TEXT,
           "supplierUrl" TEXT,
+          "changeDirection" TEXT NOT NULL DEFAULT 'DECREASE',
           "status" TEXT NOT NULL DEFAULT 'PENDING',
           "oldSupplierPriceUSD" REAL NOT NULL,
           "newSupplierPriceUSD" REAL NOT NULL,
@@ -158,6 +170,17 @@ export async function ensureSupplierPriceDecreaseTable(): Promise<void> {
         CREATE INDEX IF NOT EXISTS "SupplierPriceDecrease_status_detectedAt_idx"
         ON "SupplierPriceDecrease"("status", "detectedAt");
       `);
+      try {
+        const cols: Array<{ name: string }> = await prisma.$queryRawUnsafe(
+          `PRAGMA table_info("SupplierPriceDecrease");`
+        );
+        if (Array.isArray(cols) && !cols.some((c) => c.name === "changeDirection")) {
+          await prisma.$executeRawUnsafe(`
+            ALTER TABLE "SupplierPriceDecrease"
+            ADD COLUMN "changeDirection" TEXT NOT NULL DEFAULT 'DECREASE';
+          `);
+        }
+      } catch {}
     }
     tableEnsured = true;
   } catch (err) {
@@ -388,6 +411,7 @@ export interface DailyPriceCheckSummary {
   completedAt: string;
   totalChecked: number;
   autoIncreasedCount: number;
+  increaseQueuedCount: number;
   decreaseQueuedCount: number;
   unchangedCount: number;
   failedCount: number;
@@ -400,6 +424,16 @@ export interface DailyPriceCheckSummary {
     newPPriceD: number;
     oldTPriceCRC: number;
     newTPriceCRC: number;
+  }>;
+  queuedIncreases: Array<{
+    alertId: string;
+    productId: string;
+    sku: string;
+    nameEs: string;
+    oldPPriceD: number;
+    newPPriceD: number;
+    oldTPriceCRC: number;
+    proposedTPriceCRC: number;
   }>;
   queuedDecreases: Array<{
     alertId: string;
@@ -442,9 +476,10 @@ export async function hasDailyPriceCheckRunToday(dateKey?: string): Promise<bool
 }
 
 /**
- * Executes the full catalog dealer price check across all active products with a supplierUrl:
- * - Dealer price INCREASE -> automatically updates P_price_D, P_price CRC, T_price (priceCRC) & IVA (never touching shipping or profit).
- * - Dealer price DECREASE -> queues for staff approval in `SupplierPriceDecrease` (without modifying live product price yet).
+ * Executes the full catalog supplier price check across all active products with a supplierUrl.
+ * Any price change (INCREASE or DECREASE, for any reason — supplier revision, cost change, promo, etc.)
+ * is queued in `SupplierPriceDecrease` for explicit staff approval (NEVER modifying live prices automatically
+ * and NEVER modifying shipping or profit).
  */
 export async function runDailySupplierPriceCheck(options?: {
   triggeredBy?: string;
@@ -461,11 +496,13 @@ export async function runDailySupplierPriceCheck(options?: {
       completedAt: new Date().toISOString(),
       totalChecked: 0,
       autoIncreasedCount: 0,
+      increaseQueuedCount: 0,
       decreaseQueuedCount: 0,
       unchangedCount: 0,
       failedCount: 0,
       skippedAlreadyRunning: true,
       autoIncreasedProducts: [],
+      queuedIncreases: [],
       queuedDecreases: [],
     };
   }
@@ -503,6 +540,7 @@ export async function runDailySupplierPriceCheck(options?: {
     const combinedBrandRefs = [...dealerBrands, ...vehicleBrands];
 
     const autoIncreasedProducts: DailyPriceCheckSummary["autoIncreasedProducts"] = [];
+    const queuedIncreases: DailyPriceCheckSummary["queuedIncreases"] = [];
     const queuedDecreases: DailyPriceCheckSummary["queuedDecreases"] = [];
     let unchangedCount = 0;
     let failedCount = 0;
@@ -554,73 +592,9 @@ export async function runDailySupplierPriceCheck(options?: {
               live.supplierSalePriceUSD
             );
 
-            if (calc.direction === "INCREASE") {
-              // AUTOMATICALLY UPDATE PRICE INCREASE (no changes to shipping or profit)
-              await prisma.product.update({
-                where: { id: prod.id },
-                data: {
-                  supplierLastPriceUSD: calc.newSupplierPriceUSD,
-                  processingPriceD: calc.newPPriceD,
-                  processingPriceCRC: calc.newPPriceCRC,
-                  priceCRC: calc.updatedTPriceCRC,
-                  originalPriceCRC: calc.nextOriginalPriceCRC,
-                  discountPercent: calc.nextDiscountPercent,
-                  ivaCRC: calc.newIvaCRC,
-                  lockedExchangeRate: calc.exchangeRateUsed,
-                  ...(effectiveDealerDiscount > 0
-                    ? { dealerDiscountPercent: effectiveDealerDiscount }
-                    : {}),
-                  supplierStockCheckedAt: new Date(),
-                  updatedAt: new Date(),
-                },
-              });
-
-              // Supersede any old pending price-decrease alert for this product
-              await prisma.supplierPriceDecrease.updateMany({
-                where: { productId: prod.id, status: "PENDING" },
-                data: {
-                  status: "SUPERSEDED",
-                  resolutionType: "SUPERSEDED",
-                  resolvedBy: triggeredBy,
-                  resolvedAt: new Date(),
-                },
-              });
-
-              autoIncreasedProducts.push({
-                productId: prod.id,
-                sku: prod.sku,
-                nameEs: prod.nameEs,
-                oldPPriceD: calc.oldPPriceD,
-                newPPriceD: calc.newPPriceD,
-                oldTPriceCRC: calc.oldTPriceCRC,
-                newTPriceCRC: calc.updatedTPriceCRC,
-              });
-
-              await recordAuditLog({
-                actorId: triggeredBy === "CRON_3AM_CR" ? "SYSTEM_CRON_3AM" : triggeredBy,
-                actorEmail: triggeredBy,
-                actorRole: "SYSTEM",
-                action: "DAILY_PRICE_AUTO_INCREASE",
-                entityType: "PRODUCT",
-                entityId: prod.id,
-                oldData: {
-                  sku: prod.sku,
-                  nameEs: prod.nameEs,
-                  processingPriceD: calc.oldPPriceD,
-                  priceCRC: calc.oldTPriceCRC,
-                  supplierLastPriceUSD: calc.oldSupplierPriceUSD,
-                },
-                newData: {
-                  sku: prod.sku,
-                  nameEs: prod.nameEs,
-                  processingPriceD: calc.newPPriceD,
-                  priceCRC: calc.updatedTPriceCRC,
-                  supplierLastPriceUSD: calc.newSupplierPriceUSD,
-                },
-                details: `Aumento automático por proveedor en ${prod.sku}: P_price_D $${calc.oldPPriceD} → $${calc.newPPriceD}, T_price ₡${calc.oldTPriceCRC} → ₡${calc.updatedTPriceCRC}`,
-              });
-            } else if (calc.direction === "DECREASE") {
-              // QUEUE PRICE DECREASE FOR STAFF APPROVAL (do NOT change live product price yet!)
+            if (calc.direction === "INCREASE" || calc.direction === "DECREASE") {
+              // QUEUE BOTH PRICE INCREASES AND DECREASES FOR STAFF APPROVAL
+              // (Never overwrite live product price automatically; change can come for any reason at the supplier)
               const existingPending = await prisma.supplierPriceDecrease.findFirst({
                 where: { productId: prod.id, status: "PENDING" },
               });
@@ -632,6 +606,7 @@ export async function runDailySupplierPriceCheck(options?: {
                 productImageUrl: prod.imageUrl || "/images/logo.png",
                 brandName: prod.brandName || null,
                 supplierUrl: url,
+                changeDirection: calc.direction,
                 oldSupplierPriceUSD: calc.oldSupplierPriceUSD,
                 newSupplierPriceUSD: calc.newSupplierPriceUSD,
                 dealerDiscountPercent: calc.dealerDiscountPercent,
@@ -642,7 +617,7 @@ export async function runDailySupplierPriceCheck(options?: {
                 oldTPriceCRC: calc.oldTPriceCRC,
                 proposedTPriceCRC: calc.updatedTPriceCRC,
                 proposedIvaCRC: calc.newIvaCRC,
-                computedDiscountPercent: calc.computedDiscountPercent,
+                computedDiscountPercent: calc.direction === "DECREASE" ? calc.computedDiscountPercent : 0,
                 exchangeRateUsed: calc.exchangeRateUsed,
                 detectedAt: new Date(),
               };
@@ -665,17 +640,30 @@ export async function runDailySupplierPriceCheck(options?: {
                 data: { supplierStockCheckedAt: new Date() },
               });
 
-              queuedDecreases.push({
-                alertId: savedAlert.id,
-                productId: prod.id,
-                sku: prod.sku,
-                nameEs: prod.nameEs,
-                oldPPriceD: calc.oldPPriceD,
-                newPPriceD: calc.newPPriceD,
-                oldTPriceCRC: calc.oldTPriceCRC,
-                proposedTPriceCRC: calc.updatedTPriceCRC,
-                computedDiscountPercent: calc.computedDiscountPercent,
-              });
+              if (calc.direction === "INCREASE") {
+                queuedIncreases.push({
+                  alertId: savedAlert.id,
+                  productId: prod.id,
+                  sku: prod.sku,
+                  nameEs: prod.nameEs,
+                  oldPPriceD: calc.oldPPriceD,
+                  newPPriceD: calc.newPPriceD,
+                  oldTPriceCRC: calc.oldTPriceCRC,
+                  proposedTPriceCRC: calc.updatedTPriceCRC,
+                });
+              } else {
+                queuedDecreases.push({
+                  alertId: savedAlert.id,
+                  productId: prod.id,
+                  sku: prod.sku,
+                  nameEs: prod.nameEs,
+                  oldPPriceD: calc.oldPPriceD,
+                  newPPriceD: calc.newPPriceD,
+                  oldTPriceCRC: calc.oldTPriceCRC,
+                  proposedTPriceCRC: calc.updatedTPriceCRC,
+                  computedDiscountPercent: calc.computedDiscountPercent,
+                });
+              }
             } else {
               // UNCHANGED
               unchangedCount++;
@@ -708,11 +696,13 @@ export async function runDailySupplierPriceCheck(options?: {
       startedAt,
       completedAt,
       totalChecked,
-      autoIncreasedCount: autoIncreasedProducts.length,
+      autoIncreasedCount: 0,
+      increaseQueuedCount: queuedIncreases.length,
       decreaseQueuedCount: queuedDecreases.length,
       unchangedCount,
       failedCount,
       autoIncreasedProducts,
+      queuedIncreases,
       queuedDecreases,
     };
 
@@ -727,13 +717,14 @@ export async function runDailySupplierPriceCheck(options?: {
         runDateCR,
         triggeredBy,
         totalChecked: summary.totalChecked,
-        autoIncreasedCount: summary.autoIncreasedCount,
+        autoIncreasedCount: 0,
+        increaseQueuedCount: summary.increaseQueuedCount,
         decreaseQueuedCount: summary.decreaseQueuedCount,
         unchangedCount: summary.unchangedCount,
         failedCount: summary.failedCount,
         completedAt,
       },
-      details: `Revisión diaria de precios (${runDateCR}): ${summary.totalChecked} revisados, ${summary.autoIncreasedCount} aumentos automáticos, ${summary.decreaseQueuedCount} bajas en cola de aprobación.`,
+      details: `Revisión diaria de precios (${runDateCR}): ${summary.totalChecked} revisados, ${summary.increaseQueuedCount} alzas pendientes de aprobación, ${summary.decreaseQueuedCount} bajas pendientes de aprobación.`,
     });
 
     return summary;
@@ -743,10 +734,13 @@ export async function runDailySupplierPriceCheck(options?: {
 }
 
 /**
- * Resolves a pending SupplierPriceDecrease alert chosen by staff:
- * - "DISCOUNT": updates P_price_D & T_price (no change to shipping/profit) and marks the T_price drop as a visible product discount.
- * - "PRICE_DECREASE": updates P_price_D & T_price (no change to shipping/profit) as a regular lower price (discountPercent = 0).
- * - "DISMISSED": ignores this dealer price decrease and leaves the product price untouched.
+ * Resolves a pending supplier price change alert (INCREASE or DECREASE) chosen by staff:
+ * - For DECREASE:
+ *   - "DISCOUNT" / "APPROVE_AS_DISCOUNT": updates P_price_D & T_price (no change to shipping/profit) and marks the T_price drop as a visible product discount.
+ *   - "PRICE_DECREASE" / "APPROVE_REGULAR": updates P_price_D & T_price (no change to shipping/profit) as a regular lower price (discountPercent = 0).
+ * - For INCREASE:
+ *   - "PRICE_INCREASE" / "APPROVE_AS_DISCOUNT" / "APPROVE_REGULAR": updates P_price_D & T_price (no change to shipping/profit) to the new higher supplier cost.
+ * - "DISMISSED": rejects this supplier price change and leaves the live product price completely untouched.
  */
 export async function resolvePriceDecreaseAlert(params: {
   alertId: string;
@@ -759,6 +753,7 @@ export async function resolvePriceDecreaseAlert(params: {
   error?: string;
   alert?: any;
   product?: any;
+  direction?: "INCREASE" | "DECREASE";
 }> {
   await ensureSupplierPriceDecreaseTable();
 
@@ -767,12 +762,18 @@ export async function resolvePriceDecreaseAlert(params: {
   });
 
   if (!alert) {
-    return { success: false, error: "Alerta de baja de precio no encontrada." };
+    return { success: false, error: "Alerta de cambio de precio no encontrada." };
   }
 
   if (alert.status !== "PENDING") {
     return { success: false, error: "Esta alerta ya fue procesada anteriormente." };
   }
+
+  const isIncrease =
+    alert.changeDirection === "INCREASE" ||
+    alert.proposedTPriceCRC > alert.oldTPriceCRC ||
+    alert.newPPriceD > alert.oldPPriceD;
+  const direction: "INCREASE" | "DECREASE" = isIncrease ? "INCREASE" : "DECREASE";
 
   const product = await prisma.product.findUnique({
     where: { id: alert.productId },
@@ -806,15 +807,17 @@ export async function resolvePriceDecreaseAlert(params: {
       actorId: params.actorId || params.actorEmail,
       actorEmail: params.actorEmail,
       actorRole: params.actorRole,
-      action: "DISMISS_PRICE_DECREASE",
+      action: isIncrease ? "DISMISS_PRICE_INCREASE" : "DISMISS_PRICE_DECREASE",
       entityType: "PRODUCT",
       entityId: product.id,
       oldData: { priceCRC: product.priceCRC, processingPriceD: product.processingPriceD },
-      newData: { alertId: alert.id, proposedTPriceCRC: alert.proposedTPriceCRC },
-      details: `Baja de precio descartada para ${product.sku} por ${params.actorEmail}`,
+      newData: { alertId: alert.id, changeDirection: direction, proposedTPriceCRC: alert.proposedTPriceCRC },
+      details: isIncrease
+        ? `Alza de precio rechazada para ${product.sku} por ${params.actorEmail}`
+        : `Baja de precio rechazada para ${product.sku} por ${params.actorEmail}`,
     });
 
-    return { success: true, alert: updatedAlert, product };
+    return { success: true, alert: updatedAlert, product, direction };
   }
 
   // Recompute cleanly against current product state to ensure shipping & profit are NEVER altered
@@ -838,8 +841,28 @@ export async function resolvePriceDecreaseAlert(params: {
   let nextOriginalPriceCRC = nextTPriceCRC;
   let nextDiscountPercent = 0;
   let nextAlertStatus = "APPROVED_PRICE_DECREASE";
+  let storedResolutionType: string = "PRICE_DECREASE";
+  let auditAction: AuditAction = "APPROVE_PRICE_DECREASE_REGULAR";
+  let auditDetails = "";
 
-  if (params.action === "DISCOUNT") {
+  if (isIncrease) {
+    // Price INCREASE approved by staff (no changes to shipping or profit)
+    const oldOriginal = Math.max(product.priceCRC || 0, product.originalPriceCRC || 0);
+    if ((product.discountPercent || 0) > 0 && oldOriginal > nextTPriceCRC) {
+      nextOriginalPriceCRC = oldOriginal;
+      nextDiscountPercent = Math.max(
+        0,
+        Math.min(99, Math.round(((oldOriginal - nextTPriceCRC) / oldOriginal) * 100))
+      );
+    } else {
+      nextOriginalPriceCRC = nextTPriceCRC;
+      nextDiscountPercent = 0;
+    }
+    nextAlertStatus = "APPROVED_PRICE_INCREASE";
+    storedResolutionType = "PRICE_INCREASE";
+    auditAction = "APPROVE_PRICE_INCREASE";
+    auditDetails = `Alza de precio aprobada en ${product.sku}: P_price_D $${product.processingPriceD} → $${nextPPriceD}, T_price ₡${product.priceCRC} → ₡${nextTPriceCRC}`;
+  } else if (params.action === "DISCOUNT" || params.action === "APPROVE_AS_DISCOUNT") {
     // Reflect decrease as a discount of T_price vs updated T_price (NOT dealer discount %)
     nextOriginalPriceCRC = Math.max(
       product.originalPriceCRC || 0,
@@ -857,6 +880,14 @@ export async function resolvePriceDecreaseAlert(params: {
           )
         : 0;
     nextAlertStatus = "APPROVED_DISCOUNT";
+    storedResolutionType = "DISCOUNT";
+    auditAction = "APPROVE_PRICE_DECREASE_DISCOUNT";
+    auditDetails = `Baja aprobada como DESCUENTO (-${nextDiscountPercent}%) en ${product.sku}: P_price_D $${product.processingPriceD} → $${nextPPriceD}, T_price ₡${product.priceCRC} → ₡${nextTPriceCRC}`;
+  } else {
+    nextAlertStatus = "APPROVED_PRICE_DECREASE";
+    storedResolutionType = "PRICE_DECREASE";
+    auditAction = "APPROVE_PRICE_DECREASE_REGULAR";
+    auditDetails = `Baja aprobada como PRECIO REGULAR (sin descuento) en ${product.sku}: P_price_D $${product.processingPriceD} → $${nextPPriceD}, T_price ₡${product.priceCRC} → ₡${nextTPriceCRC}`;
   }
 
   const updatedProduct = await prisma.product.update({
@@ -878,7 +909,7 @@ export async function resolvePriceDecreaseAlert(params: {
     where: { id: alert.id },
     data: {
       status: nextAlertStatus,
-      resolutionType: params.action,
+      resolutionType: storedResolutionType,
       computedDiscountPercent: nextDiscountPercent,
       resolvedBy: params.actorEmail,
       resolvedAt: new Date(),
@@ -889,10 +920,7 @@ export async function resolvePriceDecreaseAlert(params: {
     actorId: params.actorId || params.actorEmail,
     actorEmail: params.actorEmail,
     actorRole: params.actorRole,
-    action:
-      params.action === "DISCOUNT"
-        ? "APPROVE_PRICE_DECREASE_DISCOUNT"
-        : "APPROVE_PRICE_DECREASE_REGULAR",
+    action: auditAction,
     entityType: "PRODUCT",
     entityId: product.id,
     oldData: {
@@ -908,13 +936,73 @@ export async function resolvePriceDecreaseAlert(params: {
       priceCRC: updatedProduct.priceCRC,
       originalPriceCRC: updatedProduct.originalPriceCRC,
       discountPercent: updatedProduct.discountPercent,
-      resolutionType: params.action,
+      changeDirection: direction,
+      resolutionType: storedResolutionType,
     },
-    details:
-      params.action === "DISCOUNT"
-        ? `Baja aprobada como DESCUENTO (-${nextDiscountPercent}%) en ${product.sku}: P_price_D $${product.processingPriceD} → $${nextPPriceD}, T_price ₡${product.priceCRC} → ₡${nextTPriceCRC}`
-        : `Baja aprobada como PRECIO REGULAR (sin descuento) en ${product.sku}: P_price_D $${product.processingPriceD} → $${nextPPriceD}, T_price ₡${product.priceCRC} → ₡${nextTPriceCRC}`,
+    details: auditDetails,
   });
 
-  return { success: true, alert: updatedAlert, product: updatedProduct };
+  return { success: true, alert: updatedAlert, product: updatedProduct, direction };
+}
+
+/**
+ * Batch resolves multiple pending supplier price change alerts (increases and/or decreases) in a single request.
+ */
+export async function resolvePriceAlertsBatch(params: {
+  alertIds: string[];
+  action: PriceDecreaseResolutionAction;
+  actorId?: string | null;
+  actorEmail: string;
+  actorRole: AuditActorRole;
+}): Promise<{
+  success: boolean;
+  processedCount: number;
+  failedCount: number;
+  approvedIncreases: number;
+  approvedDecreases: number;
+  dismissedCount: number;
+  errors: Array<{ alertId: string; error: string }>;
+}> {
+  const uniqueIds = Array.from(
+    new Set((params.alertIds || []).map((id) => String(id || "").trim()).filter(Boolean))
+  );
+  let processedCount = 0;
+  let failedCount = 0;
+  let approvedIncreases = 0;
+  let approvedDecreases = 0;
+  let dismissedCount = 0;
+  const errors: Array<{ alertId: string; error: string }> = [];
+
+  for (const alertId of uniqueIds) {
+    const res = await resolvePriceDecreaseAlert({
+      alertId,
+      action: params.action,
+      actorId: params.actorId,
+      actorEmail: params.actorEmail,
+      actorRole: params.actorRole,
+    });
+    if (res.success) {
+      processedCount++;
+      if (params.action === "DISMISSED") {
+        dismissedCount++;
+      } else if (res.direction === "INCREASE") {
+        approvedIncreases++;
+      } else {
+        approvedDecreases++;
+      }
+    } else {
+      failedCount++;
+      errors.push({ alertId, error: res.error || "Error al procesar alerta" });
+    }
+  }
+
+  return {
+    success: processedCount > 0 || failedCount === 0,
+    processedCount,
+    failedCount,
+    approvedIncreases,
+    approvedDecreases,
+    dismissedCount,
+    errors,
+  };
 }

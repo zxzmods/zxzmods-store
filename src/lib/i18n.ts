@@ -2147,7 +2147,7 @@ export interface Translations {
   comboChoiceSelectedOutOfStockNotice: string;
   comboChoiceProductLabel: string;
   comboInheritedProductParamBadge: string;
-  // Daily 3 AM Supplier Price Sync & Price Decreases Approval
+  // Daily 3 AM Supplier Price Sync & Price Changes Approval (Increases & Decreases)
   priceDropsTabLabel: string;
   priceDropsTitle: string;
   priceDropsSubtitle: string;
@@ -2159,6 +2159,21 @@ export interface Translations {
   priceDropsPendingSubtab: string;
   priceDropsHistorySubtab: string;
   priceDropsAutoIncreasesSubtab: string;
+  priceDropsFilterAll: string;
+  priceDropsFilterDecreases: string;
+  priceDropsFilterIncreases: string;
+  priceDropsBadgeDecrease: string;
+  priceDropsBadgeIncrease: string;
+  priceDropsSelectAll: string;
+  priceDropsDeselectAll: string;
+  priceDropsSelectedCount: string;
+  priceDropsBatchApproveDiscountBtn: string;
+  priceDropsBatchApproveRegularBtn: string;
+  priceDropsBatchApproveIncreaseBtn: string;
+  priceDropsBatchApproveMixedDiscountBtn: string;
+  priceDropsBatchApproveMixedRegularBtn: string;
+  priceDropsBatchDeclineBtn: string;
+  priceDropsApproveIncreaseBtn: string;
   priceDropsEmptyPendingTitle: string;
   priceDropsEmptyPendingDesc: string;
   priceDropsDealerPriceLabel: string;
@@ -2170,6 +2185,7 @@ export interface Translations {
   priceDropsDismissBtn: string;
   priceDropsStatusDiscount: string;
   priceDropsStatusRegular: string;
+  priceDropsStatusIncrease: string;
   priceDropsStatusDismissed: string;
   priceDropsStatusSuperseded: string;
   // Manual Order Payment Plan
@@ -4342,10 +4358,10 @@ export const translations: Record<Language, Translations> = {
     comboChoiceSelectedOutOfStockNotice: "El producto seleccionado en esta opción del combo se encuentra agotado actualmente. Selecciona otra opción disponible o solicita una cotización por WhatsApp.",
     comboChoiceProductLabel: "Opción elegida",
     comboInheritedProductParamBadge: "Parámetro del producto",
-    // Daily 3 AM Supplier Price Sync & Price Decreases Approval
-    priceDropsTabLabel: "Bajas de Precio",
-    priceDropsTitle: "Aprobación de Bajas de Precio del Proveedor",
-    priceDropsSubtitle: "El sistema revisa diariamente a las 3:00 AM (CR) el precio en todos los proveedores. Los aumentos se actualizan automáticamente en P_price_D y T_price; las bajas se listan aquí para que apruebes si se muestran como descuento (T_price vs nuevo T_price) o como una baja regular de precio.",
+    // Daily 3 AM Supplier Price Sync & Price Changes Approval (Increases & Decreases)
+    priceDropsTabLabel: "Cambios de Precio",
+    priceDropsTitle: "Aprobación de Cambios de Precio del Proveedor",
+    priceDropsSubtitle: "El sistema revisa diariamente a las 3:00 AM (CR) el precio de todos los proveedores por cualquier motivo (ajustes de fábrica, cambios de lista, promociones o variaciones de costo). Ningún aumento ni baja se aplica automáticamente: selecciona uno o varios productos para aprobar o rechazar.",
     priceDropsRunNowBtn: "Verificar Precios Ahora",
     priceDropsRunningBtn: "Verificando Catálogo...",
     priceDropsScheduleBadge: "Automático Diario • 3:00 AM CR",
@@ -4353,20 +4369,36 @@ export const translations: Record<Language, Translations> = {
     priceDropsNeverRunLabel: "Aún no se ha ejecutado una revisión",
     priceDropsPendingSubtab: "Pendientes de Aprobación",
     priceDropsHistorySubtab: "Historial Resuelto",
-    priceDropsAutoIncreasesSubtab: "Aumentos Automáticos",
-    priceDropsEmptyPendingTitle: "No hay bajas de precio pendientes",
-    priceDropsEmptyPendingDesc: "Cuando un proveedor baje el precio de un producto en la revisión de las 3:00 AM (o al verificar manualmente), aparecerá aquí para tu aprobación.",
+    priceDropsAutoIncreasesSubtab: "Alzas Pendientes",
+    priceDropsFilterAll: "Todos",
+    priceDropsFilterDecreases: "Bajas de Precio",
+    priceDropsFilterIncreases: "Alzas de Precio",
+    priceDropsBadgeDecrease: "BAJA DE PRECIO",
+    priceDropsBadgeIncrease: "ALZA DE PRECIO",
+    priceDropsSelectAll: "Seleccionar todos",
+    priceDropsDeselectAll: "Limpiar selección",
+    priceDropsSelectedCount: "seleccionados",
+    priceDropsBatchApproveDiscountBtn: "Aprobar como Descuento",
+    priceDropsBatchApproveRegularBtn: "Aprobar como Baja Regular",
+    priceDropsBatchApproveIncreaseBtn: "Aprobar Aumentos",
+    priceDropsBatchApproveMixedDiscountBtn: "Aprobar (Bajas c/ Descuento + Alzas)",
+    priceDropsBatchApproveMixedRegularBtn: "Aprobar (Bajas Regulares + Alzas)",
+    priceDropsBatchDeclineBtn: "Rechazar Seleccionados",
+    priceDropsApproveIncreaseBtn: "Aprobar Aumento",
+    priceDropsEmptyPendingTitle: "No hay cambios de precio pendientes",
+    priceDropsEmptyPendingDesc: "Cuando un proveedor suba o baje el precio de un producto por cualquier motivo en la revisión de las 3:00 AM (o al verificar manualmente), aparecerá aquí para tu aprobación.",
     priceDropsDealerPriceLabel: "Precio Proveedor (USD)",
     priceDropsPPriceLabel: "P_price_D (Costo USD)",
     priceDropsTPriceLabel: "T_price Cliente (IVA incl.)",
     priceDropsShippingProfitLockedNote: "Envío (S_price) y Ganancia (profit) intactos",
     priceDropsApproveDiscountBtn: "Aprobar como Descuento",
     priceDropsApproveRegularBtn: "Solo Bajar Precio",
-    priceDropsDismissBtn: "Descartar",
+    priceDropsDismissBtn: "Rechazar",
     priceDropsStatusDiscount: "Aplicado como Descuento",
     priceDropsStatusRegular: "Baja de Precio Regular",
-    priceDropsStatusDismissed: "Descartado",
-    priceDropsStatusSuperseded: "Superado por Aumento",
+    priceDropsStatusIncrease: "Alza de Precio Aprobada",
+    priceDropsStatusDismissed: "Rechazado",
+    priceDropsStatusSuperseded: "Reemplazado por Nuevo Cambio",
     // Manual Order Payment Plan
     manualOrderPaymentPlanTitle: "4. Modalidad de Pago para el Cliente",
     manualOrderPaymentPlanSubtitle: "Elige si esta cotización se paga al 100% en una sola transferencia o con la opción fraccionada 70% adelanto / 30% contra Certificado de Revisión.",
@@ -6535,10 +6567,10 @@ export const translations: Record<Language, Translations> = {
     comboChoiceSelectedOutOfStockNotice: "The selected product option in this combo is currently out of stock. Please select another available option or request a quote via WhatsApp.",
     comboChoiceProductLabel: "Selected option",
     comboInheritedProductParamBadge: "Product option",
-    // Daily 3 AM Supplier Price Sync & Price Decreases Approval
-    priceDropsTabLabel: "Price Decreases",
-    priceDropsTitle: "Supplier Price Decrease Approvals",
-    priceDropsSubtitle: "The system automatically checks all supplier prices daily at 3:00 AM (CR). Dealer price increases update P_price_D and T_price automatically; price decreases appear here for staff to approve as a product discount (T_price vs updated T_price) or a regular price decrease.",
+    // Daily 3 AM Supplier Price Sync & Price Changes Approval (Increases & Decreases)
+    priceDropsTabLabel: "Price Changes",
+    priceDropsTitle: "Supplier Price Change Approvals",
+    priceDropsSubtitle: "The system automatically checks all supplier prices daily at 3:00 AM (CR) for any price change regardless of reason (MSRP revision, supplier cost update, sale, promo, etc.). Neither increases nor decreases are applied automatically — select one or multiple products to approve or decline.",
     priceDropsRunNowBtn: "Check Prices Now",
     priceDropsRunningBtn: "Checking Catalog...",
     priceDropsScheduleBadge: "Auto Daily • 3:00 AM CR",
@@ -6546,20 +6578,36 @@ export const translations: Record<Language, Translations> = {
     priceDropsNeverRunLabel: "No price check has run yet",
     priceDropsPendingSubtab: "Pending Approval",
     priceDropsHistorySubtab: "Resolved History",
-    priceDropsAutoIncreasesSubtab: "Auto Increases",
-    priceDropsEmptyPendingTitle: "No pending price decreases",
-    priceDropsEmptyPendingDesc: "Whenever a dealer lowers a product's price during the 3:00 AM check (or a manual check), it will appear here for your approval.",
-    priceDropsDealerPriceLabel: "Dealer Retail (USD)",
+    priceDropsAutoIncreasesSubtab: "Pending Increases",
+    priceDropsFilterAll: "All",
+    priceDropsFilterDecreases: "Price Decreases",
+    priceDropsFilterIncreases: "Price Increases",
+    priceDropsBadgeDecrease: "PRICE DECREASE",
+    priceDropsBadgeIncrease: "PRICE INCREASE",
+    priceDropsSelectAll: "Select all",
+    priceDropsDeselectAll: "Clear selection",
+    priceDropsSelectedCount: "selected",
+    priceDropsBatchApproveDiscountBtn: "Approve as Discount",
+    priceDropsBatchApproveRegularBtn: "Approve as Regular Decrease",
+    priceDropsBatchApproveIncreaseBtn: "Approve Increases",
+    priceDropsBatchApproveMixedDiscountBtn: "Approve (Drops as Discount + Increases)",
+    priceDropsBatchApproveMixedRegularBtn: "Approve (Regular Drops + Increases)",
+    priceDropsBatchDeclineBtn: "Decline Selected",
+    priceDropsApproveIncreaseBtn: "Approve Increase",
+    priceDropsEmptyPendingTitle: "No pending price changes",
+    priceDropsEmptyPendingDesc: "Whenever a supplier raises or lowers a product's price for any reason during the 3:00 AM check (or a manual check), it will appear here for staff approval.",
+    priceDropsDealerPriceLabel: "Supplier Price (USD)",
     priceDropsPPriceLabel: "P_price_D (Cost USD)",
     priceDropsTPriceLabel: "Customer T_price (VAT incl.)",
     priceDropsShippingProfitLockedNote: "Shipping (S_price) & Profit unchanged",
     priceDropsApproveDiscountBtn: "Approve as Discount",
     priceDropsApproveRegularBtn: "Price Decrease Only",
-    priceDropsDismissBtn: "Dismiss",
+    priceDropsDismissBtn: "Decline",
     priceDropsStatusDiscount: "Applied as Discount",
     priceDropsStatusRegular: "Regular Price Decrease",
-    priceDropsStatusDismissed: "Dismissed",
-    priceDropsStatusSuperseded: "Superseded by Increase",
+    priceDropsStatusIncrease: "Price Increase Approved",
+    priceDropsStatusDismissed: "Declined",
+    priceDropsStatusSuperseded: "Replaced by Newer Change",
     // Manual Order Payment Plan
     manualOrderPaymentPlanTitle: "4. Client Payment Option",
     manualOrderPaymentPlanSubtitle: "Select whether this quotation requires 100% upfront payment or uses the 70% upfront / 30% upon Inspection Certificate split payment plan.",
