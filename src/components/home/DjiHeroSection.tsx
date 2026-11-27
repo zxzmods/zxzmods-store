@@ -5,7 +5,7 @@ import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { useLanguage } from "@/context/LanguageContext";
 import { useCart } from "@/context/CartContext";
-import { formatCRC, formatUSD, convertCRCToUSD } from "@/lib/i18n";
+import { formatCRC } from "@/lib/i18n";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useTouchSwipe } from "@/lib/useTouchSwipe";
@@ -498,14 +498,7 @@ export function DjiHeroSection() {
                 {popupScene.relatedItems.map((item) => {
                   const displayTitle = lang === "en" ? item.titleEn || item.titleEs : item.titleEs;
                   const isCombo = item.type === "COMBO";
-                  const primaryPrice =
-                    currency === "USD"
-                      ? formatUSD(convertCRCToUSD(item.priceCRC, sellRate))
-                      : formatCRC(item.priceCRC);
-                  const secondaryPrice =
-                    currency === "USD"
-                      ? formatCRC(item.priceCRC)
-                      : `≈ ${formatUSD(convertCRCToUSD(item.priceCRC, sellRate))}`;
+                  const primaryPrice = formatCRC(item.priceCRC);
 
                   return (
                     <div
@@ -547,9 +540,6 @@ export function DjiHeroSection() {
                           <div className="pt-1 flex items-baseline gap-2 flex-wrap">
                             <span className="text-sm font-black text-white">
                               {primaryPrice}
-                            </span>
-                            <span className="text-[11px] text-neutral-400">
-                              {secondaryPrice}
                             </span>
                           </div>
                         </div>

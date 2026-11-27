@@ -6,7 +6,7 @@ import Link from "next/link";
 import { ShieldAlert, Plus, Check, ShoppingCart, Layers, Package } from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
 import { useCart } from "@/context/CartContext";
-import { formatCRC, formatUSD, convertCRCToUSD } from "@/lib/i18n";
+import { formatCRC } from "@/lib/i18n";
 import { Skeleton } from "@/components/ui/Skeleton";
 import type { ProductItem } from "@/lib/products";
 
@@ -22,7 +22,7 @@ export function SuggestedSection({
   isLoading = false,
 }: SuggestedSectionProps) {
   const { t, lang } = useLanguage();
-  const { items, addItem, currency, sellRate } = useCart();
+  const { items, addItem } = useCart();
   const [justAddedId, setJustAddedId] = useState<string | null>(null);
 
   if (isLoading) {
@@ -46,12 +46,7 @@ export function SuggestedSection({
   const hasSuggestions = suggestedProducts.length > 0 || suggestedCombos.length > 0;
   if (!hasSuggestions) return null;
 
-  const formatPrice = (crc: number) => {
-    if (currency === "USD") {
-      return formatUSD(convertCRCToUSD(crc, sellRate));
-    }
-    return formatCRC(crc);
-  };
+  const formatPrice = (crc: number) => formatCRC(crc);
 
   const handleAddProduct = (p: ProductItem) => {
     const isIncluded = Boolean(p.price?.I_price?.includes ?? true);

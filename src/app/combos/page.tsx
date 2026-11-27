@@ -16,7 +16,7 @@ import { CustomSelect } from "@/components/ui/CustomSelect";
 import { useLanguage } from "@/context/LanguageContext";
 import { useCart } from "@/context/CartContext";
 import { useGarage } from "@/context/GarageContext";
-import { formatCRC, formatUSD, convertCRCToUSD } from "@/lib/i18n";
+import { formatCRC } from "@/lib/i18n";
 import {
   detectVehiclePlatform,
   isPlatformOrVehicleMatch,
@@ -72,7 +72,6 @@ interface ComboItem {
 
 export default function CombosPage() {
   const { t, lang } = useLanguage();
-  const { currency, sellRate } = useCart();
   const { vehicle, openModal } = useGarage();
   const router = useRouter();
 
@@ -898,15 +897,8 @@ export default function CombosPage() {
                 className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5"
               >
                 {paginatedCombos.map((combo, idx) => {
-                  const displayPrice =
-                    currency === "USD"
-                      ? formatUSD(convertCRCToUSD(combo.priceCRC, sellRate))
-                      : formatCRC(combo.priceCRC);
-
-                  const displayOriginalPrice =
-                    currency === "USD"
-                      ? formatUSD(convertCRCToUSD(combo.originalPriceCRC, sellRate))
-                      : formatCRC(combo.originalPriceCRC);
+                  const displayPrice = formatCRC(combo.priceCRC);
+                  const displayOriginalPrice = formatCRC(combo.originalPriceCRC);
 
                   return (
                     <motion.div

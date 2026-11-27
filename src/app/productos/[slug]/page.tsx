@@ -16,7 +16,7 @@ import { useLanguage } from "@/context/LanguageContext";
 import { useCart } from "@/context/CartContext";
 import { useGarage } from "@/context/GarageContext";
 import { getWhatsAppUrl } from "@/config/company";
-import { formatCRC, getCategoryLabel, formatUSD, convertCRCToUSD } from "@/lib/i18n";
+import { formatCRC, getCategoryLabel } from "@/lib/i18n";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useTouchSwipe } from "@/lib/useTouchSwipe";
 import {
@@ -2178,10 +2178,7 @@ export default function ProductDetailPage() {
                                 addonProd?.priceCRC ||
                                 opt.priceDeltaCRC ||
                                 0;
-                              const optPriceFormatted =
-                                currency === "USD"
-                                  ? formatUSD(convertCRCToUSD(optPriceCRC, sellRate))
-                                  : formatCRC(optPriceCRC);
+                              const optPriceFormatted = formatCRC(optPriceCRC);
                               const optThumb =
                                 addonProd?.imageUrl ||
                                 addonProd?.imgs?.[0] ||
@@ -2320,14 +2317,7 @@ export default function ProductDetailPage() {
                           <span className="font-mono font-black text-[#111827]">
                             {lang === "es" ? "Total combinado:" : "Combined total:"}{" "}
                             <span className="text-[#C02030]">
-                              {currency === "USD"
-                                ? formatUSD(
-                                    convertCRCToUSD(
-                                      effectivePriceCRC + totalAddonsPriceCRC,
-                                      sellRate
-                                    )
-                                  )
-                                : formatCRC(effectivePriceCRC + totalAddonsPriceCRC)}
+                              {formatCRC(effectivePriceCRC + totalAddonsPriceCRC)}
                             </span>
                           </span>
                         </div>
@@ -2377,9 +2367,7 @@ export default function ProductDetailPage() {
                         </span>
                         <div className="space-y-1.5">
                           {product.requiredProducts.map((req) => {
-                            const reqPriceDisplay = currency === "USD"
-                              ? formatUSD(convertCRCToUSD(req.price?.T_price ?? (req as any).priceCRC ?? 0, sellRate))
-                              : formatCRC(req.price?.T_price ?? (req as any).priceCRC ?? 0);
+                            const reqPriceDisplay = formatCRC(req.price?.T_price ?? (req as any).priceCRC ?? 0);
                             const reqTitle = lang === "es"
                               ? (req.nameEs || req.p_title || req.nameEn)
                               : (req.nameEn || req.nameEs || req.p_title);
@@ -2729,9 +2717,7 @@ export default function ProductDetailPage() {
                       const brandDisplay = normalizeBrandName(
                         req.brand?.[0] || (req as any).brandName || ""
                       );
-                      const reqPriceDisplay = currency === "USD"
-                        ? formatUSD(convertCRCToUSD(req.price?.T_price ?? (req as any).priceCRC ?? 0, sellRate))
-                        : formatCRC(req.price?.T_price ?? (req as any).priceCRC ?? 0);
+                      const reqPriceDisplay = formatCRC(req.price?.T_price ?? (req as any).priceCRC ?? 0);
                       const reqTitle = lang === "es"
                         ? (req.nameEs || req.p_title || req.nameEn)
                         : (req.nameEn || req.nameEs || req.p_title);
@@ -2908,9 +2894,7 @@ export default function ProductDetailPage() {
                     const brandDisplay = normalizeBrandName(
                       rel.brand?.[0] || (rel as any).brandName || ""
                     );
-                    const relPriceDisplay = currency === "USD"
-                      ? formatUSD(convertCRCToUSD(rel.price?.T_price ?? (rel as any).priceCRC ?? 0, sellRate))
-                      : formatCRC(rel.price?.T_price ?? (rel as any).priceCRC ?? 0);
+                    const relPriceDisplay = formatCRC(rel.price?.T_price ?? (rel as any).priceCRC ?? 0);
                     return (
                       <Link
                         key={rel.id}
@@ -3167,11 +3151,6 @@ export default function ProductDetailPage() {
                 <span className="text-sm font-black text-[#C02030] font-mono">
                   {formatCRC(effectivePriceCRC)}
                 </span>
-                {currency === "USD" && (
-                  <span className="text-[10px] font-bold text-gray-400 font-mono">
-                    ({formatUSD(convertCRCToUSD(effectivePriceCRC, sellRate))})
-                  </span>
-                )}
               </div>
             </div>
           </div>

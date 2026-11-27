@@ -15,7 +15,7 @@ import { Footer } from "@/components/layout/Footer";
 import { useLanguage } from "@/context/LanguageContext";
 import { useCart } from "@/context/CartContext";
 import { useGarage } from "@/context/GarageContext";
-import { formatCRC, formatUSD, convertCRCToUSD } from "@/lib/i18n";
+import { formatCRC } from "@/lib/i18n";
 import {
   ConfigurableParameter,
   SelectedParameterItem,
@@ -139,7 +139,7 @@ export default function ComboDetailPage() {
   const slug = params?.slug as string;
 
   const { t, lang } = useLanguage();
-  const { items, addItem, currency, sellRate } = useCart();
+  const { items, addItem, sellRate } = useCart();
   const { vehicle, openModal } = useGarage();
 
   const [combo, setCombo] = useState<ComboItem | null>(null);
@@ -780,24 +780,12 @@ export default function ComboDetailPage() {
   const cartItem = items.find((i) => i.id === computedVariantId || (selectedParametersList.length === 0 && i.id === `combo-${combo?.id}`));
   const quantityInCart = cartItem?.quantity || 0;
 
-  const displayPrice = combo
-    ? currency === "USD"
-      ? formatUSD(convertCRCToUSD(effectivePriceCRC, sellRate))
-      : formatCRC(effectivePriceCRC)
-    : "";
+  const displayPrice = combo ? formatCRC(effectivePriceCRC) : "";
 
-  const displayOriginalPrice = combo
-    ? currency === "USD"
-      ? formatUSD(convertCRCToUSD(effectiveOriginalPriceCRC, sellRate))
-      : formatCRC(effectiveOriginalPriceCRC)
-    : "";
+  const displayOriginalPrice = combo ? formatCRC(effectiveOriginalPriceCRC) : "";
 
   const savingsCRC = combo ? effectiveOriginalPriceCRC - effectivePriceCRC : 0;
-  const displaySavings = combo && savingsCRC > 0
-    ? currency === "USD"
-      ? formatUSD(convertCRCToUSD(savingsCRC, sellRate))
-      : formatCRC(savingsCRC)
-    : null;
+  const displaySavings = combo && savingsCRC > 0 ? formatCRC(savingsCRC) : null;
 
   const compDisplay = combo?.compDisplay || formatCompListWithYears(combo?.comp);
   const isUniversalCombo = isUniversalFit(combo?.comp);
@@ -1447,7 +1435,7 @@ export default function ComboDetailPage() {
                                               : "text-gray-900"
                                           }`}
                                         >
-                                          +{currency === "USD" ? formatUSD(convertCRCToUSD(choicePriceCRC, sellRate)) : formatCRC(choicePriceCRC)}
+                                          +{formatCRC(choicePriceCRC)}
                                         </span>
                                       </div>
                                     </button>
@@ -1501,10 +1489,7 @@ export default function ComboDetailPage() {
                                       {(() => {
                                         const optDeltaCRC = resolveOptionDeltaCRC(opt);
                                         if (optDeltaCRC === 0) return null;
-                                        const formattedDelta =
-                                          currency === "USD"
-                                            ? formatUSD(convertCRCToUSD(Math.abs(optDeltaCRC), sellRate))
-                                            : formatCRC(Math.abs(optDeltaCRC));
+                                        const formattedDelta = formatCRC(Math.abs(optDeltaCRC));
                                         return (
                                           <span
                                             className={`text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded-md ${
@@ -1949,9 +1934,7 @@ export default function ComboDetailPage() {
                     {relatedProducts.slice(0, 10).map((rel) => {
                       const isFree = rel.price?.I_price?.includes ?? (rel as any).isInstallationIncluded ?? false;
                       const brandDisplay = normalizeBrandName(rel.brand?.[0] || (rel as any).brandName || "");
-                      const relPriceDisplay = currency === "USD"
-                        ? formatUSD(convertCRCToUSD(rel.price?.T_price ?? (rel as any).priceCRC ?? 0, sellRate))
-                        : formatCRC(rel.price?.T_price ?? (rel as any).priceCRC ?? 0);
+                      const relPriceDisplay = formatCRC(rel.price?.T_price ?? (rel as any).priceCRC ?? 0);
 
                       return (
                         <Link
@@ -2028,10 +2011,7 @@ export default function ComboDetailPage() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {relatedCombos.slice(0, 3).map((rel) => {
-                    const relPrice =
-                      currency === "USD"
-                        ? formatUSD(convertCRCToUSD(rel.priceCRC, sellRate))
-                        : formatCRC(rel.priceCRC);
+                    const relPrice = formatCRC(rel.priceCRC);
 
                     return (
                       <div
@@ -2236,11 +2216,6 @@ export default function ComboDetailPage() {
                 <span className="text-sm font-black text-[#C02030] font-mono">
                   {formatCRC(effectivePriceCRC)}
                 </span>
-                {currency === "USD" && (
-                  <span className="text-[10px] font-bold text-gray-400 font-mono">
-                    ({formatUSD(convertCRCToUSD(effectivePriceCRC, sellRate))})
-                  </span>
-                )}
               </div>
             </div>
           </div>
